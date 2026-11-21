@@ -26,7 +26,6 @@ x-backend: &backend
     ENVIRONMENT: local
     # Sign-in (docs/SSO.md): password (default here) | oidc | demo. The OIDC defaults point at the demo Keycloak (profile `sso`).
     AUTH_MODE: ${AUTH_MODE:-password}
-    DEMO_PASSWORD: ${DEMO_PASSWORD:-}
     OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8180/realms/vistula}
     OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/vistula/.well-known/openid-configuration}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-herald}

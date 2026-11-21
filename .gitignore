@@ -18,3 +18,4 @@ dist/
 loadtest/results/raw/
 *.log
 .playwright-mcp/
+*.local.md
