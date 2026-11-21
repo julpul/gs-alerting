@@ -44,6 +44,18 @@ curl -s localhost:8080/v1/stream?access_token=$TOKEN        # live SSE feed
 
 Note: the web UI is built by the design team in a separate codebase against `docs/openapi.yaml` (see [`docs/HANDOFF_UI.md`](docs/HANDOFF_UI.md)). This repo is the complete backend: REST + SSE + MCP, plus Swagger, Mailpit and the mockgw page to see every channel working.
 
+## Web UI
+
+The api serves the web UI itself — same origin as the API, so there is no CORS and live updates use SSE:
+
+| URL | What |
+| --- | --- |
+| `http://localhost:8080/` | Classic Herald interface (alert feed, platforms, rule editor, runbooks, teams) |
+| `http://localhost:8080/ads/` | Atlaskit interface, plus **Approvals**, **Copilot**, **AI assistant** (rule / field mapping / runbook from text), **Agents & MCP** (personal tokens + `claude mcp add` command), **On-call & escalation**, **Knowledge**, **Health** |
+| `http://localhost:8080/lab.html` | Test lab: play a source system and watch what happens |
+
+Demo mode has no sign-in: pick **Viewing as** in the profile menu (anna, piotr, root.settlements, master, manager, …). The UI talks to a thin backend-for-frontend (`/api/*`, `backend/app/herald/`) that maps the design team's Herald UI contract onto our services; `/v1` stays the public API. AI output is always a labelled draft with Accept / Edit / Reject; risky runbook steps need a *different* person's approval (four-eyes). Built files live in `backend/static/herald` (committed, no Node needed); to change the Atlaskit UI: `cd ui/ads && npm ci && npm run build`.
+
 ## Live demo on Railway
 
 | Service | URL |
