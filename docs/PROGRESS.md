@@ -39,11 +39,11 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 
 | Test | Result | Target | Date |
 | --- | --- | --- | --- |
-| T1 latency ingest→UI p50/p99 | 7 ms / 39 ms | < 50 ms / < 300 ms | 2026-11-21 |
-| T1 latency ingest→SMS/email p99 | 80 / 79 ms | < 1 s | 2026-11-21 |
+| T1 latency ingest→UI p50/p99 | 5.6 ms / 52 ms (5 min) | < 50 ms / < 300 ms | 2026-11-21 |
+| T1 latency ingest→SMS/email p99 | 78 / 73 ms | < 1 s | 2026-11-21 |
 | T2 max sustained ev/s (4 workers) | 2500 (clean DB), 1250–1500 (large DB) | ≥ 1000 | 2026-11-21 |
-| T4 lost alerts in chaos | 0 (6474/6474 alerts, SMS outage 60 s + worker SIGKILL) | 0 | 2026-11-21 |
-| T5 throughput 1/2/4 workers | 500 / 750 / 1250 ev/s (shared 10-core laptop) | linear-ish | 2026-11-21 |
+| T4 lost alerts in chaos | 0 (6454/6454 alerts, SMS outage 60 s + worker SIGKILL; summary lost=0) | 0 | 2026-11-21 |
+| T5 throughput 1/2/4 workers | 1250 / 1750 / 1500 ev/s (host-bound beyond 2) | linear-ish | 2026-11-21 |
 | T6 dedup 500 → | 1 alert ×500, 1 phone + 1 SMS + 1 ui | 1 alert, 1 hard notification | 2026-11-21 |
 
 ## Decision log

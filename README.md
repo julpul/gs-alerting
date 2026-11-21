@@ -144,12 +144,15 @@ Measured, not estimated. Conditions: one MacBook with 10 cores, **everything inc
 
 | Test | Result | Target |
 | --- | --- | --- |
-| T1 latency ingest → UI p50 / p99 (100 ev/s) | **7 ms / 39 ms** | < 50 ms / < 300 ms |
-| T1 latency ingest → SMS / email p99 | **80 / 79 ms** | < 1 s |
-| T2 max sustained throughput, 4 workers | **2,500 ev/s** (clean DB); 1,250–1,500 ev/s on a large DB | ≥ 1,000 ev/s |
-| T4 chaos: SMS gateway down 60 s + worker `SIGKILL` at 200 ev/s | **0 lost** (6,474 / 6,474 alerts reconciled) | 0 |
-| T5 scaling 1 / 2 / 4 workers (shared 10-core laptop) | 500 / 750 / 1,250 ev/s | roughly linear |
-| T6 dedup, 500 identical events | **1 alert ×500**, 1 phone + 1 SMS + 1 UI notification | 1 alert, 1 hard notification |
+| T1 latency ingest → UI p50 / p99 (100 ev/s, 5 min, 6,404 alerts) | **5.6 ms / 52 ms** | < 50 ms / < 300 ms |
+| T1 latency ingest → email / SMS / phone p99 | **73 / 78 / 78 ms** | < 1 s |
+| T1 pipeline processing p50 / p99 (every event, Prometheus) | 3.2 ms / 24.8 ms | — |
+| T2 max sustained throughput, 4 workers (p99 processing < 1 s) | **1,500–2,500 ev/s** (host-bound; best run 2,500 on a clean DB) | ≥ 1,000 ev/s |
+| T4 chaos: SMS gateway down 60 s + worker `SIGKILL` at 200 ev/s | **0 lost** (6,454 / 6,454 alerts reconciled, all deliveries accounted) | 0 |
+| T5 scaling 1 / 2 / 4 workers | 1,250 / 1,750 / 1,500 ev/s — one worker process ≈ 1,250 ev/s; beyond 2 workers the shared 10-core laptop (k6 + Postgres + RabbitMQ + AI on the same host) is the limit, not the service | roughly linear on separate hosts |
+| T6 dedup, 500 identical events in 60 s | **1 alert ×500**, 1 phone + 1 SMS + 1 UI notification | 1 alert, 1 hard notification |
+
+Worst-case load profile: 20 % of events match a rule and every matching event carries a unique id, so each one creates a *new* alert with deliveries (a realistic storm deduplicates far more). Perf work that got us here: uvloop for every role, one Redis round trip per event, Postgres group commit (`commit_delay`), duplicate fast path (plain UPDATE instead of upsert), AI worker CPU cap + storm reuse of suggestions (off the hot path).
 
 Reproduce (stack up with `make up`; needs `brew install k6 uv`):
 
