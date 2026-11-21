@@ -10,9 +10,9 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P0 repo/docs/agents/CI | done | — | repo julpul/gs-alerting (private), CI+CD workflows |
 | P1 foundation | done | PASS (69 tests, 97 % cov, compose up, login ok) | merged 29655d7 |
 | P2 core pipeline | done | **PASS** (QA: demo events → 5 rules, Mailpit + mockgw deliveries, SSE, dedup ×501 → 1 alert, SMS outage → DLQ + email fallback, isolation, coverage 97.6 %) | 3 minor findings fixed by orchestrator |
-| P3 video features + measurement | in_progress | — | ESCAL, RUNBOOK, AI, ORG-B in parallel; LOAD + sim A merged |
-| P4 agents + sources | in_progress | — | CONNECT + MCP in parallel |
-| P5 ship | todo | — | |
+| P3 video features + measurement | done | T1/T6 PASS (see results) | |
+| P4 agents + sources | done | 842 tests green, coverage 97 % | |
+| P5 ship | in_progress | — | perf tuning by orchestrator; deploy blocked on GitHub Actions billing/visibility decision |
 
 ## Tasks
 
@@ -29,8 +29,8 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P3-AI | done | implementer / task/P3-AI | 2026-11-21 | 2026-11-21 | 91–100 % | LiteLLM router + fallback, redaction, untrusted_event, L1+L2 hybrid retrieval (fastembed + pgvector + FTS), degraded mode; context.py (GitHub/Datadog) skipped (wave 3) |
 | P3-LOAD | review | implementer / task/P3-LOAD | 2026-11-21 | merged | 25 tests | merged; not yet run against real backend (after P2) |
 | P3-ORG | done | implementer / task/P3-ORG-sim + task/P3-ORG-B | 2026-11-21 | 2026-11-21 | sim 99.6 %, seed 97 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
-| P4-MCP | in_progress | implementer / task/P4-MCP | 2026-11-21 | | | migrations 085–089 |
-| P4-CONNECT | in_progress | implementer / task/P4-CONNECT | 2026-11-21 | | | started early (independent of P3) |
+| P4-MCP | done | implementer / task/P4-MCP | 2026-11-21 | 2026-11-21 | 94–100 % | MCP 2.3 MCPServer at /mcp (PAT), tools per spec §14, request_approval long-poll, copilot via structured-output loop (no native tool calling) |
+| P4-CONNECT | done | implementer / task/P4-CONNECT | 2026-11-21 | 2026-11-21 | 94–100 % | own reconnect supervisor; Alertmanager split + auto-resolve (outcome `auto_resolved`) |
 | P5-DEPLOY | todo | orchestrator | | | | |
 | P5-PERF | todo | | | | | |
 | P5-DOCS | todo | | | | | |
