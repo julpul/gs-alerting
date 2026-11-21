@@ -5,6 +5,8 @@ only when no route matched, so it can never shadow `/v1`, `/api`, `/mcp` (append
 `/docs`, `/metrics`, `/healthz`, ... whatever order the mounts are discovered in. Paths under an API prefix
 never reach the files and keep the normal JSON 404.
 
+`/ads` and everything under it (the retired second UI) redirect to `/`: there is one web app, the classic one.
+
 Cache: HTML is `no-store` (a new build shows up on reload), hashed build assets (`name-<hash>.js`) are
 immutable for a year, everything else revalidates (`no-cache` + ETag).
 """
@@ -16,7 +18,7 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -37,6 +39,7 @@ API_PREFIXES = (
     "/readyz",
 )
 ALIASES = {"/login": "/login.html", "/lab": "/lab.html"}
+RETIRED = "/ads"
 HASHED = re.compile(r"-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|ttf|svg|png|jpg|webp|gif|ico|map)$")
 
 NO_STORE = "no-store"
@@ -46,6 +49,10 @@ REVALIDATE = "no-cache"
 
 def is_api_path(path: str) -> bool:
     return any(path == p or path.startswith(f"{p}/") for p in API_PREFIXES)
+
+
+def is_retired(path: str) -> bool:
+    return path == RETIRED or path.startswith(f"{RETIRED}/")
 
 
 def cache_control(file_path: str) -> str:
@@ -83,6 +90,9 @@ class UiFallback:
         path = scope.get("path", "")
         if scope["type"] != "http" or is_api_path(path):
             await self.not_found(scope, receive, send)
+            return
+        if is_retired(path):
+            await RedirectResponse("/", status_code=302)(scope, receive, send)
             return
         if path in ALIASES:
             scope = {**scope, "path": ALIASES[path], "raw_path": ALIASES[path].encode()}

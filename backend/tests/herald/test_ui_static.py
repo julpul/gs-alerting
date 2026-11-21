@@ -9,11 +9,11 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.mounts import herald_ui
-from app.api.mounts.herald_ui import IMMUTABLE, NO_STORE, REVALIDATE, cache_control, is_api_path
+from app.api.mounts.herald_ui import IMMUTABLE, NO_STORE, REVALIDATE, cache_control, is_api_path, is_retired
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-ASSETS = herald_ui.STATIC_DIR / "ads" / "assets"
+PAGES = ("index.html", "lab.html", "login.html")
 
 
 async def test_root_serves_classic_ui(client):
@@ -21,21 +21,20 @@ async def test_root_serves_classic_ui(client):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
     assert resp.headers["cache-control"] == NO_STORE
-    assert "/ads/#/copilot" in resp.text  # classic top bar links to the new screens
+    assert "The Herald" in resp.text
 
 
-async def test_ads_serves_react_index(client):
-    resp = await client.get("/ads/")
-    assert resp.status_code == 200
-    assert resp.headers["cache-control"] == NO_STORE
-    assert '<div id="root">' in resp.text
-    assert "./assets/index-" in resp.text
+@pytest.mark.parametrize("path", ["/ads", "/ads/", "/ads/index.html", "/ads/assets/index-abc12345.js"])
+async def test_retired_second_ui_redirects_home(client, path):
+    resp = await client.get(path)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/"
 
 
-async def test_ads_without_slash_redirects(client):
-    resp = await client.get("/ads")
-    assert resp.status_code in (301, 302, 307, 308)
-    assert resp.headers["location"].endswith("/ads/")
+async def test_no_page_links_to_the_retired_ui():
+    for name in PAGES:
+        assert "/ads" not in (herald_ui.STATIC_DIR / name).read_text(), name
+    assert not (herald_ui.STATIC_DIR / "ads").exists()
 
 
 @pytest.mark.parametrize("path", ["/lab.html", "/login.html", "/login", "/flow/demo.html"])
@@ -43,14 +42,6 @@ async def test_other_pages(client, path):
     resp = await client.get(path)
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
-
-
-async def test_hashed_assets_are_immutable(client):
-    name = next(p.name for p in ASSETS.iterdir() if p.name.startswith("index-") and p.suffix == ".js")
-    resp = await client.get(f"/ads/assets/{name}")
-    assert resp.status_code == 200
-    assert resp.headers["cache-control"] == IMMUTABLE
-    assert "javascript" in resp.headers["content-type"]
 
 
 async def test_unhashed_files_revalidate(client):
@@ -96,6 +87,7 @@ async def test_is_api_path():
     assert is_api_path("/openapi.json") and is_api_path("/healthz")
     assert not is_api_path("/") and not is_api_path("/ads/") and not is_api_path("/apis.html")
     assert not is_api_path("/v1x")
+    assert is_retired("/ads") and is_retired("/ads/x") and not is_retired("/adsx")
 
 
 async def test_cache_control_rules():

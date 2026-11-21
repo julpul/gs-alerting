@@ -87,7 +87,6 @@ pre.wrap{white-space:pre-wrap;overflow-wrap:anywhere}
 .btn.warn{color:var(--crit);border-color:var(--crit)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.link{border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;font-weight:500}
-.toplinks{display:flex;gap:2px;margin-right:6px}.toplinks a{padding:5px 9px;border-radius:6px;color:var(--ink);text-decoration:none;font-weight:500;font-size:13px}.toplinks a:hover{background:var(--sunk)}@media (max-width:860px){.toplinks{display:none}}
 .in{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-width:0;max-width:100%;width:100%}
 select.in{width:auto}
 textarea.in{resize:vertical;min-height:64px;line-height:1.4}
@@ -676,6 +675,24 @@ body[data-level="L0"] .navfoot,body[data-level="L1"] .navfoot{display:none}
 .flpanel{border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:#fff} .flpanel h3{margin:0}
 .flwords{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 @media (max-width:1000px){ .flgrid{grid-template-columns:minmax(0,1fr)} }
+/* AI inside the screens people already use: the proposed solution in the alert drawer, the assistant in the rule
+   editor, "Write with AI" for runbooks. Always labelled with where the text came from (the model, or a heuristic). */
+.aicard{border:1px solid #c9cdf0;background:#f7f8fe;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.aicard>.aihead h2 .ic{color:var(--accent-2)}
+.aihead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ailab{display:inline-flex;gap:4px;align-items:center;font:600 12px/20px var(--font-body);padding:0 8px;border-radius:10px;background:#DDE2F8;color:var(--accent);white-space:nowrap}
+.ailab.heur{background:var(--warn-soft);color:var(--warn)} .ailab.off{background:var(--neutral);color:var(--grey)}
+.aisub{font:600 12px/16px var(--font-body);color:var(--grey)}
+.aimem{border-left:3px solid var(--ok);padding:2px 0 2px 10px;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.skel{height:12px;border-radius:6px;background:#e4e7f5} .skel+.skel{margin-top:8px}
+.askbox{display:flex;gap:8px;align-items:center} .answer{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:14px}
+.owner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--sunk);border-radius:8px;padding:8px 12px}
+.owner .grow{min-width:0} .owner b{font-weight:600}
+.step.hi{background:var(--accent-soft);border-radius:6px;box-shadow:0 0 0 2px var(--accent-2);padding-left:6px;padding-right:6px}
+.bown{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--grey);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+.secret{font:13px var(--font-mono);background:#fff;padding:4px 8px;border-radius:4px;overflow-wrap:anywhere;user-select:all}
+.rsv{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:#fff}
 </style>
 <script src="brand/herald-trumpeter.js" defer></script>
 <link rel="stylesheet" href="flow/herald-flow.css">
@@ -698,7 +715,6 @@ body[data-level="L0"] .navfoot,body[data-level="L1"] .navfoot{display:none}
       <div class="create"><button class="btn pri" data-act="createToggle" aria-haspopup="true"><svg class="ic sm" aria-hidden="true"><use href="#i-add"/></svg>Create</button><div class="menu" id="createMenu" hidden></div></div>
     </div>
     <div class="tright">
-      <nav class="toplinks" aria-label="AI and agents (opens the new interface)"><a href="/ads/#/copilot" title="Ask the AI copilot about alerts, rules and runbooks">Copilot</a><a href="/ads/#/approvals" title="Approvals waiting for you, from runbooks and AI agents">Approvals</a><a href="/ads/#/agents" title="Tokens and setup for Claude Code and other MCP agents">Agents</a></nav>
       <button class="iconbtn" data-act="bell" title="Alerts assigned to you" aria-label="Alerts assigned to you"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><span class="dotn" id="bellN" hidden></span></button>
       <button class="iconbtn" data-act="nav" data-view="settings" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
       <div class="who"><button class="avbtn" id="whoBtn" data-act="whoToggle" aria-haspopup="true" aria-label="Switch who you are viewing as"></button><div class="menu" id="whoMenu" hidden></div></div>
@@ -752,7 +768,8 @@ const S={level:(()=>{try{const v=localStorage.getItem('herald.level');return /^L
   sources:[],samples:{},meta:null,fields:{},toasts:[],phone:{messages:[],down:false,page:''},mail:{messages:[],page:''},
   f:{mode:'board',platform:'',assignee:'',resolved:false},menu:null,sideHidden:false,drawer:null,detail:null,evExplain:null,docText:null,noteText:'',
   draft:null,draftNew:false,edSample:null,edTest:null,edPrev:null,edErr:null,
-  phoneWho:null,smsDraft:'',pasteText:'',pasteSteps:null,pasteId:'',
+  phoneWho:null,smsDraft:'',pasteText:'',pasteSteps:null,pasteId:'',pasteAi:null,pasteBusy:null,rsv:null,handFor:null,
+  edAi:{open:false,text:'',busy:false,err:null,res:null,prev:null},
   ob:{src:null,t0:null,gotAt:null,event:null,ruleId:null,alertAt:null}};
 let seq=0;
 /* Who the service says is signed in (GET /api/me). Demo mode: you pick who you are under "Viewing as" and the browser sends it as headers.
@@ -791,7 +808,7 @@ async function asLoad(){S.asTeams=null;if(OIDC()||!S.as)return;
     if(r.ok&&d){S.role=({admin:'lead',approver:'lead',editor:'editor'})[d.role]||(S.role==='editor'?'editor':'responder');S.asTeams=d.teams||[];S.asRole=d.role;
       const ok=Object.keys(TEAMS).filter(k=>S.asTeams.includes(k));if(ok.length&&!ok.includes(S.team))S.team=ok[0];}}catch(e){}}
 const asTeamKeys=()=>Object.keys(TEAMS).filter(k=>!TEAMS[k].personal&&(!S.asTeams||S.asTeams.includes(k)));
-async function viewAs(id,team){S.as=id;if(team&&TEAMS[team])S.team=team;await asLoad();HO.data={};HO.err={};HO.prefs=null;HO.team=null;HO.comment={};asSave();}
+async function viewAs(id,team){S.as=id;if(team&&TEAMS[team])S.team=team;await asLoad();HO.data={};HO.err={};HO.prefs=null;HO.pat=null;HO.team=null;HO.comment={};asSave();}
 const me=()=>OIDC()?ME.user:ident()['X-Herald-User'];
 /* Single sign-on only. "step_up_required": this action needs a fresh sign-in, then you come back to the same alert.
    Any other 401: the session has ended, so sign in again and come back here. */
@@ -846,6 +863,7 @@ function mapAlert(a){const r=ruleById(a.rule_id);
   return {id:String(a.id),key:a.key,code:String(a.id),rule:a.rule_id,ruleName:r?r.name:a.rule_id,owner:a.owner,status:a.status,severity:a.severity,
     colour:a.colour||SEVS[a.severity].col,title:a.title,body:a.body,count:a.count,firstSeen:Date.parse(a.first_seen),lastSeen:Date.parse(a.last_seen),
     ackedBy:pname(a.acked_by),resolvedBy:pname(a.resolved_by),im:a.incident_manager?pname(a.incident_manager):null,imRef:a.incident_manager||null,source:a.source,
+    uuid:a.uuid||null,flags:a.flags||[],assignedBy:a.assigned_by||null,assignReason:a.assign_reason||null,auto:isSystem(a.assigned_by),
     fields:Object.keys(a.fields||{}).map(p=>({path:p,value:a.fields[p]===null?undefined:a.fields[p],hi:(a.highlight||[]).includes(p)})),
     notifs:(a.deliveries||[]).map(mapDelivery)};}
 function mapWhy(n){if(n.all)return {kind:'all',ok:n.passed,children:n.all.map(mapWhy)};if(n.any)return {kind:'any',ok:n.passed,children:n.any.map(mapWhy)};
@@ -856,7 +874,8 @@ function tlText(t){const who=pname(t.actor),d=t.detail||{},via=d.via?' ('+({ui:'
     case 'ack':return 'Acknowledged by '+who+via;
     case 'resolve':return 'Resolved by '+who+via+(d.rule?': the source reported that the problem has cleared':'');
     case 'incident_manager':return who+' took this alert';
-    case 'assigned':return d.to?who+' handed this alert to '+pname(d.to):who+' removed the assignee';
+    case 'assigned':{const to=d.to||d.assignee;if(isSystem(t.actor))return to?'Assigned automatically to '+pname(to)+(d.reason?' ('+d.reason+')':''):'Assigned automatically';
+      return to?who+' handed this alert to '+pname(to):who+' removed the assignee';}
     case 'step_done':return 'Step '+d.step+' marked done by '+who;
     case 'action_run':return 'Step '+d.step+(d.action&&d.action!=='manual'?' ('+d.action+')':'')+((d.result&&d.result.ok)?' done':' failed')+', by '+who;
     case 'approval_requested':return who+' asked to run step '+d.step+'. Waiting for approval';
@@ -866,14 +885,20 @@ function tlText(t){const who=pname(t.actor),d=t.detail||{},via=d.via?' ('+({ui:'
     default:return who+': '+String(t.action).replace(/_/g,' ');}}
 function mapDetail(d){const a=mapAlert(d);a.raw=d.sample_event;a.trace=d.why?mapWhy(d.why):null;a.runbook=d.runbook||null;a.stepState=d.step_state||{};
   a.approvals=d.approvals||[];a.notifs=(d.deliveries||[]).map(mapDelivery);
-  a.timeline=(d.timeline||[]).map(t=>({at:Date.parse(t.at),text:tlText(t),who:pname(t.actor)}));return a;}
+  a.timeline=(d.timeline||[]).map(t=>({at:Date.parse(t.at),text:tlText(t),who:pname(t.actor),action:t.action,actor:t.actor,detail:t.detail||{}}));
+  /* Who put the person in charge, and why: the alert says so (assigned_by / assign_reason), or the last hand-over in the timeline does. */
+  const last=a.timeline.filter(t=>t.action==='assigned'&&(t.detail.to||t.detail.assignee)===a.imRef).pop();
+  if(!a.assignedBy&&last){a.assignedBy=last.actor;a.assignReason=a.assignReason||last.detail.reason||null;a.auto=isSystem(last.actor);}
+  return a;}
+function isSystem(ref){return String(ref||'').indexOf('system:')===0;}
 function mapEvent(e){return {id:String(e.id),source:e.source,at:Date.parse(e.received_at),raw:e.raw,attrs:e.attrs||{},fired:e.fired||[],closed:e.closed||[]};}
 
 async function loadRules(){const rs=await api('/api/rules');
   S.rules=rs.map(x=>Object.assign({},x.doc,{version:x.version,hits:x.alerts,lastFired:x.last_fired?Date.parse(x.last_fired):null,origin:x.source,severity:x.doc.severity||'event'}));}
 async function loadAlerts(){S.alerts=(await api('/api/alerts?limit=200&owner='+encodeURIComponent(T().owner))).map(mapAlert);}
 async function loadDetail(){if(!S.drawer||S.drawer.kind!=='alert')return;const id=S.drawer.id;
-  try{const d=mapDetail(await api('/api/alerts/'+id));if(S.drawer&&S.drawer.id===id)S.detail=d;}catch(e){S.drawer=null;S.detail=null;toast(e.message);}}
+  try{const d=mapDetail(await api('/api/alerts/'+id));if(S.drawer&&S.drawer.id===id)S.detail=d;}catch(e){S.drawer=null;S.detail=null;toast(e.message);return;}
+  if(AI.for===id&&AI.state!=='ready')await aiLoad();}
 async function loadEvents(){S.events=(await api('/api/events/recent?limit=50')).map(mapEvent);}
 async function loadFields(){const out={};(await api('/api/fields')).forEach(f=>{out[f.path]={type:f.type,example:f.example};});S.fields=out;}
 async function loadRunbooks(){const out={};(await api('/api/runbooks')).forEach(rb=>{out[rb.id]={id:rb.id,title:rb.title,
@@ -984,6 +1009,7 @@ const kids=n=>n.all||n.any||n.not.any;
 function nodeAt(path){let n=S.draft.when;if(path==='')return n;for(const i of String(path).split('.'))n=kids(n)[+i];return n;}
 function parentOf(path){const p=String(path).split('.');const idx=+p.pop();return {parent:nodeAt(p.join('.')),idx:idx};}
 function startEdit(draft,isNew,sampleId){S.draft=normDraft(draft);S.draftNew=isNew;S.edTest=null;S.edPrev=null;S.edErr=null;
+  S.edAi={open:isNew&&!sampleId,text:'',busy:false,err:null,res:null,prev:null};
   const hit=draft.id&&S.events.find(e=>e.fired.includes(draft.id));  /* start on an event this rule fired on, if there is one */
   S.edSample=sampleId||(hit?hit.id:(S.events[0]?S.events[0].id:null));S.view='rules';S.drawer=null;S.detail=null;}
 function leaves(n,out){out=out||[];if(isGroup(n))kids(n).forEach(k=>leaves(k,out));else out.push(n);return out;}
@@ -1043,11 +1069,11 @@ const tabsHtml=(act,cur,items)=>`<div class="tabs" role="tablist">${items.map(x=
 const emptyState=(icon,title,text,actions)=>`<div class="empty"><span class="tile">${ic(icon,'lg')}</span><h2>${title}</h2><p class="muted">${text}</p>${actions?`<div class="row">${actions}</div>`:''}</div>`;
 /* Alerts as a table of issues: key, summary, status, assignee, platform. */
 function alertsTable(list,showPlatform){
-  return `<div class="tablewrap"><table><thead><tr><th style="width:118px">Key</th><th>Summary</th><th>Status</th><th>Assignee</th>${showPlatform?'<th>Platform</th>':''}<th class="r">Seen</th><th>Updated</th></tr></thead><tbody>
+  return `<div class="tablewrap"><table><thead><tr><th style="width:118px">Key</th><th>Summary</th><th>Status</th><th>In charge</th>${showPlatform?'<th>Platform</th>':''}<th class="r">Seen</th><th>Updated</th></tr></thead><tbody>
     ${list.map(a=>`<tr class="clickable" data-act="openAlert" data-id="${a.id}" tabindex="0" aria-label="Open ${esc(a.key)}: ${esc(a.title)}">
       <td><span class="ikey" title="${SEVS[a.severity].label}">${ic(SEVICON[a.severity],'sm sv-'+a.severity)}${esc(a.key)}</span></td>
       <td><div class="sum"><b>${esc(a.title)}</b>${a.body?`<small>${esc(a.body)}</small>`:''}</div></td>
-      <td>${statusLoz(a)}</td><td>${userHtml(a.im)}</td>
+      <td>${statusLoz(a)}</td><td>${userHtml(a.im)}${a.im&&a.auto?' <small class="muted" title="Assigned automatically'+(a.assignReason?' ('+esc(a.assignReason)+')':'')+'">auto</small>':''}</td>
       ${showPlatform?`<td><span class="plat">${platIcon(a.source)}${esc(platName(a.source))}</span></td>`:''}
       <td class="r num">${a.count>1?`<span class="count" title="Reported ${nf(a.count)} times, kept as one alert">${nf(a.count)}</span>`:'1'}</td>
       <td class="num" title="${clock(a.lastSeen)}">${ago(a.lastSeen)}</td></tr>`).join('')}</tbody></table></div>`;}
@@ -1105,7 +1131,7 @@ function bcard(a){
     <div class="row" style="gap:4px">${platTag(a.source)}</div>
     <div class="bfoot"><span class="bkey">${ic(SEVICON[a.severity],'sm sv-'+a.severity)}${esc(a.key)}</span><span class="grow"></span>
       ${a.count>1?`<span class="cnt" title="Reported ${nf(a.count)} times, kept as one alert">${nf(a.count)}</span>`:''}${prio(a.severity)}
-      ${a.im?`<span title="Assignee: ${esc(a.im)}">${avatar(a.im,true)}</span>`:`<span class="av sm none" title="Unassigned">${ic('person','sm')}</span>`}</div></article>`;}
+      ${a.im?`<span class="bown" title="In charge: ${esc(a.im)}${a.auto?', assigned automatically'+(a.assignReason?' ('+esc(a.assignReason)+')':''):''}">${avatar(a.im,true)}${esc(String(a.im).split(' ')[0])}</span>`:`<span class="av sm none" title="Nobody is in charge yet">${ic('person','sm')}</span>`}</div></article>`;}
 function boardHtml(list){const cols=[['firing','Open','Nothing is waiting. New problems land here.'],['acked','Acknowledged','Nobody is working on an alert right now.'],['resolved','Resolved','Fixed alerts collect here.']];
   return `<div class="board">${cols.map(c=>{const items=list.filter(a=>a.status===c[0]),shown=c[0]==='resolved'?items.slice(0,10):items;
       return `<section class="bcol" data-col="${c[0]}" aria-label="${c[1]}"><h3 class="bhead">${c[1]}<span class="cnt">${items.length}</span></h3>${shown.map(bcard).join('')||`<p class="bempty">${c[2]}</p>`}${items.length>shown.length?`<p class="bempty">and ${items.length-shown.length} older</p>`:''}</section>`;}).join('')}</div>
@@ -1200,6 +1226,80 @@ async function watchFirst(){const id=S.newPlat&&S.newPlat.result&&S.newPlat.resu
   while(S.newPlat&&S.newPlat.result&&S.newPlat.result.id===id&&!S.newPlat.got){await sleep(1500);try{await loadEvents();}catch(e){}
     if(S.newPlat&&S.events.some(e=>e.source===id)){S.newPlat.got=true;await loadPlatforms().catch(()=>{});render();}}}
 
+/* ---- AI on the alert: the proposed solution, one question, a draft resolution note ----
+   The ai worker writes the suggestion a few seconds after the alert opens (never on the hot path). The drawer asks
+   GET /api/alerts/{id}/suggestion: "pending" shows a loading state and asks again every few seconds (the push stream
+   also says suggestion.ready); "none" means no suggestion is coming. Every AI text says where it came from. */
+const AI={for:null,state:null,data:null,model:null,suspicious:false,t0:0,busy:null,hiStep:null,ask:null};
+let aiTimer=null;
+const aiName=m=>{m=String(m||'').replace(/ \(reused\)$/,'').split('/').pop().split(':').pop();return !m?'AI':/claude/i.test(m)?'Claude · '+m:'AI · '+m;};
+const pct=v=>Math.round(Number(v)*100)+'%';
+const skel=n=>Array.from({length:n},(x,i)=>`<div class="skel" style="width:${[92,78,60,85][i%4]}%"></div>`).join('');
+function aiReset(id){clearTimeout(aiTimer);Object.assign(AI,{for:id,state:null,data:null,model:null,suspicious:false,t0:Date.now(),busy:null,hiStep:null,more:false,ask:{q:'',text:'',busy:false,err:null,tool:null,asked:''}});}
+async function aiLoad(){const id=AI.for;if(!id)return;
+  try{const r=await api('/api/alerts/'+id+'/suggestion');if(AI.for!==id)return;Object.assign(AI,{state:r.state,data:r.suggestion,model:r.model,suspicious:!!r.suspicious});}
+  catch(e){if(AI.for!==id)return;AI.state='error';AI.err=e.message;}
+  clearTimeout(aiTimer);
+  if(AI.state==='pending')aiTimer=setTimeout(()=>{if(S.drawer&&S.drawer.id===id&&AI.for===id)aiLoad().then(paintAi);},3000);}
+function paintAi(){const n=$('aiCard');if(n&&S.detail&&S.detail.id===AI.for)n.outerHTML=aiCardHtml(S.detail);}
+const aiStepOf=(a,s)=>s&&s.nextStepId&&a.runbook&&(a.runbook.steps||[]).find(x=>x.uid===s.nextStepId)||null;
+const pastLink=x=>{const n=(/^A-(\d+)$/.exec(x.shortId||'')||[])[1];return n?`<button class="btn link" data-act="openAlert" data-id="${n}">${esc(x.shortId)}</button> `:'';};
+function aiMemory(title,items,extra,total){return items&&items.length?`<div class="stack" style="gap:6px"><span class="aisub">${title}</span>${items.map(x=>`<div class="aimem"><span>${pastLink(x)}<b>${esc(x.title||'An earlier incident')}</b>${extra?extra(x):''}</span>${x.resolutionNote?`<span class="muted${AI.more?'':' clamp'}">Fixed by: “${esc(x.resolutionNote)}”</span>`:''}</div>`).join('')}
+    ${total>items.length?`<span><button class="btn link" data-act="aiMore">Show all ${total}</button></span>`:''}</div>`:'';}
+function aiBody(a){const s=AI.data,st=AI.state,open=a.status!=='resolved';
+  if(st===null||st==='pending')return `<div aria-busy="true"><p class="muted" style="margin-bottom:10px">Claude is reading this alert, its runbook and how similar alerts were fixed. This usually takes a few seconds.</p>${skel(3)}${Date.now()-AI.t0>60000?'<p class="note" style="margin-top:8px">Still working. The AI service may be busy; this updates by itself.</p>':''}</div>`;
+  if(st==='error')return `<p class="muted">The AI did not answer (${esc(AI.err||'unknown error')}). Use the runbook steps below; you can still ask a question.</p>`;
+  if(st==='none'||!s)return `<p class="muted">No AI proposal for this alert. Herald proposes a fix for open warnings and worse, a few seconds after they arrive. You can still ask about it below.</p>`;
+  const step=aiStepOf(a,s),decided=s.status!=='draft',run=step&&step.action&&open,need=step&&needsApproval(step);
+  const fixed=s.fixedBefore||[],seen=fixed.map(x=>x.alertId),similar=(s.similarIncidents||[]).filter(x=>!seen.includes(x.alertId)),more=l=>AI.more?l:l.slice(0,2);
+  const srcs=(s.sources||[]).map(x=>x.url&&/^https?:\/\//.test(x.url)?`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||x.kind)}</a>`:`<span class="chip">${esc(x.title||x.kind)}</span>`).join(' ');
+  return (s.aiUnavailable?'<p class="muted">The AI model did not answer, so this shows only what Herald knows from past incidents.</p>':'')
+    +(s.diagnosis?`<p style="overflow-wrap:anywhere">${esc(s.diagnosis)}</p>`:'')
+    +(s.nextStep?`<div class="stack" style="gap:4px"><span class="aisub">Proposed next step</span><span style="overflow-wrap:anywhere">${esc(s.nextStep)}</span>${step?`<span><button class="btn link" data-act="aiStep" data-i="${step.id}" style="text-align:left;white-space:normal">${ic('clipboard_task_list_ltr','sm')} Runbook step ${step.id}: ${esc(step.text)}</button></span>`:''}</div>`:'')
+    +(s.confidence!=null&&!s.aiUnavailable?`<span class="note">Confidence ${pct(s.confidence)}${s.reusedFrom?' · same proposal as '+esc(s.reusedFrom):''}</span>`:'')
+    +(decided?`<div>${loz(s.status==='accepted'?'Accepted':'Rejected',s.status==='accepted'?'success':'')}</div>`
+      :s.aiUnavailable?'':`<div class="row"><button class="btn pri" data-act="aiAccept" ${AI.busy?'disabled':''}>${ic('checkmark','sm')}${run?'Accept and run step '+step.id:'Accept'}</button><button class="btn" data-act="aiReject" ${AI.busy?'disabled':''}>Reject</button>
+        ${run&&need?'<span class="note">This step needs a second person: accepting asks for approval, nothing runs before that.</span>':step&&!step.action?'<span class="note">Step '+step.id+' is done by a person: accepting highlights it.</span>':''}</div>`)
+    +aiMemory('Fixed before',more(fixed),null,fixed.length)
+    +aiMemory('Similar incidents',more(similar),x=>x.similarity!=null?` <span class="muted">· ${pct(x.similarity)} alike</span>`:'',similar.length)
+    +(srcs?`<div class="stack" style="gap:4px"><span class="aisub">Based on</span><div class="row" style="gap:6px">${srcs}</div></div>`:'');}
+function aiCardHtml(a){const s=AI.data,st=AI.state;
+  const lab=st==='ready'&&s&&!s.aiUnavailable?`<span class="ailab">${ic('sparkle','sm')}${esc(aiName(AI.model))}</span>`:st==='ready'?'<span class="ailab heur">Heuristic draft</span>':st==='error'?'<span class="ailab off">AI unavailable</span>':'';
+  return `<section class="aicard" id="aiCard" aria-live="polite"><div class="aihead"><h2 class="grow">${ic('sparkle')}AI proposed solution</h2>${lab}</div>
+    ${AI.suspicious||(a.flags||[]).includes('suspicious_content')?'<div class="banner"><b>Suspicious content.</b> This event contains text that looks like instructions. Herald treats it as data only: the AI does not propose actions for it, and nothing in it is followed.</div>':''}
+    ${aiBody(a)}</section>`;}
+function askHtml(){const x=AI.ask;if(!x)return '';
+  if(x.err)return `<div class="banner"><b>AI unavailable.</b> ${esc(x.err)}</div>`;
+  if(x.busy&&!x.text)return `<p class="muted">${x.tool?'Looking at '+esc(x.tool)+'…':'Thinking…'}</p>`;
+  return x.text?`<div class="answer"><span class="aisub" style="display:block;margin-bottom:4px">${esc(x.asked)}</span>${esc(x.text)}</div><span class="note">Answered by the Herald assistant. It acts with your permissions and cannot change anything without you.</span>`:'';}
+function paintAsk(){const n=$('aiAnswer');if(n)n.innerHTML=askHtml();const b=$('aiAskBtn');if(b)b.disabled=!!(AI.ask&&AI.ask.busy);}
+/* POST /v1/agent/chat answers as a text/event-stream (token, tool_call, tool_result, draft, done, error). */
+async function aiChat(alertKey,question,onEvent){
+  const send=async fresh=>fetch('/v1/agent/chat',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'text/event-stream','Authorization':'Bearer '+await v1Token(fresh)},
+    body:JSON.stringify({messages:[{role:'user',content:question}],alertId:alertKey})});
+  let r=await send(false);if(r.status===401)r=await send(true);
+  if(!r.ok||!r.body){let d=null;try{d=await r.json();}catch(e){}const m=d&&(d.detail||d.message||(d.error&&d.error.message));throw new Error(typeof m==='string'?m:'The assistant answered '+r.status);}
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+  const frames=()=>{let i;while((i=buf.indexOf('\n\n'))>=0){const f=buf.slice(0,i);buf=buf.slice(i+2);let ev='message';const data=[];
+      f.split('\n').forEach(l=>{if(l.indexOf('event:')===0)ev=l.slice(6).trim();else if(l.indexOf('data:')===0)data.push(l.slice(5).replace(/^ /,''));});
+      if(data.length){let v=null;try{v=JSON.parse(data.join('\n'));}catch(e){}if(v)onEvent(ev,v);}}};
+  for(;;){const x=await rd.read();if(x.done)break;buf+=dec.decode(x.value,{stream:true}).replace(/\r\n/g,'\n');frames();}
+  buf+='\n\n';frames();}
+/* "How did you fix it?": the note is prefilled with a draft from GET /v1/alerts/{id}/resolution-note-draft and stays editable. */
+function resolvePanel(a){const x=S.rsv;if(!x||x.for!==String(a.id))return '';
+  const lab=x.state==='loading'?'':x.state==='off'?'<span class="ailab off">No AI draft</span>':x.ai?`<span class="ailab">${ic('sparkle','sm')}AI draft · ${esc(aiName(x.model))}</span>`:x.state==='ready'?'<span class="ailab heur">Heuristic draft from the timeline</span>':'';
+  return `<div class="rsv"><div class="aihead"><h2 class="grow">How did you fix it?</h2>${lab}</div>
+    <p class="help">The note is saved with the team’s knowledge: the next similar alert shows it under “Fixed before”.${x.state==='off'?' No AI draft: this alert contains suspicious content.':x.state==='failed'?' The draft did not load: write the note yourself.':''}</p>
+    ${x.state==='loading'?`<p class="muted">Drafting a note from the timeline…</p>${skel(2)}`:`<textarea class="in" id="rsvNote" data-oni="rsvNote" rows="4" placeholder="What was wrong, and what you did">${esc(x.note)}</textarea>`}
+    <div class="row"><span class="grow"></span>${x.ai&&x.note?'<button class="btn subtle" data-act="rsvClear">Clear the draft</button>':''}<button class="btn subtle" data-act="rsvCancel">Cancel</button>
+      <button class="btn pri" data-act="rsvGo" data-id="${a.id}" ${x.state==='loading'||x.busy?'disabled':''}>Resolve</button></div></div>`;}
+/* Who is in charge, said plainly. New alerts are assigned automatically (assigned_by "system:auto-assign"). */
+function ownerHtml(a,open){
+  if(a.imRef){const how=a.auto?'assigned automatically'+(a.assignReason?' ('+a.assignReason+')':''):a.assignedBy&&a.assignedBy!==a.imRef?'handed over by '+pname(a.assignedBy)+(a.assignReason?' ('+a.assignReason+')':''):a.assignReason||'';
+    return `<div class="owner">${avatar(a.im,true)}<span class="grow"><b>In charge: ${esc(a.im)}${a.imRef===me()?' (you)':''}</b>${how?` <span class="muted">· ${esc(how)}</span>`:''}</span>${open?`<button class="btn sm" data-act="handOpen" data-id="${a.id}" aria-expanded="${S.handFor===a.id}">${ic('people','sm')}Hand to a colleague</button>`:''}</div>`;}
+  return `<div class="owner"><span class="av sm none" aria-hidden="true">${ic('person','sm')}</span><span class="grow"><b>Nobody is in charge yet.</b>${open?' <span class="muted">· Herald gives new alerts to the person on call; this one has nobody.</span>':''}</span>
+    ${open?`<button class="btn sm subtle" data-act="assignMe" data-id="${a.id}">Take it myself</button><button class="btn sm" data-act="handOpen" data-id="${a.id}" aria-expanded="${S.handFor===a.id}">${ic('people','sm')}Hand to a colleague</button>`:''}</div>`;}
+
 /* ---- drawer ---- */
 function traceHtml(tr){if(tr.kind==='leaf'){const n=tr.node;
     return `<li><span class="tick ${tr.ok?'y':'n'}" aria-label="${tr.ok?'matched':'did not match'}">${tr.ok?'✓':'✗'}</span><span><code>${esc(n.field)}</code> ${esc(OPL[n.op]||n.op)} ${n.op==='exists'?'':`<b>${esc(vfmt(n.value))}</b>`}</span><span class="muted">event has ${tr.actual===undefined?'no such field':`<code>${esc(vfmt(tr.actual))}</code>`}</span></li>`;}
@@ -1226,7 +1326,7 @@ function runStepHtml(a,st,i){const rs=a.stepState[String(st.id)]||{};const state
       ${ap.approver?`<div class="note" style="margin-top:6px">${esc(pname(ap.approver))} was texted a code and can also approve by replying to that text. <button class="btn link" data-act="openPhone" data-who="${esc(String(ap.approver).replace('person:',''))}">Open their phone</button></div>`:''}</div>`;}
   else if(a.status!=='resolved'&&(state==='todo'||state==='failed')){const lab=need?'Ask for approval to run':!st.action?'Mark as done':st.kind==='wait'?'Start the timer':state==='failed'?'Try again':'Run this step';
     ctl=`<div class="row"><button class="btn sm ${state==='failed'?'':'pri'}" data-act="runStep" data-id="${a.id}" data-i="${st.id}">${ic(need?'shield_checkmark':st.action?'play':'checkmark','sm')}${lab}</button>${need?'<span class="note">A second person has to agree before it runs.</span>':''}</div>`;}
-  return `<li class="step"><div class="sn ${state}" aria-hidden="true">${state==='done'?'✓':state==='failed'?'!':i+1}</div>
+  return `<li class="step${AI.hiStep===st.id?' hi':''}" id="rbstep-${st.id}"><div class="sn ${state}" aria-hidden="true">${state==='done'?'✓':state==='failed'?'!':i+1}</div>
     <div class="sb"><div class="row"><b style="overflow-wrap:anywhere">${esc(st.text)}</b></div>
       <div class="row"><span class="badge ${state==='done'?'ok':''}">${stateLab}</span><span class="badge">${{check:'Check',action:'Herald can do this',manual:'Done by a person',wait:'Wait'}[st.kind]||'Step'}</span>${need?`<span class="badge ap">${ic('shield_checkmark','sm')} Needs approval</span>`:''}${st.suggest&&!st.action?`<span class="badge tech-only">could be automated: ${esc(st.suggest)}</span>`:''}</div>
       ${st.condition?`<div class="note">Only if: ${esc(st.condition)}</div>`:''}
@@ -1236,12 +1336,16 @@ function drawerAlert(a){const rb=a.runbook,t=TEAMS[teamKey(a.owner)],ns=a.notifs
   const people=[...new Set((t.memberIds||[]).concat(a.imRef?[String(a.imRef).replace('person:','')]:[]))];
   $('drawerHead').innerHTML=`<div class="row"><nav class="crumbs grow" aria-label="Breadcrumbs"><span>Alerts</span><span>/</span><span class="ikey">${ic(SEVICON[a.severity],'sm sv-'+a.severity)}${esc(a.key)}</span></nav><button class="btn subtle" id="drClose" data-act="closeDrawer" aria-label="Close">${ic('dismiss')}</button></div>
     <h1 style="overflow-wrap:anywhere">${esc(a.title)}</h1>
+    ${ownerHtml(a,open)}
+    ${open&&S.handFor===a.id?`<div class="row" style="flex-wrap:nowrap"><label class="field grow"><span>Hand this alert to</span><select class="in" id="handSel" data-onc="assign" data-id="${a.id}" style="width:100%">${opt('','Choose a colleague…','')}${people.filter(id=>'person:'+id!==a.imRef).map(id=>opt('person:'+id,pname('person:'+id)+('person:'+id===me()?' (me)':''),'')).join('')}</select></label><button class="btn subtle" data-act="handOpen" data-id="${a.id}" style="align-self:flex-end">Cancel</button></div>`:''}
     <div class="row">${a.status==='firing'?`<button class="btn pri" data-act="ack" data-id="${a.id}" title="Tell everyone you are dealing with it">Acknowledge</button>`:''}
-      ${open?`<button class="btn" data-act="resolve" data-id="${a.id}" title="The problem is fixed">Resolve</button>`:''}
-      ${open&&a.imRef!==me()?`<button class="btn" data-act="assignMe" data-id="${a.id}">Assign to me</button>`:''}
+      ${open?`<button class="btn" data-act="resolve" data-id="${a.id}" title="The problem is fixed" aria-expanded="${!!(S.rsv&&S.rsv.for===a.id)}">Resolve</button>`:''}
       ${open?`<button class="btn" data-act="callOpen" data-id="${a.id}" aria-expanded="${S.callFor===String(a.id)}">${ic('call','sm')}Start a call</button>`:''}
-      ${open?'':`<span class="help">Resolved by ${esc(a.resolvedBy)}.</span>`}</div>${open&&S.callFor===String(a.id)?callPanel(a):''}`;
+      ${open?'':`<span class="help">Resolved by ${esc(a.resolvedBy)}.</span>`}</div>${open?resolvePanel(a):''}${open&&S.callFor===String(a.id)?callPanel(a):''}`;
+  const q=AI.ask||{q:''};
   $('drawerBody').innerHTML=`<div class="issue"><div class="issue-main">
+    ${aiCardHtml(a)}
+    <section class="sec" aria-label="Ask about this alert"><div class="askbox"><input class="in" id="aiQ" data-oni="aiQ" value="${esc(q.q)}" placeholder="Ask about this alert, e.g. what changed before it started?" aria-label="Ask about this alert" autocomplete="off"><button class="btn" id="aiAskBtn" data-act="aiAsk" ${q.busy?'disabled':''}>${ic('sparkle','sm')}Ask</button></div><div id="aiAnswer">${askHtml()}</div></section>
     <section class="sec"><h2>Description</h2>${a.body?`<p style="overflow-wrap:anywhere">${esc(a.body)}</p>`:''}
       ${a.fields.length?`<dl class="kv">${a.fields.map(f=>`<dt>${fl(f.path)}</dt><dd class="${f.hi?'hi':''}">${f.value===undefined?'<span class="muted">not in the event</span>':esc(vfmt(f.value))}</dd>`).join('')}</dl>`:''}</section>
     <section class="sec"><div class="row"><h2 class="grow">What to do next</h2>${rb?`<span class="badge">Runbook: ${esc(rb.title)}</span>`:''}</div>
@@ -1311,6 +1415,7 @@ function viewEditor(){const d=S.draft;const src=(kids(d.when).find(k=>k.field===
   return `<div class="row"><div class="grow"><button class="btn link" data-act="cancelEdit">← All rules</button><h1>${S.draftNew?'New rule':'Edit rule'}</h1></div>
       <button class="btn" data-act="cancelEdit">Discard</button><button class="btn pri" data-act="saveRule" ${canEdit()?'':'disabled'}>Save rule</button></div>
     ${canEdit()?'':'<div class="banner info">'+sso('Responders can look but not save. <button class="btn link" data-act="becomeEditor">Switch to Rule editor</button>','You can try a rule here but not save it. Saving needs the rule editor role: ask your team lead.')+'</div>'}
+    ${aiRuleHtml()}
     <datalist id="fieldList">${['@type','@severity','@service','@source','@timestamp'].concat(Object.keys(S.fields).sort()).map(f=>`<option value="${esc(f)}"></option>`).join('')}</datalist>
     <div class="ed-grid"><div class="ed-form">
       <section class="card wcard"><div class="wkey"><b>1</b>Name it<small>and say where the events come from</small></div><div class="stack">
@@ -1336,6 +1441,18 @@ function viewEditor(){const d=S.draft;const src=(kids(d.when).find(k=>k.field===
         <div class="two"><label class="field"><span>Fields to show</span><input class="in mono" id="dFields" data-oni="dFields" value="${esc(d.present.fields.join(', '))}" placeholder="e.g. step, error.message"></label>
           <label class="field"><span>Of those, highlight</span><input class="in mono" id="dHi" data-oni="dHi" value="${esc(d.present.highlight.join(', '))}" placeholder="e.g. error.message"></label></div></div></section>
     </div><div class="ed-side" id="edSide">${editorSide()}</div></div>`;}
+/* The assistant mode of the editor: plain words in, the normal form filled in (POST /api/rules/draft-from-text). The
+   draft is checked against recent events like any edit; nothing is saved until "Save rule". */
+function aiRuleHtml(){const x=S.edAi||{};
+  if(!x.open)return `<div class="row"><button class="btn" data-act="edAiOpen">${ic('sparkle','sm')}${S.draftNew?'Describe the rule in your words':'Describe a change in your words'} (AI)</button></div>`;
+  const r=x.res,dr=r&&r.dryRun,ns=dr&&dr.notifications||[];
+  const who=ns.map(n=>(n.recipient&&n.recipient.displayName||'someone')+(n.kind==='hard'?' (interrupting)':'')).join(', ');
+  return `<section class="aicard" aria-label="AI assistant"><div class="aihead"><h2 class="grow">${ic('sparkle')}AI assistant</h2>${r?'<span class="badge ai">AI draft, review before saving</span>':''}<button class="btn sm subtle" data-act="edAiClose">Hide</button></div>
+    <label class="field"><span>Describe the rule in your words: which events, who should hear about them, how, and when</span><textarea class="in" id="nlText" data-oni="nlText" rows="3" placeholder="e.g. Call the payments on-call person when payments-api reports anything critical. Between 20:00 and 08:00 only send an email.">${esc(x.text||'')}</textarea></label>
+    <div class="row"><button class="btn pri" data-act="nlDraft" ${x.busy?'disabled':''}>${ic('sparkle','sm')}${x.busy?'Drafting…':r?'Draft again':'Draft the rule'}</button>${x.prev&&!x.busy?'<button class="btn subtle" data-act="nlUndo">Undo the AI draft</button>':''}<span class="note">The draft fills the form below. Nothing is saved until you press “Save rule”.</span></div>
+    ${x.err?`<div class="banner"><b>AI unavailable.</b> ${esc(x.err)}</div>`:''}
+    ${r?`<div class="stack" style="gap:6px"><span class="aisub">What the AI understood</span><p style="overflow-wrap:anywhere">${esc(r.explanation||'')}</p>
+      ${dr?`<p class="note">Dry run on the last hour of events: ${nf(dr.matched||0)} of ${nf(dr.evaluated||0)} match, ${nf(dr.alertsAfterDedup||0)} alert${dr.alertsAfterDedup===1?'':'s'} after grouping${who?'; would notify '+esc(who):''}.</p>`:''}</div>`:''}</section>`;}
 function jsonPick(o,pre,ind){const sp='  '.repeat(ind+1);return '{\n'+Object.keys(o).map(k=>{const p=pre?pre+'.'+k:k,v=o[k];
     if(v&&typeof v==='object'&&!Array.isArray(v))return sp+'"'+esc(k)+'": '+jsonPick(v,p,ind+1);
     return sp+`<button class="jf" data-act="pickField" data-path="${esc(p)}" title="Add a condition on ${esc(p)}">"${esc(k)}": ${esc(JSON.stringify(v))}</button>`;}).join(',\n')+'\n'+'  '.repeat(ind)+'}';}
@@ -1371,10 +1488,12 @@ function viewRunbooks(){
         <div class="rb-grid"><div class="stack"><span class="lab">As the team wrote it</span><pre class="wrap">${esc(rb.source)}</pre></div>
           <div class="stack"><span class="lab">As steps</span>${rb.steps.length?rbStepsHtml(rb.steps):'<p class="muted">Shown on the alert as written'+(rb.link?', as a link':'')+'.</p>'}
             ${rb.parsedBy==='ai'&&!rb.reviewedBy?`<div class="row"><button class="btn sm pri" data-act="reviewRb" data-id="${k}" ${canEdit()?'':'disabled'}>Mark as reviewed</button>${canEdit()?'':'<span class="note">Needs a Rule editor or Team lead.</span>'}</div>`:''}</div></div></section>`;}).join('')}
-    <section class="card"><h2>Paste any runbook</h2><p class="note">Numbered lines, bullets, a checklist or plain sentences. This splitter uses fixed rules only, no AI.</p>
+    <section class="card"><h2>Paste any runbook, or describe one</h2><p class="note">Numbered lines, bullets, a checklist or plain sentences. “Split into steps” uses fixed rules only, no AI. “Write with AI” reads free text, picks the actions Herald can run and marks the risky ones for approval.</p>
       <textarea class="in" id="pasteText" data-oni="pasteText" rows="5" placeholder="1. Check the queue depth.&#10;2. If it is over 10,000: restart the consumer (needs approval).&#10;3. Wait 5 minutes and check again.">${esc(S.pasteText)}</textarea>
-      <div class="row"><button class="btn pri" data-act="parsePaste">Split into steps</button><button class="btn link" data-act="pasteExample">Use an example</button></div>
-      ${S.pasteSteps?(S.pasteSteps.length?`<div class="stack"><div class="row"><span class="lab grow">As steps</span><span class="badge ok">Read by the service’s parser</span></div>${rbStepsHtml(S.pasteSteps)}<div class="row" style="flex-wrap:nowrap"><input class="in" id="pasteId" data-oni="pasteId" value="${esc(S.pasteId)}" placeholder="Name it, e.g. Ledger lag" aria-label="Runbook name"><button class="btn pri" data-act="saveRunbook" ${canEdit()?'':'disabled'}>Save runbook</button></div>${canEdit()?'':'<span class="note">Saving needs a Rule editor or Team lead.</span>'}</div>`:'<div class="banner">No steps found. Type or paste some instructions first.</div>'):''}</section>`;}
+      <div class="row"><button class="btn pri" data-act="parsePaste" ${S.pasteBusy?'disabled':''}>Split into steps</button><button class="btn" data-act="aiPaste" ${S.pasteBusy?'disabled':''}>${ic('sparkle','sm')}${S.pasteBusy==='ai'?'Writing…':'Write with AI'}</button><button class="btn link" data-act="pasteExample">Use an example</button></div>
+      ${S.pasteBusy==='ai'?`<div><p class="muted" style="margin-bottom:8px">Claude is turning the text into steps…</p>${skel(3)}</div>`:''}
+      ${S.pasteSteps&&!S.pasteBusy?(S.pasteSteps.length?`<div class="stack">${S.pasteAi&&S.pasteAi.source!=='ai'?'<div class="banner"><b>AI unavailable.</b> The model did not answer, so the text was split by fixed rules. Check the steps before saving.</div>':''}
+        <div class="row"><span class="lab grow">As steps</span>${S.pasteAi&&S.pasteAi.source==='ai'?`<span class="badge ai">${ic('sparkle','sm')} AI draft, needs review</span>`:'<span class="badge ok">Read by the service’s parser</span>'}</div>${rbStepsHtml(S.pasteSteps)}<div class="row" style="flex-wrap:nowrap"><input class="in" id="pasteId" data-oni="pasteId" value="${esc(S.pasteId)}" placeholder="Name it, e.g. Ledger lag" aria-label="Runbook name"><button class="btn pri" data-act="saveRunbook" ${canEdit()?'':'disabled'}>Save runbook</button></div>${canEdit()?'':'<span class="note">Saving needs a Rule editor or Team lead.</span>'}</div>`:'<div class="banner">No steps found. Type or paste some instructions first.</div>'):''}</section>`;}
 
 /* ---- deliveries ---- */
 function threads(){const by={};S.phone.messages.slice().reverse().forEach(m=>{if(m.person)(by[m.person]=by[m.person]||[]).push(m);});return by;}
@@ -1406,7 +1525,7 @@ function viewDeliveries(){const t=T(),th=threads();const people=[...new Set([t.o
 /* ---- preferences, audit ---- */
 function viewPreferences(){const t=T();
   return `<div><h1>Teams</h1><p class="muted">How ${esc(t.personal?t.oncall:'the '+t.name+' team')} is reached. The table shows the channels of the first escalation level of the team, per severity. Each person can also choose their own channels.</p>
-    <div class="row"><button class="btn pri" data-act="myPrefs">${ic('alert','sm')}Change my notification preferences</button><a class="btn" href="/ads/#/teams">${ic('open','sm')}Change the team's channel policy</a></div></div>
+    <div class="row"><button class="btn pri" data-act="myPrefs">${ic('alert','sm')}Change my notification preferences</button><button class="btn" data-act="teamPolicy">${ic('alert_urgent','sm')}See the team's escalation levels</button></div></div>
     <div class="grid2"><section class="card"><h2>On call now</h2><p><b>${esc(t.oncall)}</b></p>${t.rota.length?`<dl class="kv">${t.rota.map(r=>`<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>`:'<p class="note">No rota: alerts go straight to this person.</p>'}</section>
       <section class="card"><h2>People</h2><dl class="kv">${t.members.map(m=>`<dt>${esc(m[0])}</dt><dd>${esc(m[1])}</dd>`).join('')}</dl></section></div>
     <section class="card"><h2>Channel by severity</h2><div class="scroll-x"><table><thead><tr><th>Severity</th>${CHS.map(c=>`<th>${CH[c]}</th>`).join('')}</tr></thead><tbody>
@@ -1432,13 +1551,13 @@ function navHtml(){const mine=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef=
   const item=(view,label,icon,extra,cur)=>`<button class="navb" data-act="nav" data-view="${view}" ${cur?'aria-current="page"':''}>${ic(icon)}<span class="nl">${label}</span>${extra||''}</button>`;
   return item('foryou','For you','person_circle',mine?`<span class="cnt">${mine}</span>`:'',forYou)
     +item('feed','Alerts','alert',open?`<span class="cnt red" title="${open} not acknowledged">${open}</span>`:'',S.view==='feed'&&!forYou)
-    +item('approvals','Approvals','shield_checkmark',(n=>n?`<span class="cnt" title="${n} waiting for a decision">${n}</span>`:'')((HO.data.approvals||[]).filter(a=>a.status==='pending'&&!(a.requestedBy&&a.requestedBy.id===hoMeId())).length),S.view==='approvals')
+    +item('approvals','Approvals','shield_checkmark',(n=>n?`<span class="cnt" title="${n} waiting for a decision">${n}</span>`:'')((HO.data.approvals||[]).filter(apCan).length),S.view==='approvals')
     +`<div class="navrow">${item('platforms','Platforms','plug_connected','',S.view==='platforms'&&!S.platform)}<button class="iconbtn sm" data-act="platFold" aria-expanded="${S.platOpen}" title="${S.platOpen?'Hide':'Show'} the list of platforms" aria-label="${S.platOpen?'Hide':'Show'} the list of platforms">${ic(S.platOpen?'chevron_up':'chevron_down','sm')}</button><button class="iconbtn sm" data-act="connectOpen" title="${canEdit()?'Connect a platform':'Connecting a platform needs a rule editor or team lead'}" aria-label="Connect a platform" ${canEdit()?'':'disabled'}>${ic('add','sm')}</button></div>`
     +`<div class="navsub" ${S.platOpen?'':'hidden'}>${S.platforms.map(x=>{const n=x.firing+x.acked;return `<button class="navb" data-act="openPlatform" data-id="${esc(x.id)}" ${S.view==='platforms'&&S.platform===x.id?'aria-current="page"':''} title="${esc(x.name)}${n?': '+n+' open problem'+(n>1?'s':''):': no open problems'}">${ptile(x.id)}<span class="nl">${esc(x.name)}</span>${n?`<span class="cnt ${x.firing?'red':''}">${n}</span>`:''}</button>`;}).join('')}</div>`
     +item('logs','Logs','document_bullet_list','',S.view==='logs')
     +item('rules','Rules','flow','',S.view==='rules')+item('flows','Escalation flows','branch','',S.view==='flows')+item('runbooks','Runbooks','clipboard_task_list_ltr','',S.view==='runbooks')+item('preferences','Teams','people_team','',S.view==='preferences')+item('oncall','On-call','clock','',S.view==='oncall')
     +item('deliveries','Sent messages','send','',S.view==='deliveries')+item('audit','Activity log','history','',S.view==='audit')
-    +item('metrics','Metrics','pulse','',S.view==='metrics')+item('knowledge','History','book_open','',S.view==='knowledge')+item('settings','Settings','settings','',S.view==='settings')+item('report','Report a problem','megaphone','',S.view==='report')
+    +item('metrics','Metrics','pulse','',S.view==='metrics')+item('knowledge','History','book_open','',S.view==='knowledge')+item('agents','Agents & MCP','code','',S.view==='agents')+item('settings','Settings','settings','',S.view==='settings')+item('report','Report a problem','megaphone','',S.view==='report')
     +`<div class="navfoot"><a class="navb" href="/lab.html" target="_blank" rel="noopener" title="Pages that play the connected platforms and send test cases">${ic('beaker')}<span class="nl">Test lab</span>${ic('open','sm')}</a></div>`;}
 /* Everyone in the directory, grouped by team (lead first, then the on-call person, then the members). People in no team with
    rules (Master, management, informed people) are listed under "Organisation". */
@@ -1568,8 +1687,8 @@ function viewLogs(){const d=lgData(),all=d.all,pq=d.pq,win=d.win,rows=d.rows;
 const LEVELS={L0:['Reporter','Anyone in the firm. Reports a problem in plain words.'],L1:['Support team','Small problems and reports from people. Brings in an engineer when needed.'],
   L2:['Engineering team','Every alert of the team, platforms, logs, runbooks. First to be called.'],L3:['Senior engineers','Also rules, escalation flows and approvals.'],L4:['Management','Sees everything. Is kept informed and is never called.']};
 const LV_VIEWS={L0:['report'],L1:['feed','report','knowledge','oncall','settings'],
-  L2:['feed','approvals','platforms','logs','runbooks','preferences','oncall','knowledge','report','settings'],
-  L3:['feed','approvals','platforms','logs','rules','flows','runbooks','preferences','oncall','deliveries','metrics','knowledge','report','settings'],L4:null};
+  L2:['feed','approvals','platforms','logs','runbooks','preferences','oncall','knowledge','agents','report','settings'],
+  L3:['feed','approvals','platforms','logs','rules','flows','runbooks','preferences','oncall','deliveries','metrics','knowledge','agents','report','settings'],L4:null};
 const roleLevel=()=>OIDC()?({viewer:'L0',responder:'L2',editor:'L3',approver:'L3',admin:'L4'}[ME.role]||'L2'):(S.as==='master'?'L4':S.role==='responder'?'L2':'L3');
 const level=()=>S.level||roleLevel();
 const lvCan=v=>{const a=LV_VIEWS[level()];return !a||a.includes(v==='foryou'?'feed':v);};
@@ -1682,7 +1801,8 @@ function flMount(){const slot=$('flowSlot');
 /* ---- Screens from the UI handoff: approvals, on-call schedule, metrics, history and settings (escalation, my notifications,
         trust levels, integrations, organisation). Each reads the public /v1 endpoint the handoff names, with a Bearer token for
         the current person (see v1Token). When a call fails the screen says so and offers to try again: it never shows invented data. ---- */
-const HO={data:{},err:{},tab:'escalation',team:null,comment:{},prefs:null};
+const HO={data:{},err:{},tab:'escalation',team:null,comment:{},prefs:null,apTab:'pending',pat:null,patName:'claude-code',patBusy:false,
+  kn:{mode:'text',title:'',content:'',url:'',team:'',busy:false}};
 const HO_SEV=['critical','error','warning','info'],HO_CH=['ui','email','sms','phone'];
 const HO_CHN={ui:'In Herald',email:'Email',sms:'Text message',phone:'Phone call',webhook:'Webhook'};
 const HO_TARGET={oncall:'On-call person',domain_root:'Domain Root',master:'Master',custom:'Named people'};
@@ -1700,6 +1820,7 @@ async function loadHandoff(){const v=S.view,g=(k,p,fresh)=>hoGet(k,()=>api(p),fr
   if(v==='settings')jobs.push(g('domains','/v1/domains'),g('prefs','/v1/preferences/me'),g('trust','/v1/action-trust'),g('integrations','/v1/integrations'));
   if((v==='settings'||v==='flows')&&HO.team)jobs.push(hoGet('esc',()=>Promise.all(HO_SEV.map(s=>api('/v1/escalation-policies/effective?severity='+s+'&teamId='+encodeURIComponent(HO.team))))));
   if(v==='metrics'){delete HO.data.metrics;delete HO.partial;jobs.push(hoGet('metrics',()=>api('/v1/metrics/summary')));}
+  if(v==='agents')jobs.push(g('tokens','/v1/tokens',true));
   await Promise.all(jobs);
   /* Metrics: without /v1/metrics/summary, show what this service does measure (GET /api/stats) instead of invented numbers. */
   if(v==='metrics'&&HO.err.metrics){try{const s=await api('/api/stats');HO.data.metrics={latencyP50Ms:s.p50_ms,latencyP99Ms:s.p99_ms,queueDepth:s.outstanding,notificationsDelivered:s.delivered,eventsMatched:s.matched_events};HO.partial=true;}catch(e){HO.data.metrics={};}}}
@@ -1711,20 +1832,52 @@ function hoBanner(keys){const bad=keys.filter(k=>HO.err[k]);return bad.length?`<
 const hoKv=o=>`<dl class="kv">${Object.keys(o||{}).map(k=>`<dt>${esc(k)}</dt><dd>${esc(typeof o[k]==='object'?JSON.stringify(o[k]):o[k])}</dd>`).join('')}</dl>`;
 const hoRisk=r=>loz((r==='high'?'High':r==='medium'?'Medium':'Low')+' risk',r==='high'?'danger':r==='medium'?'warning':'');
 const hoTeamSeg=act=>{const teams=HO.data.teams||[];return teams.length>1?`<span class="seg" role="group" aria-label="Team">${teams.map(t=>`<button data-act="${act||'hoTeam'}" data-v="${esc(t.id)}" aria-pressed="${t.id===HO.team}">${esc(t.name)}</button>`).join('')}</span>`:'';};
-function viewApprovals(){const list=HO.data.approvals||[],pending=list.filter(a=>a.status==='pending'),done=list.filter(a=>a.status!=='pending'),meId=hoMeId();
+/* Four eyes: nobody decides their own request (requestedByUserId is the human behind it, also when an agent asked).
+   canDecide comes from the service; without it the page falls back to "not my own request". */
+const apMine=a=>{const meId=hoMeId();return !!(meId&&((a.requestedByUserId&&a.requestedByUserId===meId)||(a.requestedBy&&a.requestedBy.id===meId)));};
+const apCan=a=>a.status==='pending'&&!apMine(a)&&a.canDecide!==false;
+const AP_TABS=[['pending','Waiting','','clock'],['approved','Approved','','checkmark_circle'],['rejected','Rejected','','dismiss_circle'],['expired','Expired','','timer']];
+function viewApprovals(){const list=HO.data.approvals||[],tab=HO.apTab,pending=list.filter(a=>a.status==='pending'),done=list.filter(a=>a.status===tab);
   const left=a=>{const m=Math.round((Date.parse(a.expiresAt)-Date.now())/6e4);return m>0?'Expires in '+m+' min':'Expired';};
   const num=a=>a.shortId!=null?a.shortId:a.id;
-  return pageHead({title:'Approvals',desc:'Risky actions wait here until a second person agrees. Requests come from runbook steps and from AI agents; nobody approves their own request.'})
-    +hoBanner(['approvals'])
-    +(pending.length?`<div class="stack" style="gap:12px">${pending.map(a=>{const mine=!!(meId&&a.requestedBy&&a.requestedBy.id===meId);return `<section class="card hoap">
+  const head=pageHead({title:'Approvals',desc:'Risky actions wait here until a second person agrees. Requests come from runbook steps and from AI agents; nobody approves their own request.'})
+    +hoBanner(['approvals'])+tabsHtml('apTab',tab,AP_TABS.map(t=>[t[0],t[1],list.filter(a=>a.status===t[0]).length||'',t[3]]));
+  if(tab!=='pending')return head+(done.length?`<div class="tablewrap"><table><thead><tr><th>Action</th><th>Asked by</th><th>Decided by</th><th>Comment</th><th>When</th><th>Alert</th></tr></thead><tbody>${done.map(a=>`<tr><td><code>${esc(a.action)}</code> ${hoRisk(a.risk)}</td><td>${esc(hoActor(a.requestedBy))}</td><td>${esc(hoActor(a.decidedBy)||(a.status==='expired'?'Nobody in time':'Nobody'))}</td><td>${esc(a.comment||'')}</td><td class="num">${a.createdAt?ago(Date.parse(a.createdAt)):''}</td><td>${a.alertId?`<button class="btn link" data-act="hoAlert" data-id="${esc(a.alertId)}">Open</button>`:''}</td></tr>`).join('')}</tbody></table></div>`
+      :emptyState('shield_checkmark','Nothing '+AP_TABS.find(t=>t[0]===tab)[1].toLowerCase()+' yet','Decided requests stay here with who decided and why.',''));
+  return head
+    +(pending.length?`<div class="stack" style="gap:12px">${pending.map(a=>{const mine=apMine(a),can=apCan(a);return `<section class="card hoap">
         <div class="row"><h2 class="grow">${esc(hoActor(a.requestedBy))} asks to run <code>${esc(a.action)}</code></h2>${loz(a.origin==='agent_request'?'Agent request':'Runbook step',a.origin==='agent_request'?'new':'')}${hoRisk(a.risk)}<span class="muted num">${left(a)}</span></div>
         <p style="margin:0">${esc(a.reason||'')}</p>${hoKv(a.parameters)}${hoChange(a)}
         <p class="help" style="margin:0">Who can approve: ${esc((a.approvers||[]).filter(x=>!(a.requestedBy&&x.id===a.requestedBy.id)).map(hoActor).join(', ')||'an approver of this team')}. They can also reply <code>APPROVE ${esc(num(a))}</code> to the text message they received.</p>
-        ${mine?'':`<label class="field"><span>Comment (optional, kept with the decision)</span><input class="in" id="hoc-${esc(a.id)}" data-oni="hoComment" data-id="${esc(a.id)}" value="${esc(HO.comment[a.id]||'')}" placeholder="Why you approve or reject"></label>`}
+        ${can?`<label class="field"><span>Comment (optional, kept with the decision)</span><input class="in" id="hoc-${esc(a.id)}" data-oni="hoComment" data-id="${esc(a.id)}" value="${esc(HO.comment[a.id]||'')}" placeholder="Why you approve or reject"></label>`:''}
         <div class="row"><button class="btn" data-act="hoOpen" data-id="${esc(a.id)}" aria-expanded="${HO.open===a.id}">${HO.open===a.id?'Hide the details':'Details'}</button>${a.alertId?`<button class="btn" data-act="hoAlert" data-id="${esc(a.alertId)}">Open the alert</button>`:''}<span class="grow"></span>
-          ${mine?'<span class="loz">Waiting for another approver</span><span class="muted">You asked for this, so someone else has to decide.</span>':`<button class="btn" data-act="hoDecide" data-id="${esc(a.id)}" data-v="reject">Reject</button><button class="btn pri" data-act="hoDecide" data-id="${esc(a.id)}" data-v="approve">Approve</button>`}</div></section>`;}).join('')}</div>`
-      :HO.err.approvals?'':emptyState('shield_checkmark','Nothing is waiting for you','When a runbook step or an agent needs a second person, the request appears here and on your phone.',''))
-    +(done.length?`<h2>Decided</h2><div class="tablewrap"><table><thead><tr><th>Action</th><th>Asked by</th><th>Decided by</th><th>Comment</th><th>Result</th></tr></thead><tbody>${done.map(a=>`<tr><td><code>${esc(a.action)}</code></td><td>${esc(hoActor(a.requestedBy))}</td><td>${esc(hoActor(a.decidedBy)||'Nobody')}</td><td>${esc(a.comment||'')}</td><td>${loz(cap(a.status),a.status==='approved'?'success':a.status==='rejected'?'danger':'')}</td></tr>`).join('')}</tbody></table></div>`:'');}
+          ${mine?'<span class="loz">Waiting for another approver</span><span class="muted">You asked for this, so someone else has to decide.</span>'
+            :!can?'<span class="loz">Not yours to decide</span><span class="muted">Only the approvers listed above can decide this one.</span>'
+            :`<button class="btn" data-act="hoDecide" data-id="${esc(a.id)}" data-v="reject">Reject</button><button class="btn pri" data-act="hoDecide" data-id="${esc(a.id)}" data-v="approve">Approve</button>`}</div></section>`;}).join('')}</div>`
+      :HO.err.approvals?'':emptyState('shield_checkmark','Nothing is waiting for you','When a runbook step or an agent needs a second person, the request appears here and on your phone.',''));}
+/* Agents & MCP: a personal access token (shown once), the command that connects Claude Code, and what an agent may do.
+   Tokens: GET/POST /v1/tokens, DELETE /v1/tokens/{id}. The list of tools is the MCP server's own (backend/app/mcp). */
+const MCP_TOOLS=[['list_alerts','Lists alerts you can see, by status or team.'],['get_alert','One alert with its runbook, latest AI suggestion, deliveries and timeline.'],
+  ['ack_alert','Acknowledges an alert as you (needs member or higher on the team).'],['comment_alert','Adds a comment to the alert timeline.'],
+  ['raise_alert','Raises a typed alert through the same pipeline as POST /v1/alerts/raise.'],['request_approval','Asks a person to approve an action and waits (up to 5 minutes) for the answer.'],
+  ['get_approval_status','Checks whether an approval was granted, rejected or expired.'],['run_runbook_step','Runs a low-risk, trusted step; anything riskier becomes an approval request.'],
+  ['propose_rule','Drafts a rule from plain words (never saved).'],['test_rule','Dry-runs a rule against recent events (never saved).'],
+  ['propose_schema_mapping','Drafts how a source’s fields map to severity, service, title… (never saved).'],['propose_runbook','Turns runbook text into structured steps (never saved).'],
+  ['get_integration_guide','A guide with curl and Python examples, plus the API contract as a resource.']];
+function viewAgents(){const toks=HO.data.tokens||[],c=HO.pat;
+  const cmd='claude mcp add --transport http alerting '+location.origin+'/mcp --header "Authorization: Bearer '+(c?c.token:'<PAT>')+'"';
+  return pageHead({title:'Agents & MCP',desc:'Coding agents such as Claude Code connect to Herald over MCP. They act with your permissions, every write is recorded, and risky actions wait for a person.'})
+    +hoBanner(['tokens'])
+    +`<section class="card"><h2>1. Create a personal access token</h2><p class="help">The token acts as you (${esc(pname(me()))}). Give each agent its own, and revoke it when you stop using it.</p>
+      <div class="row" style="flex-wrap:nowrap;max-width:560px"><input class="in" id="patName" data-oni="patName" value="${esc(HO.patName)}" maxlength="120" placeholder="What will use it, e.g. claude-code" aria-label="Token name"><button class="btn pri" data-act="patCreate" ${HO.patBusy?'disabled':''}>Create token</button></div>
+      ${c?`<div class="banner ok"><div><b>Your token “${esc(c.name)}”.</b> Copy it now: Herald keeps only a fingerprint and cannot show it again.</div>
+        <div class="row" style="margin-top:8px"><code class="secret" id="patSecret">${esc(c.token)}</code><button class="btn sm" data-act="copy" data-src="patSecret">${ic('copy','sm')}Copy token</button><button class="btn sm subtle" data-act="patHide">I have copied it</button></div></div>`:''}
+      ${toks.length?`<div class="tablewrap"><table><thead><tr><th>Name</th><th>Starts with</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>${toks.map(t=>`<tr><td><b>${esc(t.name)}</b></td><td><code>${esc(t.prefix)}…</code></td><td class="num">${t.createdAt?ago(Date.parse(t.createdAt)):''}</td><td class="num">${t.lastUsedAt?ago(Date.parse(t.lastUsedAt)):'Never'}</td><td class="r"><button class="btn sm warn" data-act="patRevoke" data-id="${esc(t.id)}" data-name="${esc(t.name)}">Revoke</button></td></tr>`).join('')}</tbody></table></div>`
+        :HO.err.tokens?'':'<p class="muted">No tokens yet. Create one above, then use it in the command below.</p>'}</section>
+    <section class="card"><h2>2. Connect Claude Code</h2><p class="help">Run this in a terminal. Any MCP client that speaks streamable HTTP works the same way.</p>
+      <pre class="wrap" id="mcpCmd">${esc(cmd)}</pre>
+      <div class="row"><button class="btn" data-act="copy" data-src="mcpCmd">${ic('copy','sm')}Copy command</button>${c?'':'<span class="note">Replace &lt;PAT&gt; with your token, or create one above and the command fills itself in.</span>'}</div></section>
+    <section class="card"><h2>What an agent can do</h2><dl class="kv">${MCP_TOOLS.map(t=>`<dt><code>${t[0]}</code>${/^propose|^test_rule/.test(t[0])?' '+loz('draft only','new'):''}</dt><dd>${esc(t[1])}</dd>`).join('')}</dl></section>`;}
 function viewOncall(){const d=HO.data,teams=d.teams||[],team=teams.find(t=>t.id===HO.team)||teams[0],all=d.oncallAll||{};
   const head=pageHead({title:'On-call schedule',desc:'Who is paged first this week, who covers for whom, and who is asked next when nobody answers.'})+hoBanner(['teams','schedules','oncallAll']);
   if(!team)return head+(HO.err.teams?'':emptyState('clock','No teams yet','A schedule belongs to a team. Create a team first.',''));
@@ -1759,7 +1912,16 @@ function viewKnowledge(){const docs=HO.data.knowledge||[],res=HO.data.resolved||
       :HO.err.resolved?'':emptyState('checkmark','Nothing resolved yet','Resolved alerts of your teams are listed here.',''))
     +`<h2>Knowledge</h2>`+(docs.length?`<div class="tablewrap"><table><thead><tr><th>Title</th><th>Kind</th><th>Team</th><th>Searchable since</th></tr></thead><tbody>${docs.map(k=>`<tr><td>${esc(k.title)}</td><td>${loz(K[k.kind]||k.kind,k.kind==='resolution_note'?'success':'')}</td><td>${esc(k.teamId?tn(k.teamId):'Organisation')}</td><td>${k.indexedAt?ago(Date.parse(k.indexedAt)):'<span class="muted">Being indexed</span>'}</td></tr>`).join('')}</tbody></table></div>`
       :HO.err.knowledge?'':emptyState('book_open','Nothing here yet','Resolve an alert and write how you fixed it: the note is kept here.',''))
-    +'<p class="help">To upload a document or add a link, use Knowledge in the <a href="/ads/#/knowledge">new interface</a>.</p>';}
+    +knowledgeForm();}
+/* Add to knowledge (POST /v1/knowledge): a text or Markdown document, or a link. The AI cites it in later proposals. */
+function knowledgeForm(){const k=HO.kn,teams=HO.data.teams||[],ok=k.mode==='link'?/^https?:\/\/\S+$/.test(k.url.trim()):!!k.content.trim();
+  return `<section class="card"><h2>Add to knowledge</h2><p class="help">Write down how something works or how it was fixed, or link a page. Herald cites it when a similar alert comes in.</p>
+    ${tabsHtml('knMode',k.mode,[['text','Text or Markdown','','document_text'],['link','Link','','globe']])}
+    <div class="two"><label class="field"><span>Title (optional)</span><input class="in" id="knTitle" data-oni="knTitle" value="${esc(k.title)}" placeholder="e.g. Ledger consumer restarts"></label>
+      <label class="field"><span>Team</span><select class="in" id="knTeam" data-onc="knTeam" style="width:100%">${opt('','Whole organisation',k.team)}${teams.map(t=>opt(t.id,t.name,k.team)).join('')}</select></label></div>
+    ${k.mode==='link'?`<label class="field"><span>Address</span><input class="in" id="knUrl" data-oni="knUrl" value="${esc(k.url)}" placeholder="https://wiki.example.com/runbooks/ledger"></label>`
+      :`<label class="field"><span>Text</span><textarea class="in" id="knContent" data-oni="knContent" rows="5" placeholder="What to know, in plain words or Markdown">${esc(k.content)}</textarea></label>`}
+    <div class="row"><button class="btn pri" data-act="knAdd" ${k.busy?'disabled':''} ${ok?'':'aria-disabled="true"'}>Add to knowledge</button></div></section>`;}
 /* The effective escalation ladder of one team, per severity, read from the service. Used by Settings and by Escalation flows. */
 function hoLadders(){const d=HO.data,origin=(p,k)=>p.origin&&p.origin[k]?loz(HO_ORIGIN[p.origin[k]]||p.origin[k],p.origin[k]==='org'?'':'info'):'';
   return `<div class="pgrid">${(d.esc||[]).map(p=>`<section class="card"><div class="row"><h2 class="grow">${sevTag(p.severity)}</h2>${origin(p,'levels')}</div>
@@ -1780,7 +1942,7 @@ function prefsHtml(){const base=HO.data.prefs;if(!base)return HO.err.prefs?'':'<
       <div class="row" style="margin-top:12px"><span class="grow muted">${dirty?'You have changes that are not saved.':'Saved.'}</span><button class="btn subtle" data-act="hoPrefReset" ${dirty?'':'disabled'}>Undo changes</button><button class="btn pri" data-act="hoPrefSave" ${dirty?'':'disabled'}>Save my preferences</button></div>`;}
 function viewSettings(){const d=HO.data,tab=HO.tab,teams=d.teams||[],tn=id=>((d.teams||[]).find(t=>t.id===id)||{name:id||''}).name,dn=id=>((d.domains||[]).find(x=>x.id===id)||{name:id||''}).name;let body='';
   if(tab==='escalation'){body=hoBanner(['teams','esc'])+`<div class="row"><p class="pdesc grow">What happens when nobody acknowledges, for ${esc(tn(HO.team)||'the organisation')}. A value is inherited from the level above unless it is overridden.</p>${hoTeamSeg()}</div>`
-      +hoLadders()+'<p class="help">To change the channels of a team by severity, open Teams in the <a href="/ads/#/teams">new interface</a> (Domain Roots and the Master).</p>';}
+      +hoLadders()+'<p class="help">Domain Roots and the Master set these levels. Each person chooses their own channels under “My notifications”.</p>';}
   else if(tab==='notifications'){body=hoBanner(['prefs'])+prefsHtml();}
   else if(tab==='trust'){body=hoBanner(['trust'])+`<p class="pdesc">An action starts as a suggestion. After enough approved runs without a failure it may run after approval, then by itself, never above the cap a Domain Root sets.</p>
       <div class="tablewrap"><table><thead><tr><th>Action</th><th>Domain</th><th>Level now</th><th>Evidence</th><th>Cap</th></tr></thead><tbody>${(d.trust||[]).map(t=>`<tr><td><code>${esc(t.action)}</code></td><td>${esc(dn(t.domainId))}</td><td>${loz(HO_TRUST[t.level]||t.level,t.level==='auto'?'success':t.level==='run_after_approval'?'info':'')}</td>
@@ -1794,7 +1956,7 @@ function viewSettings(){const d=HO.data,tab=HO.tab,teams=d.teams||[],tn=id=>((d.
       <h2>Teams</h2><div class="tablewrap"><table><thead><tr><th>Team</th><th>Domains</th><th>Members</th></tr></thead><tbody>${teams.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc((t.domainIds||[]).map(dn).join(', '))}${(t.domainIds||[]).length>1?' '+loz('Cross-domain','info'):''}</td><td>${esc((t.memberIds||[]).map(hoUser).join(', '))}</td></tr>`).join('')}</tbody></table></div>
       <h2>People</h2><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>${(d.users||[]).map(u=>`<tr><td><span class="user">${avatar(u.displayName,true)}${esc(u.displayName)}</span></td><td>${esc(u.email||'')}</td><td>${esc(u.phone||'')}</td></tr>`).join('')}</tbody></table></div>`;}
   return pageHead({title:'Settings'})+tabsHtml('hoTab',tab,[['escalation','Escalation','','alert_urgent'],['notifications','My notifications','','alert'],['trust','Trust levels','','shield_checkmark'],['integrations','Integrations','','plug_connected'],['org','Organisation','','building_bank']])+body;}
-const VIEWS={feed:viewFeed,platforms:viewPlatforms,logs:viewLogs,approvals:viewApprovals,oncall:viewOncall,metrics:viewMetrics,knowledge:viewKnowledge,settings:viewSettings,report:viewReport,flows:viewFlows,rules:viewRules,runbooks:viewRunbooks,deliveries:viewDeliveries,preferences:viewPreferences,audit:viewAudit};
+const VIEWS={feed:viewFeed,platforms:viewPlatforms,logs:viewLogs,approvals:viewApprovals,agents:viewAgents,oncall:viewOncall,metrics:viewMetrics,knowledge:viewKnowledge,settings:viewSettings,report:viewReport,flows:viewFlows,rules:viewRules,runbooks:viewRunbooks,deliveries:viewDeliveries,preferences:viewPreferences,audit:viewAudit};
 function render(){
   const a=document.activeElement,fid=a&&a.id;let ss=null,se=null;try{ss=a.selectionStart;se=a.selectionEnd;}catch(e){}
   if(OIDC())accountMenu();else{
@@ -1849,6 +2011,21 @@ const ACT={
   flNew(){const id='flow-'+Date.now().toString(36),name=(FL.tab==='bug'?'New bug':'New vulnerability')+' flow';flSync();FL.flows.push({id:id,name:name,problem:FL.tab,severity:'high',flow:flChain(name,FL.tab,'high',[['L2','Engineer on call',['call'],10]])});flSave();FL.cur=id;FL.sel=null;},
   platFold(){S.platOpen=!S.platOpen;try{localStorage.setItem('herald.platOpen',S.platOpen?'1':'0');}catch(e){}},
   hoTab(el){HO.tab=el.dataset.v;},
+  apTab(el){HO.apTab=el.dataset.v;},
+  teamPolicy(){HO.tab='escalation';go('settings');window.scrollTo(0,0);loadView().then(render,e=>toast(e.message));},
+  knMode(el){HO.kn.mode=el.dataset.v;},
+  knAdd(){const k=HO.kn,link=k.mode==='link',url=k.url.trim(),content=k.content.trim();if(k.busy)return;
+    if(link?!/^https?:\/\/\S+$/.test(url):!content){toast(link?'Paste an address that starts with https://':'Write something first.');return;}
+    const body=Object.assign(k.title.trim()?{title:k.title.trim()}:{},k.team?{teamId:k.team}:{},link?{url:url}:{content:content});k.busy=true;
+    api('/v1/knowledge',{body:body}).then(d=>{Object.assign(k,{title:'',content:'',url:'',busy:false});toast('“'+((d&&d.title)||'The document')+'” added. The AI can cite it from now on.');return hoGet('knowledge',()=>api('/v1/knowledge'),true);},
+      e=>{k.busy=false;toast('Not added: '+e.message);}).then(render);},
+  patCreate(){const name=(HO.patName||'').trim();if(!name){toast('Give the token a name first.');return;}if(HO.patBusy)return;HO.patBusy=true;
+    api('/v1/tokens',{body:{name:name}}).then(t=>{HO.pat=t;HO.patBusy=false;toast('Token created. Copy it now: it is shown only once.');return hoGet('tokens',()=>api('/v1/tokens'),true);},
+      e=>{HO.patBusy=false;toast('No token: '+e.message);}).then(render);},
+  patHide(){HO.pat=null;},
+  patRevoke(el){const id=el.dataset.id,name=el.dataset.name;
+    api('/v1/tokens/'+encodeURIComponent(id),{method:'DELETE'}).then(()=>{if(HO.pat&&HO.pat.id===id)HO.pat=null;toast('Token “'+name+'” revoked. It stops working now.');return hoGet('tokens',()=>api('/v1/tokens'),true);},
+      e=>toast('Not revoked: '+e.message)).then(render);},
   hoRetry(){HO.data={};HO.err={};HO.prefs=null;loadHandoff().then(render,e=>toast(e.message));},
   hoTeam(el){HO.team=el.dataset.v;['schedules','rotations','esc'].forEach(k=>{delete HO.data[k];delete HO.err[k];});loadHandoff().then(render,e=>toast(e.message));},
   hoAlert(el){api('/v1/alerts/'+encodeURIComponent(el.dataset.id)).then(a=>{const m=/^A-(\d+)$/.exec(a.shortId||'');if(!m)return;go('feed');S.platform=null;S.f.resolved=true;ACT.openAlert({dataset:{id:m[1]}});render();},e=>toast(e.message));},
@@ -1881,14 +2058,47 @@ const ACT={
   filter(el){S.f[el.dataset.k]=el.dataset.v;},
   filterReset(){S.f.platform='';S.f.assignee='';S.q='';const g=$('gq');if(g)g.value='';},
   testEvent(){const x=SIMS.find(q=>q.team===S.team)||SIMS[0];ACT.openPlatform({dataset:{id:x.src}});S.ptab='send';ACT.plExample({dataset:{k:x.k}});},
-  openAlert(el){S.drawer={kind:'alert',id:String(el.dataset.id)};S.detail=null;S.docText=null;S.noteText='';loadDetail().then(render);},
+  openAlert(el){const id=String(el.dataset.id);S.drawer={kind:'alert',id:id};S.detail=null;S.docText=null;S.noteText='';S.rsv=null;S.handFor=null;aiReset(id);
+    loadDetail().then(render);aiLoad().then(paintAi);},
+  aiMore(){AI.more=true;},
+  aiStep(el){AI.hiStep=+el.dataset.i;setTimeout(()=>{const n=$('rbstep-'+el.dataset.i);if(n)n.scrollIntoView({block:'center',behavior:'smooth'});},0);},
+  async aiAccept(){const a=S.detail,s=AI.data;if(!a||!s||AI.busy)return;AI.busy='accept';paintAi();
+    try{const r=await api('/v1/alerts/'+encodeURIComponent(a.key)+'/suggestion/'+encodeURIComponent(s.id)+'/decision',{body:{decision:'approve'}});AI.data=Object.assign({},s,{status:(r&&r.status)||'accepted'});}
+    catch(e){AI.busy=null;paintAi();toast(e.status===403?'Only members of this team can accept an AI proposal.':e.message);return;}
+    AI.busy=null;const st=aiStepOf(a,s);
+    if(!st){toast('Accepted. It is recorded on the alert.');await refresh();return;}
+    AI.hiStep=st.id;const rs=a.stepState[String(st.id)]||{},todo=!rs.state||rs.state==='failed';
+    if(st.action&&todo&&a.status!=='resolved')await act(()=>api('/api/alerts/'+a.id+'/steps/'+st.id+'/run',{method:'POST'}),
+      r=>r.state==='awaiting_approval'?'Accepted. Step '+st.id+' waits for a second person'+(r.approver?': a code was texted to '+pname(r.approver):'')+'.':r.state==='failed'?'Accepted, but step '+st.id+' did not work. See the step below.':'Accepted. Step '+st.id+' has run.');
+    else{toast(st.action?'Accepted. Step '+st.id+' is highlighted below.':'Accepted. Step '+st.id+' is highlighted below: do it, then mark it done.');await refresh();}
+    ACT.aiStep({dataset:{i:String(st.id)}});},
+  async aiReject(){const a=S.detail,s=AI.data;if(!a||!s||AI.busy)return;AI.busy='reject';paintAi();
+    try{const r=await api('/v1/alerts/'+encodeURIComponent(a.key)+'/suggestion/'+encodeURIComponent(s.id)+'/decision',{body:{decision:'reject'}});AI.data=Object.assign({},s,{status:(r&&r.status)||'rejected'});toast('Rejected. It is recorded on the alert.');}
+    catch(e){toast(e.status===403?'Only members of this team can reject an AI proposal.':e.message);}
+    AI.busy=null;await refresh();},
+  async aiAsk(){const a=S.detail,x=AI.ask;if(!a||!x||x.busy)return;const q=(x.q||'').trim();if(!q){const n=$('aiQ');if(n)n.focus();return;}
+    Object.assign(x,{busy:true,text:'',err:null,tool:null,asked:q,q:''});const n=$('aiQ');if(n)n.value='';paintAsk();const id=AI.for;
+    try{await aiChat(a.key,q,(ev,d)=>{if(AI.ask!==x)return;if(ev==='token')x.text+=d.text||'';else if(ev==='tool_call')x.tool=d.name;else if(ev==='error')x.err=d.message||'The assistant is not available.';paintAsk();});
+      if(!x.text&&!x.err)x.err='The assistant did not answer. Try again in a moment.';}
+    catch(e){if(AI.ask===x)x.err=e.message;}
+    if(AI.ask===x&&AI.for===id){x.busy=false;paintAsk();}},
+  handOpen(el){const id=String(el.dataset.id);S.handFor=S.handFor===id?null:id;if(S.handFor)setTimeout(()=>{const n=$('handSel');if(n)n.focus();},0);},
+  resolve(el){const id=String(el.dataset.id),a=S.detail&&S.detail.id===id?S.detail:alertById(id);if(!a)return;if(S.rsv&&S.rsv.for===id){S.rsv=null;return;}
+    const x=S.rsv={for:id,note:'',state:'loading',ai:false,model:null,busy:false};
+    if((a.flags||[]).includes('suspicious_content')||AI.suspicious){x.state='off';return;}
+    api('/v1/alerts/'+encodeURIComponent(a.key)+'/resolution-note-draft').then(d=>{if(S.rsv!==x)return;const t=String(d&&d.note||'').trim();
+        Object.assign(x,{note:x.note||t,state:t?'ready':'empty',ai:!!t&&!(d&&d.aiUnavailable),model:d&&d.model});render();},
+      ()=>{if(S.rsv!==x)return;x.state='failed';render();});},
+  rsvClear(){if(S.rsv){S.rsv.note='';S.rsv.ai=false;S.rsv.state='empty';}},
+  rsvCancel(){S.rsv=null;},
+  rsvGo(el){const x=S.rsv;if(!x||x.busy)return;const note=(x.note||'').trim();x.busy=true;
+    act(()=>api('/api/alerts/'+el.dataset.id+'/resolve',{body:note?{note:note}:{}}),note?'Resolved. The note is saved for the next similar alert.':'Resolved.').then(()=>{S.rsv=null;render();});},
   gotoAlert(el){go('feed');ACT.openAlert(el);},
   gotoTeam(el){if(canSwitchTo(el.dataset.id)){S.team=el.dataset.id;go('feed');reloadFor();}},
   openEvent(el){S.drawer={kind:'event',id:el.dataset.id};S.evExplain=null;const ev=evById(el.dataset.id);
     if(ev)api('/api/events/explain',{body:{event:ev.raw,source:ev.source}}).then(r=>{S.evExplain=r;render();},e=>toast(e.message));},
-  closeDrawer(){S.drawer=null;S.detail=null;},
+  closeDrawer(){S.drawer=null;S.detail=null;S.rsv=null;S.handFor=null;clearTimeout(aiTimer);AI.for=null;},
   ack(el){act(()=>api('/api/alerts/'+el.dataset.id+'/ack',{method:'POST'}));},
-  resolve(el){act(()=>api('/api/alerts/'+el.dataset.id+'/resolve',{method:'POST'}));},
   runStep(el){act(()=>api('/api/alerts/'+el.dataset.id+'/steps/'+el.dataset.i+'/run',{method:'POST'}),
     r=>r.state==='awaiting_approval'?'Sent for approval'+(r.approver?': a code was texted to '+pname(r.approver):''):null);},
   approve(el){act(()=>api('/api/approvals/'+el.dataset.id+'/decide',{body:{approve:true}}),'Approved.');},
@@ -1898,7 +2108,16 @@ const ACT={
   statusUpdate(el){api('/api/alerts/'+el.dataset.id+'/status-update').then(r=>{S.docText={title:'Status update, ready to edit and send',text:r.text};render();},e=>toast(e.message));},
   postmortem(el){api('/api/alerts/'+el.dataset.id+'/postmortem').then(r=>{S.docText={title:'Postmortem draft from the audit trail (roles, not names)',text:r.markdown};render();},e=>toast(e.message));},
   closeDoc(){S.docText=null;},
-  newRule(){startEdit(blankRule(),true);},
+  newRule(){startEdit(blankRule(),true);setTimeout(()=>{const n=$('nlText');if(n)n.focus();},0);},
+  edAiOpen(){S.edAi.open=true;setTimeout(()=>{const n=$('nlText');if(n)n.focus();},0);},
+  edAiClose(){S.edAi.open=false;},
+  async nlDraft(){const x=S.edAi,t=(x.text||'').trim();if(!S.draft||x.busy)return;if(!t){const n=$('nlText');if(n)n.focus();return;}x.busy=true;x.err=null;render();
+    try{const r=await api('/api/rules/draft-from-text',{body:{text:t,owner:S.draft.owner}}),doc=r.doc||{},cur=S.draft;
+      if(!S.draft)return;x.prev=clone(cur);doc.id=cur.id;doc.version=cur.version;doc.owner=cur.owner;doc.severity=doc.severity||'event';if(!doc.name)doc.name=cur.name;
+      S.draft=normDraft(doc);x.res=r;}
+    catch(e){x.err=e.message;}
+    x.busy=false;render();},
+  nlUndo(){const x=S.edAi;if(!x.prev)return;S.draft=normDraft(x.prev);x.prev=null;x.res=null;},
   editRule(el){const r=ruleById(el.dataset.id);if(r)startEdit(clone(r),false);},
   ruleFromEvent(el){const ev=evById(el.dataset.id);startEdit(ev?suggestRule(ev):blankRule(),true,ev&&ev.id);go('rules');},
   cancelEdit(){S.draft=null;},
@@ -1916,10 +2135,15 @@ const ACT={
   addNt(){S.draft.notify.push({to:S.draft.owner,channels:['email']});},
   delNt(el){S.draft.notify.splice(+el.dataset.i,1);},
   reviewRb(){toast('Reviewing AI drafts is not built yet.');},
-  async parsePaste(){if(!S.pasteText.trim()){S.pasteSteps=[];return;}try{const r=await api('/api/runbooks/parse',{body:{text:S.pasteText}});S.pasteSteps=r.steps;S.pasteFormat=r.source_format;S.pasteLink=r.link;}catch(e){toast(e.message);}render();},
+  async parsePaste(){S.pasteAi=null;if(!S.pasteText.trim()){S.pasteSteps=[];return;}S.pasteBusy='rules';render();
+    try{const r=await api('/api/runbooks/parse',{body:{text:S.pasteText,ai:false}});S.pasteSteps=r.steps;S.pasteFormat=r.source_format;S.pasteLink=r.link;}catch(e){toast(e.message);}S.pasteBusy=null;render();},
+  async aiPaste(){S.pasteAi=null;if(!S.pasteText.trim()){S.pasteSteps=[];const n=$('pasteText');if(n)n.focus();return;}S.pasteBusy='ai';S.pasteSteps=null;render();
+    try{const r=await api('/api/runbooks/parse',{body:{text:S.pasteText,ai:true}});S.pasteSteps=r.steps;S.pasteFormat=r.source_format;S.pasteLink=r.link;S.pasteAi={source:r.source,steps:r.draft_steps||null};}
+    catch(e){toast(e.message);}S.pasteBusy=null;render();},
   pasteExample(){S.pasteText='When the reconciliation job is killed, check the memory graph for the host. If memory was at the limit: restart the job with the large profile (needs approval from the team lead). Wait 10 minutes, and if it fails again, escalate to the platform team.';ACT.parsePaste();},
   async saveRunbook(){if(!canEdit())return;const id=slug(S.pasteId);if(!S.pasteId.trim()){toast('Give the runbook a name before saving.');return;}
-    try{await api('/api/runbooks/'+encodeURIComponent(id),{method:'PUT',body:{text:S.pasteText,title:S.pasteId.trim()}});S.pasteText='';S.pasteSteps=null;S.pasteId='';
+    const ai=S.pasteAi&&S.pasteAi.source==='ai'&&S.pasteAi.steps?{ai:true,steps:S.pasteAi.steps}:{};
+    try{await api('/api/runbooks/'+encodeURIComponent(id),{method:'PUT',body:Object.assign({text:S.pasteText,title:S.pasteId.trim()},ai)});S.pasteText='';S.pasteSteps=null;S.pasteId='';S.pasteAi=null;
       toast('Runbook saved. Attach it to a rule under “Then”.');await loadRunbooks();}catch(e){toast('Not saved: '+e.message);}render();},
   phoneTab(el){S.phoneWho=el.dataset.who;S.smsDraft='';},
   smsSend(){const t=S.smsDraft.trim();if(!t)return;S.smsDraft='';smsReply(t);},
@@ -1964,6 +2188,13 @@ const ACT={
 async function reloadKeepDraft(){const d=S.draft,n=S.draftNew;try{await loadAll();}catch(e){}S.draft=d;S.draftNew=n;render();connect();}
 const ONI={
   hoComment(el){HO.comment[el.dataset.id]=el.value;return false;},
+  aiQ(el){if(AI.ask)AI.ask.q=el.value;return false;},
+  rsvNote(el){if(S.rsv)S.rsv.note=el.value;return false;},
+  nlText(el){if(S.edAi)S.edAi.text=el.value;return false;},
+  patName(el){HO.patName=el.value;return false;},
+  knTitle(el){HO.kn.title=el.value;return false;},
+  knUrl(el){HO.kn.url=el.value;return false;},
+  knContent(el){HO.kn.content=el.value;return false;},
   rpText(el){RP.text=el.value;const b=$('rpSend');if(b)b.disabled=RP.text.trim().length<8;return false;},
   callUrl(el){S.callUrl=el.value;return false;},
   lgq(el){S.lg.q=el.value;render();return false;},
@@ -2018,7 +2249,8 @@ const ONC={
   edSample(el){S.edSample=el.value;},
   fPlatform(el){S.f.platform=el.value;},
   fResolved(el){S.f.resolved=el.checked;},
-  assign(el){const to=el.value||null;act(()=>api('/api/alerts/'+el.dataset.id+'/assign',{body:{to:to}}),to?(to===me()?'The alert is assigned to you.':'Handed to '+pname(to)+', who has been notified.'):'The alert is unassigned.');}
+  knTeam(el){HO.kn.team=el.value;},
+  assign(el){const to=el.value||null;if(el.id==='handSel'&&!to)return;S.handFor=null;act(()=>api('/api/alerts/'+el.dataset.id+'/assign',{body:{to:to}}),to?(to===me()?'The alert is assigned to you.':'Handed to '+pname(to)+', who has been notified.'):'The alert is unassigned.');}
 };
 
 /* ============ wiring ============ */
@@ -2045,7 +2277,9 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){if(S.simOpen){S.simOpen=false;render();}else if(S.drawer){S.drawer=null;render();}return;}
   if(e.key!=='Enter')return;const t=e.target;
   if(t.id==='smsReply'){e.preventDefault();ACT.smsSend();render();}
-  else if(t.id==='nlText'){e.preventDefault();ACT.nlDraft();render();}
+  else if(t.id==='nlText'&&(e.metaKey||e.ctrlKey)){e.preventDefault();ACT.nlDraft();render();}
+  else if(t.id==='aiQ'){e.preventDefault();ACT.aiAsk();render();}
+  else if(t.id==='patName'){e.preventDefault();ACT.patCreate();render();}
   else if(t.matches&&t.matches('article[data-act],tr[data-act]')){e.preventDefault();ACT[t.dataset.act](t);render();}
 });
 window.addEventListener('hashchange',()=>{const v=location.hash.replace('#','');if(VIEWS[v]&&v!==S.view){S.view=v;S.draft=null;render();loadView().then(render,()=>{});}});
@@ -2059,7 +2293,7 @@ document.addEventListener('dragover',e=>{const c=e.target.closest&&e.target.clos
 document.addEventListener('drop',e=>{const c=e.target.closest&&e.target.closest('.bcol');if(!c)return;e.preventDefault();c.classList.remove('over');
   const a=alertById(e.dataTransfer.getData('text/plain')),to=c.dataset.col;if(!a||a.status===to)return;
   if(to==='acked'&&a.status==='firing')ACT.ack({dataset:{id:a.id}});
-  else if(to==='resolved')ACT.resolve({dataset:{id:a.id}});
+  else if(to==='resolved'){ACT.openAlert({dataset:{id:a.id}});ACT.resolve({dataset:{id:a.id}});render();}
   else{toast(a.status==='resolved'?'A resolved alert stays resolved. If the problem returns, a new alert opens.':'An acknowledged alert cannot go back to Open. Change the assignee to hand it over.');render();}});
 
 /* ============ start ============ */
