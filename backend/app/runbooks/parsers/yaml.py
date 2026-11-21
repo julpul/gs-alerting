@@ -166,6 +166,51 @@ def parse(content: str) -> ParsedRunbook:
     return ParsedRunbook(name=name, format="yaml", steps=steps, attached=attached)
 
 
+def is_loose(data: Any) -> bool:
+    """A YAML mapping in a shape we do not know (several keys or a list): kept as manual steps."""
+    if not isinstance(data, dict) or not data or not all(isinstance(k, str) for k in data):
+        return False
+    return len(data) >= 2 or any(isinstance(v, list | dict) for v in data.values())
+
+
+def _compact(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    return orjson.dumps(value, default=str).decode()
+
+
+def _loose_steps(key: str, value: Any) -> list[wire.RunbookStep]:
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            try:
+                out.append(_step(item))
+            except StructuredError:
+                out.append(make_step(text=f"{key}: {_compact(item)}"[:2000], kind="text"))
+        return out
+    return [make_step(text=f"{key}: {_compact(value)}"[:2000], kind="text")]
+
+
+def loose(content: str) -> ParsedRunbook | None:
+    """Unknown YAML keys never crash: every key becomes a manual step ("key: value", list items as steps)."""
+    try:
+        data = load(content)
+    except StructuredError:
+        return None
+    if not is_loose(data):
+        return None
+    name = next(
+        (str(data[k]) for k in ("runbook", "name", "title", "playbook") if isinstance(data.get(k), str)), None
+    )
+    skip = {k for k in ("runbook", "name", "title", "playbook") if isinstance(data.get(k), str)}
+    steps = [
+        st for k, v in data.items() if k not in skip and v not in (None, "") for st in _loose_steps(k, v)
+    ]
+    if not steps:
+        return None
+    return ParsedRunbook(name=name or "Runbook", format="yaml", steps=finalize(steps))
+
+
 def json_document(content: str) -> Any:
     """The parsed JSON object / array, or None when `content` is not JSON."""
     try:

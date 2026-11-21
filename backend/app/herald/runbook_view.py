@@ -50,6 +50,8 @@ def runbook_wire(rb: dict[str, Any], used_by: list[str] | None = None) -> dict[s
         "link": link or None,
         "used_by": list(used_by or []),
         "team": rb.get("teamId"),
+        "accepted_by": attached.get("acceptedBy"),
+        "source_file": attached.get("sourceFile"),
     }
 
 

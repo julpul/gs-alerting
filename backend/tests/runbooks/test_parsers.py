@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
 from app.core.errors import AppError
 from app.runbooks.parsers import detect_format, parse_runbook
 from app.runbooks.parsers.heuristics import guard_for
+
+SAMPLES = Path(__file__).resolve().parents[3] / "docs" / "samples" / "runbooks"
 
 YAML_SAMPLE = """\
 runbook: settlement-timeout
@@ -163,7 +166,7 @@ async def test_invalid_input_is_422():
 
 async def test_yaml_with_bad_step_falls_back_to_text():
     parsed = await parse_runbook("steps:\n  - 42\n  - 43\n", "yaml")
-    assert parsed.format in ("markdown", "text")
+    assert parsed.format == "yaml" and parsed.steps[0].text == "steps: 42"
 
 
 async def test_ai_parse_is_used_when_available(monkeypatch):
@@ -195,3 +198,59 @@ async def test_ai_failure_degrades_to_heuristic(monkeypatch):
     monkeypatch.setattr("app.runbooks.parsers.text.ai_available", lambda: True)
     parsed = await parse_runbook("Restart the service. Then wait.", "text")
     assert parsed.parsed_by == "heuristic"
+
+
+async def _steps(content: str):
+    return await parse_runbook(content, "auto", use_ai=False)
+
+
+async def test_yaml_steps_as_plain_strings():
+    parsed = await _steps("name: Restart\nsteps:\n  - Check the queue\n  - Restart consumer\n")
+    assert (parsed.format, parsed.name) == ("yaml", "Restart")
+    assert [s.text for s in parsed.steps] == ["Check the queue", "Restart consumer"]
+
+
+async def test_yaml_top_level_list_with_run_with_and_requires_approval():
+    content = (
+        "- name: Check queue\n  run: http_get\n  with: {url: http://x}\n"
+        "- name: Restart\n  run: restart_service\n  requires_approval: true\n"
+    )
+    assert detect_format(content) == "yaml"
+    check, restart = (await _steps(content)).steps
+    assert (check.action, check.parameters) == ("http_get", {"url": "http://x"})
+    assert restart.action == "restart_service" and restart.approval.value == "required"
+
+
+async def test_yaml_procedure_key_with_args():
+    content = (
+        "title: Deploy rollback\nprocedure:\n  - name: roll back\n    action: retry_workflow\n"
+        "    args: {workflowId: '{{workflowId}}'}\n    approval: required\n"
+    )
+    parsed = await _steps(content)
+    assert parsed.name == "Deploy rollback"
+    assert parsed.steps[0].parameters == {"workflowId": "{{workflowId}}"}
+    assert parsed.steps[0].approval.value == "required"
+
+
+async def test_yaml_unknown_keys_become_manual_steps():
+    content = "owner: sre\nseverity: high\nremediation:\n  - free space\n  - restart db\n"
+    assert detect_format(content) == "yaml"
+    parsed = await _steps(content)
+    assert [s.text for s in parsed.steps][:3] == ["owner: sre", "severity: high", "free space"]
+    assert all(s.kind.value == "text" for s in parsed.steps[:3])
+
+
+async def test_yaml_unknown_nested_values_do_not_crash():
+    parsed = await _steps("title: X\ncontacts:\n  primary: anna\n  backup: ben\n")
+    assert parsed.steps[0].text.startswith("contacts: ")
+    assert "anna" in parsed.steps[0].text
+
+
+async def test_sample_files_parse():
+    root = SAMPLES
+    appendix = await _steps((root / "settlement-timeout.yaml").read_text())
+    assert [s.action for s in appendix.steps] == ["http_get", "retry_workflow", "escalate"]
+    unseen = await _steps((root / "deploy-rollback.yaml").read_text())
+    assert unseen.name.startswith("Deploy rollback")
+    assert [s.action for s in unseen.steps][:2] == ["http_get", "restart_service"]
+    assert unseen.steps[1].approval.value == "required" and len(unseen.steps) == 4

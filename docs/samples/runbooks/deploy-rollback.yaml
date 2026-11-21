@@ -1,0 +1,16 @@
+# A shape we have never seen: different keys, aliases and a few unknown fields.
+title: Deploy rollback for payments-api
+owner: payments-sre
+severity: high
+procedure:
+  - name: Look at the error rate for the last deployment
+    run: http_get
+    with:
+      url: "http://payments-api/health"
+  - name: Roll the service back to the previous release
+    run: restart_service
+    args:
+      service: "{{labels.service}}"
+    requires_approval: true
+  - name: Tell the channel what happened
+  - "Post an update in #payments-incidents every 15 minutes"

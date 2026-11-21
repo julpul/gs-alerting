@@ -13,7 +13,7 @@ from app.core.ids import parse_uuid, uuid7
 from app.core.scope import Scope
 from app.runbooks.actions.registry import get_action
 from app.runbooks.model import ParsedRunbook, finalize, from_stored, to_stored
-from app.runbooks.parsers import parse_runbook
+from app.runbooks.parsers import FORMATS, parse_runbook
 from app.schemas import api as wire
 from app.schemas.internal import User
 
@@ -147,29 +147,37 @@ async def update_runbook(
     name: str | None,
     fmt: str | None,
     source: str,
+    steps: list[wire.RunbookStep] | None = None,
     attached: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Re-parse pasted content into an existing runbook (same id, so rules keep pointing at it)."""
+    """Replace an existing runbook (same id, so rules keep pointing at it).
+
+    `steps` are the steps a person reviewed: stored as they are. Without them `source` is parsed again."""
     if row["team_id"] is not None:
         await _require_team_role(conn, scope, row["team_id"])
     elif not scope.is_master:
         raise forbidden("only the master can change org-wide runbooks")
-    parsed = await parse_runbook(source, fmt or "auto")
-    _check_actions(parsed.steps)
     meta, _ = split_attached(row["attached"])
-    meta.update(parsed.attached)
+    if steps:
+        final, new_format = finalize(steps), (fmt if fmt in FORMATS else row["format"])
+        meta.pop("parsedBy", None)
+    else:
+        parsed = await parse_runbook(source, fmt or "auto")
+        final, new_format = parsed.steps, parsed.format
+        meta.update(parsed.attached)
+        if parsed.parsed_by != "deterministic":
+            meta["parsedBy"] = parsed.parsed_by
+    _check_actions(final)
     meta.update(attached or {})
-    if parsed.parsed_by != "deterministic":
-        meta["parsedBy"] = parsed.parsed_by
     async with conn.transaction():
         updated = await conn.fetchrow(
             "UPDATE runbooks SET name = $2, format = $3, source = $4, steps = $5, attached = $6 "
             "WHERE id = $1 RETURNING *",
             row["id"],
             (name or row["name"])[:200],
-            parsed.format,
+            new_format,
             source,
-            [to_stored(s) for s in parsed.steps],
+            [to_stored(s) for s in final],
             meta,
         )
         await audit(conn, user_actor(user.id, user.display_name), "runbook.update", "runbook", str(row["id"]))

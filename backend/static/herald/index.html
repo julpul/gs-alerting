@@ -196,6 +196,7 @@ tr:last-child td{border-bottom:0}
 .var{background:var(--accent-soft);color:var(--accent);border-radius:3px;padding:0 3px;font-family:var(--font-mono);font-size:12.5px}
 
 /* runbooks */
+.rbdrop{border:2px dashed var(--line,#c8ccd4);border-radius:10px;padding:18px;text-align:center;cursor:pointer;display:block}.rbdrop.over{border-color:var(--accent,#2563eb);background:rgba(37,99,235,.06)}
 .rb-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px}
 @media (max-width:900px){ .rb-grid{grid-template-columns:minmax(0,1fr)} }
 .rstep{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
@@ -903,7 +904,7 @@ async function loadEvents(){S.events=(await api('/api/events/recent?limit=50')).
 async function loadFields(){const out={};(await api('/api/fields')).forEach(f=>{out[f.path]={type:f.type,example:f.example};});S.fields=out;}
 async function loadRunbooks(){const out={};(await api('/api/runbooks')).forEach(rb=>{out[rb.id]={id:rb.id,title:rb.title,
     format:{yaml:'Structured steps (YAML)',markdown:'Markdown page',text:'Free text',link:'Link only'}[rb.source_format]||rb.source_format,
-    parsedBy:rb.parsed_by==='llm'?'ai':'parser',reviewedBy:rb.reviewed?'a reviewer':null,source:rb.source_text,steps:rb.steps,link:rb.link,usedBy:rb.used_by||[]};});S.runbooks=out;}
+    parsedBy:rb.parsed_by==='llm'?'ai':'parser',reviewedBy:rb.reviewed?'a reviewer':null,source:rb.source_text,steps:rb.steps,link:rb.link,usedBy:rb.used_by||[],acceptedBy:rb.accepted_by,sourceFile:rb.source_file};});S.runbooks=out;}
 async function loadPhone(){try{S.phone=await api('/api/sim/phone');}catch(e){S.phone={messages:[],down:false,page:'',off:true};}}
 async function loadDeliveries(){const [d,m]=await Promise.all([api('/api/deliveries?limit=60&owner='+encodeURIComponent(T().owner)),api('/api/sim/mail').catch(()=>({messages:[],page:'',unavailable:true})),loadPhone()]);
   S.deliveries=d;S.mail=m;}
@@ -1479,15 +1480,28 @@ function editorSide(){const d=S.draft,evs=S.events,t=S.edTest,p=S.edPrev;const s
 function rbStepsHtml(steps){return `<ol>${steps.map((s,i)=>`<li class="rstep"><span class="note num">${i+1}.</span><div class="stack" style="gap:4px"><span style="overflow-wrap:anywhere">${varHi(s.text)}</span>
     <div class="row" style="gap:5px"><span class="badge">${{check:'Check',action:'Action',manual:'By hand',wait:'Wait'}[s.kind]}</span>${s.action&&s.kind!=='wait'?`<span class="badge mono">${esc(s.action)}</span>`:''}${approvalBadge(s)}${s.suggest&&!s.action?`<span class="badge">could be automated: ${esc(s.suggest)}</span>`:''}</div>
     ${s.condition?`<span class="note">Only if: ${esc(s.condition)}</span>`:''}${Object.keys(s.params||{}).length?`<span class="note mono" style="overflow-wrap:anywhere">${varHi(Object.keys(s.params).map(k=>k+': '+s.params[k]).join(', '))}</span>`:''}</div></li>`).join('')}</ol>`;}
+const RB_FMT={yaml:'Structured steps (YAML)',json:'Structured steps (JSON)',markdown:'Markdown page',text:'Free text',link:'Link only'};
+function rbFileCard(){const f=S.rbFile;
+  const pick=`<label class="rbdrop" data-rbdrop="1"><input type="file" id="rbFileIn" data-onc="rbFile" accept=".yaml,.yml,.md,.markdown,.json,.txt,text/*" hidden><span class="lab">${ic('clipboard_task_list_ltr','sm')} Add from file</span><p class="note" style="margin:6px 0 0">Choose a .yaml, .yml, .md, .json or .txt file, or drop it here. You review the steps before anything is saved.</p></label>`;
+  if(!f)return `<section class="card"><h2>Add a runbook from a file</h2>${pick}</section>`;
+  if(f.busy)return `<section class="card"><h2>Add a runbook from a file</h2><p class="muted" style="margin-bottom:8px">Reading ${esc(f.name)}…</p>${skel(3)}</section>`;
+  const r=f.r;
+  return `<section class="card"><div class="row"><h2 class="grow">Draft from ${esc(f.name)}</h2><span class="badge">${esc(RB_FMT[r.source_format]||r.source_format)}</span>${r.parsed_by==='llm'&&r.source==='ai'?`<span class="badge ai">${ic('sparkle','sm')} AI draft, needs review</span>`:'<span class="badge ok">Read by the service’s parser</span>'}<span class="badge">Draft, not saved</span></div>
+    <p class="note">Check the steps against the original. Nothing is stored until you accept.</p>
+    ${r.parsed_by==='llm'&&r.source!=='ai'?'<div class="banner"><b>AI unavailable.</b> The text was split by fixed rules. Check the steps before saving.</div>':''}
+    <div class="rb-grid"><div class="stack"><span class="lab">Original (${esc(f.name)})</span><pre class="wrap">${esc(f.text)}</pre></div>
+      <div class="stack"><span class="lab">As steps (${r.steps.length})</span>${r.steps.length?rbStepsHtml(r.steps):'<p class="muted">No steps found. It will be shown as written'+(r.link?', as a link':'')+'.</p>'}</div></div>
+    <div class="row" style="flex-wrap:nowrap"><input class="in" id="rbFileName" data-oni="rbFileName" value="${esc(f.title)}" placeholder="Runbook name" aria-label="Runbook name"><button class="btn pri" data-act="rbFileAccept" ${canEdit()?'':'disabled'}>Accept and save</button><button class="btn" data-act="rbFileDiscard">Discard</button></div>${canEdit()?'':'<span class="note">Saving needs a Rule editor or Team lead.</span>'}</section>`;}
 function viewRunbooks(){
   return `<div><h1>Runbooks</h1><p class="muted">Paste instructions in whatever shape the team already has. Herald keeps the original and turns it into steps that can be ticked off, run, or sent for approval.</p></div>
     ${Object.keys(S.runbooks).map(k=>{const rb=S.runbooks[k];const used=rb.usedBy||[];
       return `<section class="card"><div class="row"><h2 class="grow">${esc(rb.title)}</h2><span class="badge">${esc(rb.format)}</span>
           ${rb.parsedBy==='ai'?(rb.reviewedBy?`<span class="badge ok">AI draft, reviewed by ${esc(rb.reviewedBy)}</span>`:'<span class="badge ai">AI draft, needs review</span>'):'<span class="badge ok">Read by parser</span>'}</div>
-        <p class="note">Used by: ${used.length?esc(used.join(', ')):'no rule yet'}${rb.reviewedBy&&rb.parsedBy!=='ai'?' · reviewed by '+esc(rb.reviewedBy):''}</p>
+        <p class="note">Used by: ${used.length?esc(used.join(', ')):'no rule yet'}${rb.reviewedBy&&rb.parsedBy!=='ai'?' · reviewed by '+esc(rb.reviewedBy):''}${rb.acceptedBy?' · Accepted by '+esc(rb.acceptedBy)+(rb.sourceFile?' from file '+esc(rb.sourceFile):''):''}</p>
         <div class="rb-grid"><div class="stack"><span class="lab">As the team wrote it</span><pre class="wrap">${esc(rb.source)}</pre></div>
           <div class="stack"><span class="lab">As steps</span>${rb.steps.length?rbStepsHtml(rb.steps):'<p class="muted">Shown on the alert as written'+(rb.link?', as a link':'')+'.</p>'}
             ${rb.parsedBy==='ai'&&!rb.reviewedBy?`<div class="row"><button class="btn sm pri" data-act="reviewRb" data-id="${k}" ${canEdit()?'':'disabled'}>Mark as reviewed</button>${canEdit()?'':'<span class="note">Needs a Rule editor or Team lead.</span>'}</div>`:''}</div></div></section>`;}).join('')}
+    ${rbFileCard()}
     <section class="card"><h2>Paste any runbook, or describe one</h2><p class="note">Numbered lines, bullets, a checklist or plain sentences. “Split into steps” uses fixed rules only, no AI. “Write with AI” reads free text, picks the actions Herald can run and marks the risky ones for approval.</p>
       <textarea class="in" id="pasteText" data-oni="pasteText" rows="5" placeholder="1. Check the queue depth.&#10;2. If it is over 10,000: restart the consumer (needs approval).&#10;3. Wait 5 minutes and check again.">${esc(S.pasteText)}</textarea>
       <div class="row"><button class="btn pri" data-act="parsePaste" ${S.pasteBusy?'disabled':''}>Split into steps</button><button class="btn" data-act="aiPaste" ${S.pasteBusy?'disabled':''}>${ic('sparkle','sm')}${S.pasteBusy==='ai'?'Writing…':'Write with AI'}</button><button class="btn link" data-act="pasteExample">Use an example</button></div>
@@ -2135,6 +2149,20 @@ const ACT={
   addNt(){S.draft.notify.push({to:S.draft.owner,channels:['email']});},
   delNt(el){S.draft.notify.splice(+el.dataset.i,1);},
   reviewRb(){toast('Reviewing AI drafts is not built yet.');},
+  async rbFileRead(file){if(!file)return;
+    if(file.size>50000){toast('That file is too large for a runbook (50 KB at most).');return;}
+    S.rbFile={name:file.name,busy:true};render();
+    try{const text=await new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result||''));fr.onerror=()=>no(new Error('The file could not be read.'));fr.readAsText(file);});
+      if(!text.trim())throw new Error('The file is empty.');
+      const r=await api('/api/runbooks/parse',{body:{text,format:'auto',draft:true}});
+      const base=file.name.replace(/\.[^.]+$/,'');
+      S.rbFile={name:file.name,text,r,title:r.title&&r.title!=='Runbook'?r.title:base};}
+    catch(e){S.rbFile=null;toast(e.message);}render();},
+  rbFileDiscard(){S.rbFile=null;},
+  async rbFileAccept(){const f=S.rbFile;if(!f||!f.r||!canEdit())return;if(!f.title.trim()){toast('Give the runbook a name before saving.');return;}
+    const r=f.r,ai=r.parsed_by==='llm'&&r.source==='ai';
+    try{await api('/api/runbooks/'+encodeURIComponent(slug(f.title)),{method:'PUT',body:{text:f.text,title:f.title.trim(),format:r.source_format,steps:r.draft_steps,ai:ai||undefined,source_file:f.name}});
+      S.rbFile=null;toast('Runbook saved. Attach it to a rule under “Then”.');await loadRunbooks();}catch(e){toast('Not saved: '+e.message);}render();},
   async parsePaste(){S.pasteAi=null;if(!S.pasteText.trim()){S.pasteSteps=[];return;}S.pasteBusy='rules';render();
     try{const r=await api('/api/runbooks/parse',{body:{text:S.pasteText,ai:false}});S.pasteSteps=r.steps;S.pasteFormat=r.source_format;S.pasteLink=r.link;}catch(e){toast(e.message);}S.pasteBusy=null;render();},
   async aiPaste(){S.pasteAi=null;if(!S.pasteText.trim()){S.pasteSteps=[];const n=$('pasteText');if(n)n.focus();return;}S.pasteBusy='ai';S.pasteSteps=null;render();
@@ -2209,6 +2237,7 @@ const ONI={
     if(n.op==='in')n.value=list(v);else if(['gt','gte','lt','lte'].includes(n.op)&&v.trim()!==''&&!isNaN(Number(v.replace(/,/g,''))))n.value=Number(v.replace(/,/g,''));else n.value=v;},
   smsDraft(el){S.smsDraft=el.value;return false;},
   pasteText(el){S.pasteText=el.value;return false;},
+  rbFileName(el){if(S.rbFile)S.rbFile.title=el.value;return false;},
   pasteId(el){S.pasteId=el.value;return false;},
   noteText(el){S.noteText=el.value;return false;},
   q(el){S.q=el.value;const g=$('gq');if(g)g.value=S.q;render();return false;},
@@ -2218,6 +2247,7 @@ const ONI={
   newPlatName(el){S.newPlat.name=el.value;return false;}
 };
 const ONC={
+  rbFile(el){const f=el.files&&el.files[0];el.value='';ACT.rbFileRead(f);},
   hoWhOn(el){const p=HO.prefs;if(!p)return;p.workingHours=el.checked?{from:'08:00',to:'18:00',timezone:(PEOPLE[String(me()).replace(/^person:/,'')]||{}).tz||'Europe/Warsaw'}:null;},
   hoWh(el){const p=HO.prefs;if(!p||!p.workingHours)return;p.workingHours[el.dataset.k]=el.value;},
   rpSys(el){RP.sys=el.value;},
@@ -2288,6 +2318,9 @@ setInterval(()=>{const c=$('obClock');if(c&&S.ob.t0&&!S.ob.alertAt)c.textContent
 document.addEventListener('click',e=>{if(S.menu&&!(e.target.closest&&e.target.closest('.create,.who'))){S.menu=null;render();}},true);
 /* Board: drag a card to Acknowledged or Resolved. The service decides; the board redraws from what it says. */
 document.addEventListener('dragstart',e=>{const c=e.target.closest&&e.target.closest('.bcard');if(!c)return;e.dataTransfer.setData('text/plain',c.dataset.id);e.dataTransfer.effectAllowed='move';c.classList.add('dragging');});
+document.addEventListener('dragover',e=>{const z=e.target.closest&&e.target.closest('.rbdrop');if(!z)return;e.preventDefault();z.classList.add('over');});
+document.addEventListener('dragleave',e=>{const z=e.target.closest&&e.target.closest('.rbdrop');if(z)z.classList.remove('over');});
+document.addEventListener('drop',e=>{const z=e.target.closest&&e.target.closest('.rbdrop');if(!z)return;e.preventDefault();z.classList.remove('over');ACT.rbFileRead(e.dataTransfer.files&&e.dataTransfer.files[0]);});
 document.addEventListener('dragend',e=>{document.querySelectorAll('.dragging,.over').forEach(n=>n.classList.remove('dragging','over'));});
 document.addEventListener('dragover',e=>{const c=e.target.closest&&e.target.closest('.bcol');if(!c)return;e.preventDefault();document.querySelectorAll('.bcol.over').forEach(n=>{if(n!==c)n.classList.remove('over');});c.classList.add('over');});
 document.addEventListener('drop',e=>{const c=e.target.closest&&e.target.closest('.bcol');if(!c)return;e.preventDefault();c.classList.remove('over');
