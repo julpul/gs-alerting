@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { api, ApiError, identityHeaders, setIdentity, signInUrl, type Alert, type Directory, type Me, type Person, type Platform, type RuleRow, type Team } from './api';
+import { resetIdentity } from './v1';
 
 export type Viewing = { team: string; role: 'responder' | 'approver' | 'editor' };
 export type FlagItem = { id: number; title: string; description?: string; appearance: 'success' | 'error' | 'warning' | 'info' };
@@ -141,6 +142,9 @@ export function HeraldProvider({ children }: { children: ReactNode }) {
     void refresh();
     api<RuleRow[]>('/api/rules').then(setRules).catch(() => setRules([]));
   }, [ready, owner, myRef, role, refresh]);
+
+  /* The /v1 screens hold a token for one person: drop it when the person changes. */
+  useEffect(() => { if (ready) resetIdentity(); }, [ready, myRef]);
 
   /* Live updates: the service pushes a line whenever an alert changes; a slow poll covers a dropped connection. */
   useEffect(() => {

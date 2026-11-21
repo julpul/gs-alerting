@@ -87,6 +87,7 @@ pre.wrap{white-space:pre-wrap;overflow-wrap:anywhere}
 .btn.warn{color:var(--crit);border-color:var(--crit)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.link{border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;font-weight:500}
+.toplinks{display:flex;gap:2px;margin-right:6px}.toplinks a{padding:5px 9px;border-radius:6px;color:var(--ink);text-decoration:none;font-weight:500;font-size:13px}.toplinks a:hover{background:var(--sunk)}@media (max-width:860px){.toplinks{display:none}}
 .in{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-width:0;max-width:100%;width:100%}
 select.in{width:auto}
 textarea.in{resize:vertical;min-height:64px;line-height:1.4}
@@ -696,6 +697,7 @@ body[data-level="L0"] .navfoot,body[data-level="L1"] .navfoot{display:none}
       <div class="create"><button class="btn pri" data-act="createToggle" aria-haspopup="true"><svg class="ic sm" aria-hidden="true"><use href="#i-add"/></svg>Create</button><div class="menu" id="createMenu" hidden></div></div>
     </div>
     <div class="tright">
+      <nav class="toplinks" aria-label="AI and agents (opens the new interface)"><a href="/ads/#/copilot" title="Ask the AI copilot about alerts, rules and runbooks">Copilot</a><a href="/ads/#/approvals" title="Approvals waiting for you, from runbooks and AI agents">Approvals</a><a href="/ads/#/agents" title="Tokens and setup for Claude Code and other MCP agents">Agents</a></nav>
       <button class="iconbtn" data-act="bell" title="Alerts assigned to you" aria-label="Alerts assigned to you"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><span class="dotn" id="bellN" hidden></span></button>
       <button class="iconbtn" data-act="nav" data-view="settings" title="Settings" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
       <div class="who"><button class="avbtn" id="whoBtn" data-act="whoToggle" aria-haspopup="true" aria-label="Switch who you are viewing as"></button><div class="menu" id="whoMenu" hidden></div></div>

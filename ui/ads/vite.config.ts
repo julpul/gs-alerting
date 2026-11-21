@@ -14,6 +14,6 @@ export default defineConfig({
   base: './',
   build: { outDir: '../../backend/static/herald/ads', emptyOutDir: true, chunkSizeWarningLimit: 4000 },
   server: {
-    proxy: Object.fromEntries(['/api', '/ingest', '/auth', '/login', '/lab.html'].map((p) => [p, api])),
+    proxy: Object.fromEntries(['/api', '/v1', '/mcp', '/ingest', '/auth', '/login', '/lab.html'].map((p) => [p, api])),
   },
 });

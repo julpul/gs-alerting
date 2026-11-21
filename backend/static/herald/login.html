@@ -254,8 +254,11 @@ Promise.all([getJson('/api/me').catch(function(){return null;}),getJson('/auth/p
   var me=res[0],prov=res[1];
   /* Already signed in, or this Herald runs without sign-in: go straight on (unless there is an error to read). */
   if(me&&me.ok&&me.data&&me.data.mode==='oidc'&&!error&&!stepUp){location.replace(next);return;}
-  if(me&&me.ok&&me.data&&me.data.mode==='demo'){
-    var open=el('a','btn pri','Open Herald');open.href=next;
+  /* Demo mode (or a service with no single sign-on set up): nobody signs in here, you pick who you are inside the app. */
+  var noSso=(!me||me.status===404)&&(!prov||prov.status===404);
+  if((me&&me.ok&&me.data&&me.data.mode==='demo')||noSso){
+    if(!error&&!stepUp){location.replace(next);return;}
+    var open=el('a','btn pri','Continue');open.href=next;
     showMessage({kind:'info',icon:'info',title:'No sign-in needed',text:'This Herald runs in demo mode, so you pick who you are inside the app.'},open);
     renderProviders([]);return;}
   /* With no buttons to press, the reason there are none matters more than any ?error= message. */

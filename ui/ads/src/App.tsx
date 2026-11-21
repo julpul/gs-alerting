@@ -29,7 +29,23 @@ import { Divider } from '@atlaskit/side-nav-items/menu-section';
 import Textfield from '@atlaskit/textfield';
 import { token } from '@atlaskit/tokens';
 
+import AiAgentIcon from '@atlaskit/icon/core/ai-agent';
+import AiChatIcon from '@atlaskit/icon/core/ai-chat';
+import AiSparkleIcon from '@atlaskit/icon/core/ai-sparkle';
+import CalendarIcon from '@atlaskit/icon/core/calendar';
+import CheckIcon from '@atlaskit/icon/core/status-verified';
+import LightbulbIcon from '@atlaskit/icon/core/lightbulb';
+import PulseIcon from '@atlaskit/icon/core/pulse';
+
+import { useStream } from './ai';
+import { Agents } from './views/Agents';
 import { AlertModal } from './views/AlertModal';
+import { Approvals, useApprovalCount } from './views/Approvals';
+import { Assistant } from './views/Assistant';
+import { Copilot } from './views/Copilot';
+import { Knowledge } from './views/Knowledge';
+import { Metrics } from './views/Metrics';
+import { OnCall } from './views/OnCall';
 import { Alerts } from './views/Alerts';
 import { ConnectPlatform, PlatformPage, Platforms } from './views/Platforms';
 import { Activity, Rules, Runbooks, Sent, Teams } from './views/Lists';
@@ -97,6 +113,15 @@ export function App() {
   const section = route.parts[0] ?? 'for-you';
   const mine = h.alerts.filter((a) => a.status !== 'resolved' && a.incident_manager === h.myRef).length;
   const sso = h.me.mode === 'oidc';
+  const approvals = useApprovalCount();
+  useStream(['approval.requested', 'alert.escalated'], (e) => {
+    const p = e.payload as { action?: string; title?: string; level?: number };
+    if (e.type === 'approval.requested') {
+      h.notify({ appearance: 'warning', title: 'Someone asks for approval', description: `${String(p.action ?? 'An action').replace(/_/g, ' ')}. Open Approvals to decide.` });
+    } else if (e.type === 'alert.escalated') {
+      h.notify({ appearance: 'warning', title: 'An alert escalated', description: `${p.title ?? 'Nobody acknowledged it'}${p.level ? ` (now level ${p.level})` : ''}` });
+    }
+  });
 
   const signOut = async () => {
     let next = '/login';
@@ -123,6 +148,13 @@ export function App() {
       case 'teams': return <Teams />;
       case 'sent': return <Sent />;
       case 'activity': return <Activity />;
+      case 'copilot': return <Copilot alertId={route.parts[1]} />;
+      case 'approvals': return <Approvals />;
+      case 'assistant': return <Assistant tab={route.parts[1]} />;
+      case 'agents': return <Agents />;
+      case 'oncall': return <OnCall />;
+      case 'knowledge': return <Knowledge />;
+      case 'health': return <Metrics />;
       default: return <Alerts />;
     }
   })();
@@ -195,9 +227,17 @@ export function App() {
             <LinkMenuItem href="#/rules" isSelected={section === 'rules'} elemBefore={<AutomationIcon label="" />}>Rules</LinkMenuItem>
             <LinkMenuItem href="#/runbooks" isSelected={section === 'runbooks'} elemBefore={<BookIcon label="" />}>Runbooks</LinkMenuItem>
             <LinkMenuItem href="#/teams" isSelected={section === 'teams'} elemBefore={<PeopleIcon label="" />}>Teams</LinkMenuItem>
+            <LinkMenuItem href="#/oncall" isSelected={section === 'oncall'} elemBefore={<CalendarIcon label="" />}>On-call</LinkMenuItem>
+            <Divider />
+            <LinkMenuItem href="#/approvals" isSelected={section === 'approvals'} elemBefore={<CheckIcon label="" />} elemAfter={approvals ? <Badge appearance="important">{approvals}</Badge> : undefined}>Approvals</LinkMenuItem>
+            <LinkMenuItem href="#/copilot" isSelected={section === 'copilot'} elemBefore={<AiChatIcon label="" />}>Copilot</LinkMenuItem>
+            <LinkMenuItem href="#/assistant/rule" isSelected={section === 'assistant'} elemBefore={<AiSparkleIcon label="" />}>AI assistant</LinkMenuItem>
+            <LinkMenuItem href="#/agents" isSelected={section === 'agents'} elemBefore={<AiAgentIcon label="" />}>Agents & MCP</LinkMenuItem>
+            <LinkMenuItem href="#/knowledge" isSelected={section === 'knowledge'} elemBefore={<LightbulbIcon label="" />}>Knowledge</LinkMenuItem>
             <Divider />
             <LinkMenuItem href="#/sent" isSelected={section === 'sent'} elemBefore={<SendIcon label="" />}>Sent messages</LinkMenuItem>
             <LinkMenuItem href="#/activity" isSelected={section === 'activity'} elemBefore={<ChangesIcon label="" />}>Activity log</LinkMenuItem>
+            <LinkMenuItem href="#/health" isSelected={section === 'health'} elemBefore={<PulseIcon label="" />}>Health</LinkMenuItem>
           </MenuList>
         </SideNavBody>
         <SideNavFooter>
