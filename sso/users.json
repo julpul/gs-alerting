@@ -1,0 +1,154 @@
+{
+ "users": [
+  {
+   "username": "bartek.jankowski",
+   "email": "bartek.jankowski@demo",
+   "name": "Bartek Jankowski",
+   "department": "Checkout Project"
+  },
+  {
+   "username": "ewa.wisniewska",
+   "email": "ewa.wisniewska@demo",
+   "name": "Ewa Wisniewska",
+   "department": "Checkout Project, Team Payments"
+  },
+  {
+   "username": "ola.sikora",
+   "email": "ola.sikora@demo",
+   "name": "Ola Sikora",
+   "department": "Checkout Project, Team Security"
+  },
+  {
+   "username": "agnieszka.krol",
+   "email": "agnieszka.krol@demo",
+   "name": "Agnieszka Krol",
+   "department": "Team Payments"
+  },
+  {
+   "username": "anna",
+   "email": "anna@demo",
+   "name": "Anna Kowalska",
+   "department": "Team Payments"
+  },
+  {
+   "username": "marta.nowak",
+   "email": "marta.nowak@demo",
+   "name": "Marta Nowak",
+   "department": "Team Payments"
+  },
+  {
+   "username": "tomasz.kaminski",
+   "email": "tomasz.kaminski@demo",
+   "name": "Tomasz Kaminski",
+   "department": "Team Payments"
+  },
+  {
+   "username": "adam.wojcik",
+   "email": "adam.wojcik@demo",
+   "name": "Adam Wojcik",
+   "department": "Team Pricing"
+  },
+  {
+   "username": "michal.wrobel",
+   "email": "michal.wrobel@demo",
+   "name": "Michal Wrobel",
+   "department": "Team Pricing"
+  },
+  {
+   "username": "oliwia.kaczmarek",
+   "email": "oliwia.kaczmarek@demo",
+   "name": "Oliwia Kaczmarek",
+   "department": "Team Pricing"
+  },
+  {
+   "username": "daniel.reyes",
+   "email": "daniel.reyes@demo",
+   "name": "Daniel Reyes",
+   "department": "Team Rates"
+  },
+  {
+   "username": "james.hartley",
+   "email": "james.hartley@demo",
+   "name": "James Hartley",
+   "department": "Team Rates"
+  },
+  {
+   "username": "krzysztof.pawlak",
+   "email": "krzysztof.pawlak@demo",
+   "name": "Krzysztof Pawlak",
+   "department": "Team Security"
+  },
+  {
+   "username": "natalia.mazur",
+   "email": "natalia.mazur@demo",
+   "name": "Natalia Mazur",
+   "department": "Team Security"
+  },
+  {
+   "username": "julia.dabrowska",
+   "email": "julia.dabrowska@demo",
+   "name": "Julia Dabrowska",
+   "department": "Team Settlements"
+  },
+  {
+   "username": "kasia.zielinska",
+   "email": "kasia.zielinska@demo",
+   "name": "Kasia Zielinska",
+   "department": "Team Settlements"
+  },
+  {
+   "username": "marek.lewandowski",
+   "email": "marek.lewandowski@demo",
+   "name": "Marek Lewandowski",
+   "department": "Team Settlements"
+  },
+  {
+   "username": "piotr",
+   "email": "piotr@demo",
+   "name": "Piotr Wisniewski",
+   "department": "Team Settlements"
+  },
+  {
+   "username": "master",
+   "email": "master@demo",
+   "name": "Mira Master",
+   "department": "Management"
+  },
+  {
+   "username": "manager",
+   "email": "manager@demo",
+   "name": "Marta Manager",
+   "department": "Management"
+  },
+  {
+   "username": "sophie.bennett",
+   "email": "sophie.bennett@demo",
+   "name": "Sophie Bennett",
+   "department": "Operations"
+  },
+  {
+   "username": "root.markets",
+   "email": "root.markets@demo",
+   "name": "Grzegorz Michalak",
+   "department": "Management"
+  },
+  {
+   "username": "root.payments",
+   "email": "root.payments@demo",
+   "name": "Paulina Payments",
+   "department": "Management"
+  },
+  {
+   "username": "root.security",
+   "email": "root.security@demo",
+   "name": "Sylwia Security",
+   "department": "Management"
+  },
+  {
+   "username": "root.settlements",
+   "email": "root.settlements@demo",
+   "name": "Stefan Settlements",
+   "department": "Management"
+  }
+ ]
+}
