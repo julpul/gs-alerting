@@ -34,7 +34,7 @@ from app.pipeline.alert_writer import UpsertResult, alert_summary, upsert_alert
 from app.pipeline.envelope import parse_received_at
 from app.pipeline.normalize import normalize
 from app.pipeline.present import Renderer, build_alert
-from app.pipeline.presets import RESOLVE, get_preset
+from app.pipeline.presets import RESOLVE, effective_preset
 from app.pipeline.presets.autoresolve import resolve_from_source
 from app.pipeline.ruleview import cfg
 
@@ -206,7 +206,7 @@ class Worker:
         ev = normalize(envelope, source)
         envelope["_meta"] = ev.meta
 
-        preset = get_preset(source.get("preset"))
+        preset = effective_preset(source.get("preset"), ev.raw)
         if preset and preset.on_event and preset.on_event(ev.raw) == RESOLVE:
             return await self._auto_resolve(preset, ev, envelope, source, source_id)
 

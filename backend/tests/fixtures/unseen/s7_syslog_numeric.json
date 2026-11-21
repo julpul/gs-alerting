@@ -1,0 +1,9 @@
+{
+  "host": "fx-gw-02",
+  "facility": "daemon",
+  "sev": 3,
+  "app": "fix-gateway",
+  "pid": 28114,
+  "ts": "Nov 20 14:05:09",
+  "msg": "Session DROPPED: heartbeat timeout after 30s"
+}

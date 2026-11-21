@@ -1,0 +1,21 @@
+{
+  "header": {
+    "messageId": "PMT-2026-11-20-000881",
+    "messageType": "pacs.002.status",
+    "creationDateTime": "2026-11-20T14:31:07.550Z",
+    "sender": {"system": "payments-hub", "region": "emea"}
+  },
+  "body": {
+    "originalInstruction": {
+      "endToEndId": "E2E-7781-AA",
+      "amount": {"value": "4750000.00", "currency": "GBP"},
+      "debtor": {"name": "REDACTED", "account": {"iban": "GB00XXXX00000000000000"}},
+      "creditor": {"name": "REDACTED", "agent": {"bic": "XXXXGB2L"}}
+    },
+    "status": {
+      "code": "RJCT",
+      "reason": {"code": "AM04", "text": "Insufficient funds"},
+      "sla": {"cutoff": "2026-11-20T16:00:00Z", "breached": false}
+    }
+  }
+}

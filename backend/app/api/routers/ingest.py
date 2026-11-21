@@ -20,6 +20,7 @@ from app.core.rabbit import EVENTS_EXCHANGE, EVENTS_QUEUE, Rabbit
 from app.core.security import hash_token
 from app.pipeline.envelope import MAX_EVENT_BYTES, build_envelope, priority_for
 from app.pipeline.presets import split_events
+from app.pipeline.textlog import is_json_content_type, parse_text
 from app.schemas.api import RaiseAlertRequest
 
 log = logging.getLogger(__name__)
@@ -120,6 +121,52 @@ def _accepted(envelope: dict[str, Any]) -> Response:
     )
 
 
+def body_events(body: bytes, content_type: str | None) -> tuple[list[dict[str, Any]] | None, Any]:
+    """`(None, obj)` for a single JSON object; `(events, None)` for a JSON array (non-objects are wrapped
+    as `{"value": x}`) or a text body (`textlog`: one event per line). A JSON content type must carry an
+    object or an array; another content type falls back to text when the body is not JSON."""
+    as_json = is_json_content_type(content_type)
+    try:
+        parsed: Any = orjson.loads(body)
+    except orjson.JSONDecodeError as exc:
+        if as_json or not body.strip():
+            raise AppError(422, "validation_error", f"body is not valid JSON: {exc}") from exc
+        parsed = None
+    else:
+        if isinstance(parsed, dict):
+            return None, parsed
+        if isinstance(parsed, list):
+            return [e if isinstance(e, dict) else {"value": e} for e in parsed], None
+        if as_json or not (content_type or "").lower().startswith("text/"):
+            raise AppError(422, "validation_error", "body must be a JSON object, a JSON array or text lines")
+    events = parse_text(body.decode("utf-8", errors="replace"))
+    if not events:
+        raise AppError(422, "validation_error", "the body has no non-empty line")
+    return events, None
+
+
+def envelopes_for(
+    source: dict[str, Any], events: list[dict[str, Any]], priority: int
+) -> list[dict[str, Any]]:
+    if len(events) > MAX_BATCH:
+        raise AppError(422, "validation_error", f"at most {MAX_BATCH} events per batch")
+    preset = source.get("preset")
+    return [
+        build_envelope(source_id=source["id"], raw=part, priority=priority)
+        for event in events
+        for part in split_events(preset, event)
+    ]
+
+
+def _batch_accepted(envelopes: list[dict[str, Any]], *, single: bool = False) -> Response:
+    """Batch shape; for a non-object body to the single endpoint also `eventId`/`receivedAt` of the first."""
+    body: dict[str, Any] = {"accepted": len(envelopes), "eventIds": [e["event_id"] for e in envelopes]}
+    if single:
+        first = envelopes[0] if envelopes else {"event_id": None, "received_at": None}
+        body.update(eventId=first["event_id"], receivedAt=first["received_at"])
+    return ORJSONResponse(body, status_code=202)
+
+
 @router.post("/v1/ingest/{sourceKey}", status_code=202)
 async def ingest_event(
     sourceKey: str,
@@ -128,18 +175,22 @@ async def ingest_event(
     rabbit: RabbitDep,
     x_api_key: str | None = Header(default=None),
 ) -> Response:
+    """A JSON object (one event; a preset may split it), a JSON array (a batch) or text (one per line)."""
     source = await _source_for(pool, x_api_key if sourceKey == "_" else sourceKey)
-    raw = _json(await _body(request, MAX_EVENT_BYTES))
-    if not isinstance(raw, dict):
-        raise AppError(422, "validation_error", "body must be a JSON object")
+    body = await _body(request, MAX_BATCH_BYTES)
+    events, single = body_events(body, request.headers.get("content-type"))
     priority = priority_for(source["default_severity"])
-    envelopes = [
-        build_envelope(source_id=source["id"], raw=event, priority=priority)
-        for event in split_events(source.get("preset"), raw)
-    ]
-    await _publish(rabbit, envelopes, priority)
-    INGESTED.labels(source=source["name"]).inc(len(envelopes))
-    return _accepted(envelopes[0])
+    if events is None:
+        if len(body) > MAX_EVENT_BYTES:
+            raise AppError(413, "payload_too_large", f"request body exceeds {MAX_EVENT_BYTES} bytes")
+        events = [single]
+    envelopes = envelopes_for(source, events, priority)
+    if envelopes:
+        await _publish(rabbit, envelopes, priority)
+        INGESTED.labels(source=source["name"]).inc(len(envelopes))
+    if single is not None:
+        return _accepted(envelopes[0])
+    return _batch_accepted(envelopes, single=True)
 
 
 @router.post("/v1/ingest/{sourceKey}/batch", status_code=202)
@@ -154,21 +205,12 @@ async def ingest_batch(
     events = _json(await _body(request, MAX_BATCH_BYTES))
     if not isinstance(events, list) or not all(isinstance(e, dict) for e in events):
         raise AppError(422, "validation_error", "body must be a JSON array of objects")
-    if len(events) > MAX_BATCH:
-        raise AppError(422, "validation_error", f"at most {MAX_BATCH} events per batch")
     priority = priority_for(source["default_severity"])
-    preset = source.get("preset")
-    envelopes = [
-        build_envelope(source_id=source["id"], raw=part, priority=priority)
-        for event in events
-        for part in split_events(preset, event)
-    ]
+    envelopes = envelopes_for(source, events, priority)
     if envelopes:
         await _publish(rabbit, envelopes, priority)
         INGESTED.labels(source=source["name"]).inc(len(envelopes))
-    return ORJSONResponse(
-        {"accepted": len(envelopes), "eventIds": [e["event_id"] for e in envelopes]}, status_code=202
-    )
+    return _batch_accepted(envelopes)
 
 
 async def _raise_source(pool: Pool, x_api_key: str | None = Header(default=None)) -> dict[str, Any]:

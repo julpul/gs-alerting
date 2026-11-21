@@ -114,7 +114,7 @@ async def test_oversized_payload_is_413(client, make_source, tap):
     assert len(await tap.wait_for(1, source)) == 1
 
 
-@pytest.mark.parametrize("content", [b"not json", b"[1, 2]", b'"text"', b"123"])
+@pytest.mark.parametrize("content", [b"not json", b'"text"', b"123", b"null"])
 async def test_non_object_body_is_422(client, make_source, content):
     source = await make_source()
     resp = await client.post(
@@ -122,6 +122,37 @@ async def test_non_object_body_is_422(client, make_source, content):
     )
     assert resp.status_code == 422
     assert resp.json()["code"] == "validation_error"
+
+
+async def test_top_level_array_is_a_batch(client, make_source, tap):
+    source = await make_source()
+    resp = await client.post(f"/v1/ingest/{source['key']}", json=[{"a": 1}, {"a": 2}, "x"])
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["accepted"] == 3 and len(body["eventIds"]) == 3 and body["eventId"] == body["eventIds"][0]
+    raws = sorted((e["raw"] for e, _ in await tap.wait_for(3, source)), key=str)
+    assert {"value": "x"} in raws and {"a": 1} in raws
+
+
+async def test_text_body_is_one_event_per_line(client, make_source, tap):
+    source = await make_source()
+    text = "2026-11-20T14:05:09.120Z ERROR db-07 disk=97\nWARN second line k=\"a b\"\n"
+    resp = await client.post(
+        f"/v1/ingest/{source['key']}", content=text, headers={"Content-Type": "text/plain"}
+    )
+    assert resp.status_code == 202 and resp.json()["accepted"] == 2
+    raws = {e["raw"]["message"]: e["raw"] for e, _ in await tap.wait_for(2, source)}
+    first = raws["2026-11-20T14:05:09.120Z ERROR db-07 disk=97"]
+    assert (first["level"], first["disk"], first["timestamp"]) == ("ERROR", 97, "2026-11-20T14:05:09.120Z")
+    assert raws['WARN second line k="a b"']["k"] == "a b"
+
+
+async def test_single_object_limits_still_apply_to_the_single_endpoint(client, make_source):
+    source = await make_source()
+    url = f"/v1/ingest/{source['key']}"
+    many = [{"i": i} for i in range(1001)]
+    assert (await client.post(url, json=many)).status_code == 422
+    assert (await client.post(url, content=b"", headers={"Content-Type": "text/plain"})).status_code == 422
 
 
 async def test_batch_of_1000_is_accepted_and_all_consumed(client, make_source, tap):

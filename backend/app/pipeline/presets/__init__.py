@@ -54,7 +54,17 @@ def get_preset(name: str | None) -> Preset | None:
     return PRESETS.get(name or "")
 
 
+def detect_preset(raw: dict[str, Any]) -> str | None:
+    """Zero configuration: a source without a preset still recognises an Alertmanager webhook body."""
+    return "alertmanager" if alertmanager.looks_like(raw) else None
+
+
+def effective_preset(name: str | None, raw: dict[str, Any]) -> Preset | None:
+    """The source's preset, else the one the body's shape gives away (`detect_preset`)."""
+    return get_preset(name) or get_preset(detect_preset(raw))
+
+
 def split_events(preset: str | None, raw: dict[str, Any]) -> list[dict[str, Any]]:
-    """The raw events a body of `preset` stands for; unknown/no preset -> the body itself."""
-    found = get_preset(preset)
+    """The raw events a body of `preset` stands for; no preset and no recognised shape -> the body itself."""
+    found = effective_preset(preset, raw)
     return found.split(raw) if found else [raw]

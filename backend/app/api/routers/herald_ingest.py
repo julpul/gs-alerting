@@ -1,9 +1,9 @@
 """`POST /ingest/{platform}`: Herald's webhook address on top of our ingest path.
 
 The platform's token is our source key, sent as `X-Herald-Token` (or the key itself in the path, like
-`/v1/ingest/{key}`). The body may be a JSON object, a JSON array (a batch) or a text line (becomes
-`{"message": line}`). Events go through the same key cache, envelope, preset split and confirmed RabbitMQ
-publish as `/v1/ingest`, so the worker cannot tell the difference.
+`/v1/ingest/{key}`). The body may be a JSON object, a JSON array (a batch) or text (one event per
+line, see `app.pipeline.textlog`). Events go through the same key cache, envelope, preset split and
+confirmed RabbitMQ publish as `/v1/ingest`, so the worker cannot tell the difference.
 """
 
 from __future__ import annotations
@@ -23,19 +23,19 @@ from app.herald.platforms import PLATFORM_ALIASES
 from app.herald.routing import herald_router
 from app.pipeline.envelope import build_envelope, priority_for
 from app.pipeline.presets import split_events
+from app.pipeline.textlog import parse_text
 
 router = herald_router()
 
 
 def parse_body(body: bytes) -> list[dict[str, Any]]:
-    """JSON object / array, or a text line."""
+    """JSON object / array, or text (`textlog`: one event per line, `key=value` pairs, timestamp, level)."""
     try:
         parsed: Any = orjson.loads(body)
     except orjson.JSONDecodeError:
-        text = body.decode("utf-8", errors="replace").strip()
-        if not text:
+        parsed = parse_text(body.decode("utf-8", errors="replace"))
+        if not parsed:
             raise AppError(422, "validation_error", "the body is empty") from None
-        parsed = {"message": text}
     items = parsed if isinstance(parsed, list) else [parsed]
     if len(items) > MAX_BATCH:
         raise AppError(422, "validation_error", f"at most {MAX_BATCH} events per request")

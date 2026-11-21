@@ -1,0 +1,8 @@
+{
+  "component": "fix-gateway",
+  "check": "session-heartbeat",
+  "state": "DOWN",
+  "since": 1795183200,
+  "checked_at": 1795183500,
+  "details": {"session": "FIX.4.4:BANKA->EXCH1", "missed_heartbeats": 6}
+}
