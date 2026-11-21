@@ -1,80 +1,100 @@
 # Co musisz zrobić ręcznie (dev checklist)
 
 Wszystko, czego agenci nie mogą / nie powinni zrobić sami: klucze, sekrety, decyzje kontowe. Odhaczaj `[x]`.
-Status kroków, które orkiestrator już wykonał, jest oznaczony **(zrobione przez Claude)**.
+**(Claude)** = już zrobione przez orkiestratora.
 
 ---
 
-## 1. Klucze LLM (wymagane dla funkcji AI)
+## 0. TL;DR — co zostało po Twojej stronie
 
-Produkt używa prawdziwych modeli (bez mocków) przez LiteLLM. Wystarczy **jeden** dostawca, dwa dają fallback.
+| # | Co | Gdzie | Pilne? |
+| --- | --- | --- | --- |
+| 1 | Ponowić płatność GitHub **albo** upublicznić repo | https://github.com/settings/billing | tak — bez tego CI/CD nie startuje |
+| 2 | Klucz LLM (min. 1 dostawca) | `.env` lokalnie + Railway `api` i `workers` | tak — inaczej AI = „unavailable” |
+| 3 | Limit wydatków u dostawcy LLM | panel dostawcy | tak |
+| 4 | Zdecydować o widoczności repo dla jury | GitHub | przed oddaniem |
+| 5 | Front + nagranie wideo + upload do Lockbox | — | na koniec |
 
-| Zmienna | Skąd | Uwagi |
+---
+
+## 1. GitHub — płatność / Actions
+
+Objaw: każdy workflow kończy się `startup_failure` po 0 s (sprawdzone na minimalnym `echo hi` — to konto, nie nasze pliki).
+
+**Ponowienie płatności:**
+1. https://github.com/settings/billing → u góry czerwony baner → **Retry payment** / **Update payment method**.
+2. Payment information → dodaj/zmień kartę. Jeśli bank blokuje — w aplikacji banku zezwól na płatności internetowe/zagraniczne (GitHub obciąża z USA), potem Retry.
+3. https://github.com/settings/billing/spending_limit (Actions) — limit > 0 USD albo „unlimited”, jeśli darmowe 2000 min/mies. się skończyły.
+4. Daj znać → Claude odpali `gh workflow run ci.yml` i sprawdzi.
+
+**Alternatywa (darmowo, od razu):** upublicznić repo — Actions na publicznych repo są bez limitu, jury i tak potrzebuje dostępu. W repo nie ma sekretów.
+```bash
+gh repo edit julpul/gs-alerting --visibility public --accept-visibility-change-consequences
+```
+
+- [x] Repo `julpul/gs-alerting` (prywatne) **(Claude)**
+- [x] Secret `RAILWAY_TOKEN` (CD) — ustawiony przez dewelopera 2026-11-21 01:05
+- [x] Repo variable `RAILWAY_API_URL` (smoke po deployu) **(Claude)**
+- [ ] Płatność / widoczność (wyżej)
+- [ ] (opcjonalnie) Branch protection `prod`: Settings → Branches → require check `ci`
+
+## 2. Klucze LLM
+
+Produkt używa prawdziwych modeli przez LiteLLM (bez mocków). Wystarczy **jeden** dostawca, dwa = fallback. Load testy nie wołają LLM.
+
+| Zmienna | Skąd | Przykład wartości |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | https://platform.openai.com/api-keys | |
-| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys | |
-| `OPENROUTER_API_KEY` | https://openrouter.ai/keys | opcjonalny trzeci fallback |
-| `LLM_MODEL_FAST` | np. `anthropic/claude-haiku-5-5` lub `openai/<mały model>` | sugestie, mapowanie schematów |
-| `LLM_MODEL_SMART` | np. `anthropic/claude-sonnet-5-5` lub `openai/<flagowy model>` | reguła z tekstu, parsowanie runbooków |
-| `LLM_FALLBACKS` | np. `openai/<model>,openrouter/<vendor>/<model>` | kolejność fallbacku |
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys | `sk-ant-...` |
+| `OPENAI_API_KEY` | https://platform.openai.com/api-keys | `sk-...` |
+| `OPENROUTER_API_KEY` (opcjonalnie) | https://openrouter.ai/keys | `sk-or-...` |
+| `LLM_MODEL_FAST` | sugestie, mapowanie schematów | `anthropic/claude-haiku-5-5` |
+| `LLM_MODEL_SMART` | reguła z tekstu, parsowanie runbooków, copilot | `anthropic/claude-sonnet-5-5` |
+| `LLM_FALLBACKS` (opcjonalnie) | kolejność fallbacku | `openai/gpt-5-mini` |
 
-- [ ] Lokalnie: `cp .env.example .env` i wpisz klucze (plik jest w `.gitignore`).
-- [ ] Railway: wklej te same zmienne do serwisów `api` i `workers` (Variables → Raw editor). Komenda, jeśli wolisz CLI (wartości wpisujesz sam, nie wklejaj kluczy do czatu z AI):
-  ```bash
-  railway variables --service api --set "ANTHROPIC_API_KEY=..." --set "OPENAI_API_KEY=..."
-  railway variables --service workers --set "ANTHROPIC_API_KEY=..." --set "OPENAI_API_KEY=..."
-  ```
-- [ ] Ustaw limit wydatków u dostawcy (np. 20 USD) — load testy nie wołają LLM, ale demo tak.
+**Lokalnie** (plik w `.gitignore`):
+```bash
+cp .env.example .env      # potem wpisz klucze w edytorze
+make up                   # kontenery czytają ../.env
+```
 
-Bez kluczy wszystko działa poza draftami AI (UI pokaże „AI unavailable”, fixed-before i runbook dalej działają).
+**Railway** — te same zmienne w serwisach **`api`** i **`workers`** (AI worker działa w `workers`). Najprościej w panelu: Railway → projekt `gs-alerting` → serwis → *Variables* → *Raw Editor*, wklej:
+```
+ANTHROPIC_API_KEY=sk-ant-...
+LLM_MODEL_FAST=anthropic/claude-haiku-5-5
+LLM_MODEL_SMART=anthropic/claude-sonnet-5-5
+```
+Albo CLI w **zwykłym terminalu** (nie wklejaj kluczy do czatu z AI):
+```bash
+railway variables --service api     --set "ANTHROPIC_API_KEY=sk-ant-..." --set "LLM_MODEL_FAST=anthropic/claude-haiku-5-5" --set "LLM_MODEL_SMART=anthropic/claude-sonnet-5-5"
+railway variables --service workers --set "ANTHROPIC_API_KEY=sk-ant-..." --set "LLM_MODEL_FAST=anthropic/claude-haiku-5-5" --set "LLM_MODEL_SMART=anthropic/claude-sonnet-5-5"
+```
+Railway sam zrobi redeploy obu serwisów.
 
-## 2. Sekrety aplikacji
+- [ ] Klucz lokalnie w `.env`
+- [ ] Klucz w Railway `api` + `workers`
+- [ ] Limit wydatków u dostawcy (np. 20 USD)
 
-| Zmienna | Jak wygenerować |
-| --- | --- |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `APP_SECRET` (Fernet) | `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+Bez kluczy działa wszystko poza draftami AI — sugestie pokazują „AI unavailable” + deterministyczną część (fixed-before, runbook).
 
-Lokalnie `.env.example` ma wartości dev; na Railway orkiestrator ustawia losowe wartości przy deployu **(zrobione przez Claude, sprawdź w Railway → Variables)**.
-
-## 3. GitHub
-
-- [x] Repo `julpul/gs-alerting` (prywatne) **(zrobione przez Claude)**
-- [ ] **Przed oddaniem:** zdecyduj czy repo ma być publiczne dla jury: `gh repo edit julpul/gs-alerting --visibility public --accept-visibility-change-consequences` (albo dodaj jurorów jako collaborators).
-- [x] **Secret `RAILWAY_TOKEN` dla CD** — ustawiony przez dewelopera (2026-11-21 01:05).
-- [x] Repo variable `RAILWAY_API_URL` (dla smoke testu po deployu) **(zrobione przez Claude)**
-- [ ] (opcjonalnie) Branch protection na `prod`: Settings → Branches → require status check `ci`.
+## 3. Sekrety aplikacji
+`JWT_SECRET` i `APP_SECRET` (Fernet) na Railway wygenerowane losowo przy setupie **(Claude)**. Lokalnie `.env.example` ma wartości dev. Nic do zrobienia.
 
 ## 4. Railway
+- [x] Projekt `gs-alerting` / `production`: api, workers, mockgw, simulator, mailpit, postgres (pgvector + wolumen), Redis, rabbitmq (+ wolumen), zmienne, domeny **(Claude, `infra/RAILWAY.md`)**
+- [x] Deploy z lokalnego CLI (`railway up`) **(Claude)** — działa bez GitHub Actions
+- [ ] Po naprawie Actions: deploy = `git push origin main:prod` (CD: CI → `railway up` × 4 → smoke `/readyz`)
+- [ ] Sprawdź plan Railway (8 serwisów; Hobby wystarczy na demo, load testy robimy lokalnie)
 
-- [x] Projekt `gs-alerting`, środowisko `production`, 8 serwisów, wolumeny, zmienne i domeny publiczne **(zrobione przez Claude — szczegóły w `infra/RAILWAY.md`)**
-- [ ] **Project token dla GitHub Actions** (jeśli nie ma go jeszcze w secrets): Railway → projekt `gs-alerting` → Settings → Tokens → *Create token* (environment: `production`) → potem:
+## 5. Demo / zgłoszenie
+- [ ] Przed nagraniem raz przejść demo (rozgrzewa LLM i embeddingi): `make up && make demo-events`; symulator: http://localhost:8095
+- [ ] Na czas nagrania wyłącz losowe incydenty symulatora: `SIM_AUTO_INCIDENTS=false make up` (lokalnie) / `AUTO_INCIDENTS=false` w serwisie `simulator` (Railway)
+- [ ] Claude Code jako agent MCP (w wideo):
   ```bash
-  gh secret set RAILWAY_TOKEN --repo julpul/gs-alerting   # wklej token w prompt
+  # PAT: POST /v1/tokens (albo ekran tokenów w UI) — wartości nie commituj
+  claude mcp add --transport http alerting https://api-production-d033bedd.up.railway.app/mcp --header "Authorization: Bearer <PAT>"
   ```
-- [ ] Sprawdź plan/limity Railway (8 serwisów: api, workers, mockgw, mailpit, simulator, postgres, redis, rabbitmq). Hobby plan wystarczy na demo; load testy robimy lokalnie, nie na Railway.
-- [ ] Deploy na prod = `git push origin main:prod` (CD robi resztę). Ręczny trigger: Actions → *cd* → Run workflow.
+- [ ] Wideo ≤ 5 min → Lockbox, folder = nazwa zespołu + plik tekstowy z linkiem do repo i URL demo
+- [ ] Przeczytaj sekcję „AI usage & security” w README i potwierdź, że zgadza się z tym, jak pracowaliście
 
-## 5. Lokalne narzędzia
-
-| Narzędzie | Po co | Instalacja |
-| --- | --- | --- |
-| Docker Desktop (≥ 8 GB RAM dla Dockera) | cały stack | już jest |
-| `uv` | backend | już jest |
-| `k6` | load testy | `brew install k6` **(Claude instaluje przy P3-LOAD)** |
-| `gh`, `railway` CLI | repo, deploy | już zalogowane |
-
-## 6. Demo / zgłoszenie
-
-- [ ] Uruchom raz pełny scenariusz demo przed nagraniem (rozgrzewa LLM i embeddingi): `make up && make demo-events`.
-- [ ] Podłączenie Claude Code jako agenta MCP (pokazujemy w wideo):
-  ```bash
-  # PAT generujesz w UI (albo POST /v1/tokens), wartości nie wklejaj do repo
-  claude mcp add --transport http alerting http://localhost:8080/mcp --header "Authorization: Bearer <PAT>"
-  ```
-- [ ] Nagranie ≤ 5 min, upload do Lockbox w folderze z nazwą zespołu + plik tekstowy z linkiem do repo i URL demo na Railway.
-- [ ] Sekcja „AI usage & security” w README jest gotowa — przeczytaj i potwierdź, że zgadza się z tym, jak pracowaliście.
-
-## 7. Front (później)
-
-- [ ] UI w `ui/` (osobny agent/designer) koduje pod `docs/openapi.yaml`. Gdy będzie gotowe: `VITE_API_URL` = URL serwisu `api` na Railway, dodaj origin UI do `CORS_ORIGINS` w serwisie `api`.
+## 6. Front (później)
+- [ ] UI w `ui/` koduje pod `docs/openapi.yaml`. Potem: `VITE_API_URL=https://api-production-d033bedd.up.railway.app`, a origin UI dopisz do `CORS_ORIGINS` w serwisie `api` na Railway.
