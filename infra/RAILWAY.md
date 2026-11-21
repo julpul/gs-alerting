@@ -18,3 +18,9 @@ Variables reference infra via Railway references (`${{postgres.POSTGRES_PASSWORD
 **CD:** `.github/workflows/cd.yml` — push to `prod` ⇒ CI ⇒ `railway up <path> --path-as-root --service <name>` for api, workers, mockgw, simulator ⇒ smoke `GET $RAILWAY_API_URL/readyz`. Needs repo secret `RAILWAY_TOKEN` (project token, see MANUAL_STEPS §4).
 
 Scale workers: Railway → `workers` → Settings → Replicas (stateless; dedup/idempotency in Redis/Postgres make it safe).
+
+## Status (2026-11-21 03:20)
+- Deployed from local CLI (`railway up <dir> --path-as-root --service <name> --detach`) — all 8 services SUCCESS.
+- Seeded once: `railway ssh --service api -- sh -c "cd /app && python -m seed.seed"` (full Vistula Capital org + history).
+- Smoke: `POST /v1/ingest/demo-key-workflow-broker` → 202 → alert `A-41` (Settlements) → SMS + call in mockgw, email in Mailpit.
+- First boot: `workers` start before `api` has migrated and crash once (`relation "rules" does not exist`); Railway's restart policy brings them up after the api migration. On a fresh project deploy `api` first.

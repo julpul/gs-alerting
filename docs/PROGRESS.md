@@ -31,20 +31,20 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P3-ORG | done | implementer / task/P3-ORG-sim + task/P3-ORG-B | 2026-11-21 | 2026-11-21 | sim 99.6 %, seed 97 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
 | P4-MCP | done | implementer / task/P4-MCP | 2026-11-21 | 2026-11-21 | 94–100 % | MCP 2.3 MCPServer at /mcp (PAT), tools per spec §14, request_approval long-poll, copilot via structured-output loop (no native tool calling) |
 | P4-CONNECT | done | implementer / task/P4-CONNECT | 2026-11-21 | 2026-11-21 | 94–100 % | own reconnect supervisor; Alertmanager split + auto-resolve (outcome `auto_resolved`) |
-| P5-DEPLOY | todo | orchestrator | | | | |
-| P5-PERF | todo | | | | | |
+| P5-DEPLOY | in_progress | orchestrator | 2026-11-21 | | | Railway prod live + seeded + smoke OK (manual `railway up`); CD waits for GitHub Actions billing |
+| P5-PERF | in_progress | orchestrator | 2026-11-21 | | | uvloop, 1 Redis RTT/event, AI CPU cap + storm reuse, PG group commit → 2500 ev/s @4 workers |
 | P5-DOCS | todo | | | | | |
 
 ## Measured results (filled from loadtest/results)
 
 | Test | Result | Target | Date |
 | --- | --- | --- | --- |
-| T1 latency ingest→UI p50/p99 | | < 50 ms / < 300 ms | |
-| T1 latency ingest→SMS/email p99 | | < 1 s | |
-| T2 max sustained ev/s (4 workers) | | ≥ 1000 | |
-| T4 lost alerts in chaos | | 0 | |
-| T5 throughput 1/2/4 workers | | linear-ish | |
-| T6 dedup 500 → | | 1 alert, 1 hard notification | |
+| T1 latency ingest→UI p50/p99 | 7 ms / 39 ms | < 50 ms / < 300 ms | 2026-11-21 |
+| T1 latency ingest→SMS/email p99 | 80 / 79 ms | < 1 s | 2026-11-21 |
+| T2 max sustained ev/s (4 workers) | 2500 (clean DB), 1250–1500 (large DB) | ≥ 1000 | 2026-11-21 |
+| T4 lost alerts in chaos | 0 (6474/6474 alerts, SMS outage 60 s + worker SIGKILL) | 0 | 2026-11-21 |
+| T5 throughput 1/2/4 workers | 500 / 750 / 1250 ev/s (shared 10-core laptop) | linear-ish | 2026-11-21 |
+| T6 dedup 500 → | 1 alert ×500, 1 phone + 1 SMS + 1 ui | 1 alert, 1 hard notification | 2026-11-21 |
 
 ## Decision log
 
