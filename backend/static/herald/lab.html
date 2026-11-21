@@ -88,7 +88,7 @@ td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top} tr:l
 (function(){
 'use strict';
 /* The test lab plays the source systems from the hackathon brief. Each case is sent through the
-   system's real route into Herald (its Kafka topic, the webhook, the log source), then the lab
+   system's real route into Herald (its message queue, the webhook, the log source), then the lab
    watches what Herald did and compares it with what should happen. Results go into a case log. */
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -106,7 +106,7 @@ const CH={phone:'phone call',sms:'text message',email:'email',ui:'the Herald scr
 const SETTLE='settlements-order-settlement-failed',ANNA='anna-payments-critical',RATES='rates-large-trade-rejected',PRICING='pricing-engine-warnings';
 const now=()=>new Date().toISOString();
 const SYSTEMS=[
-  {id:'workflow',name:'Workflow engine',icon:'arrow_sync',source:'workflow-events',via:'a message broker (Kafka topic workflow.events)',
+  {id:'workflow',name:'Workflow engine',icon:'arrow_sync',source:'workflow-events',via:'a message queue (RabbitMQ, workflow.events)',
    about:'Runs business workflows such as order settlement, and reports every failure and success.',
    cases:[
     {id:'wf-fail',title:'An order settlement fails in production',note:'The example from the brief.',sample:'workflow_failed',
@@ -135,7 +135,7 @@ const SYSTEMS=[
      expect:{alert:true,rule:ANNA,text:'Herald splits the batch. Only the critical payments-api alert reaches Anna.'}},
     {id:'mon-ok',title:'The error rate is back to normal',note:'Send the first case before this one.',sample:'metric_resolved',
      expect:{closes:true,rule:ANNA,text:'Anna’s open alert closes by itself.'}}]},
-  {id:'trades',name:'Trade gateway',icon:'money',source:'trade-events',via:'a message broker (Kafka topic trade.events), with a different envelope',
+  {id:'trades',name:'Trade gateway',icon:'money',source:'trade-events',via:'a message queue (RabbitMQ, trade.events), with a different envelope',
    about:'Accepts or rejects trades and publishes a business event for each decision.',
    cases:[
     {id:'tr-big',title:'A 25,000,000 EUR rates trade is rejected',note:'The example from the brief.',sample:'trade_rejected',edit:(e,u)=>{e.payload.tradeId='T-'+u;},
@@ -223,7 +223,7 @@ async function follow(source,event,count,expect,rec){
     if(a.status==='resolved'&&!hit.isNew&&closed.length){step(true,'The open alert was closed automatically','“'+a.title+'”');actual='The open alert closed by itself';}
     else if(hit.isNew){await sleep(1300);a=(await alerts()).find(x=>x.id===a.id)||a;
       step(true,'One new alert was opened'+(a.count>1?', showing ×'+nf(a.count):''),'“'+a.title+'” · '+a.severity);
-      const told=(a.deliveries||[]).map(d=>pname(d.recipient)+' by '+(CH[d.channel]||d.channel)+(d.status==='sent'?'':' ('+d.status+')'));
+      const told=(a.deliveries||[]).map(d=>(d.channel==='ui'&&(!d.recipient||d.recipient==='unknown')?'the team feed':pname(d.recipient))+' by '+(CH[d.channel]||d.channel)+(d.status==='sent'?'':' ('+d.status+')'));
       step(true,told.length?'Told: '+joinAnd(told):'Nobody is set to be told');
       actual='New alert'+(a.count>1?' ×'+nf(a.count):'')+(told.length?'; told '+joinAnd(told):'');}
     else{step(true,'It was added to the alert that is already open (now ×'+nf(a.count)+')','Nobody was told again: one problem, one alert.');actual='Counted on the open alert (now ×'+nf(a.count)+'), nobody told again';}
@@ -235,6 +235,8 @@ async function follow(source,event,count,expect,rec){
     if(expect.alert===true)verdict=!!hit&&hit.a.rule_id===expect.rule&&hit.a.status!=='resolved'&&(!wantCount||hit.added>=wantCount);
     else if(expect.closes)verdict=closed.some(r=>r.id===expect.rule)&&(!hit||hit.a.status==='resolved');
     else verdict=!fired.length&&!closed.length;}
+  /* Messages still being retried (a channel is down) are not a failure yet: say so instead of "Not as expected". */
+  if(verdict===false&&hit&&(hit.a.deliveries||[]).some(d=>d.status==='retrying'||d.status==='pending')){verdict=null;rec.delivering=true;actual=(actual||'')+' (messages still retrying)';}
   rec.actual=actual;rec.verdict=verdict;rec.running=false;}
 
 async function runCase(sys,c){if(S.busy)return;S.busy=true;const u=uid();
@@ -261,7 +263,7 @@ function caseHtml(sys,c){const rec=S.results[c.id];const v=rec&&!rec.running?rec
   const payload=rec&&rec.sent!==undefined?rec.sent:(c.build?c.build('XXXXX'):(()=>{const e=clone(S.samples[c.sample]||{});if(c.edit)c.edit(e,'XXXXX');return e;})());
   return `<div class="case ${v===true?'pass':v===false?'fail':''}">
     <div class="row"><h3 class="grow">${esc(c.title)}</h3>
-      ${rec&&rec.running?'<span class="badge run">Running…</span>':v===true?`<span class="badge ok">${ic('checkmark','sm')}As expected</span>`:v===false?`<span class="badge no">${ic('dismiss','sm')}Not as expected</span>`:''}
+      ${rec&&rec.running?'<span class="badge run">Running…</span>':v===true?`<span class="badge ok">${ic('checkmark','sm')}As expected</span>`:v===false?`<span class="badge no">${ic('dismiss','sm')}Not as expected</span>`:rec&&rec.delivering?'<span class="badge run">Delivering… (retrying)</span>':''}
       <button class="btn pri sm" data-act="run" data-sys="${sys.id}" data-case="${c.id}" ${S.busy?'disabled':''}>${ic('play','sm')}${c.count?'Send '+nf(c.count)+' events':'Send'}</button></div>
     ${c.note?`<p class="note">${esc(c.note)}</p>`:''}
     <div class="expect">${ic('target','sm')}<span><b>Should happen:</b> ${esc(c.expect.text)}</span></div>

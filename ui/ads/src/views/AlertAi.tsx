@@ -44,9 +44,31 @@ export function EscalationLine({ alert }: { alert: V1Alert }) {
   );
 }
 
-function AlertLink({ id }: { id: string }) {
-  const n = alertNumber(id);
-  return n ? <a href={`#/alerts?alert=${n}`} onClick={(e) => { e.preventDefault(); openAlert(n); }}>{id}</a> : <Text>{id}</Text>;
+/* Past incidents arrive as alert uuids: look each one up once to show its number (A-123) and title. */
+const known = new Map<string, Promise<V1Alert | null>>();
+const lookUp = (id: string) => {
+  let hit = known.get(id);
+  if (!hit) { hit = v1<V1Alert>(`/v1/alerts/${encodeURIComponent(id)}`).catch(() => null); known.set(id, hit); }
+  return hit;
+};
+function AlertLink({ id, title }: { id: string; title?: string }) {
+  const direct = alertNumber(id);
+  const [found, setFound] = useState<V1Alert | null | undefined>(direct ? null : undefined);
+  useEffect(() => {
+    if (direct) return;
+    let live = true;
+    void lookUp(id).then((a) => { if (live) setFound(a); });
+    return () => { live = false; };
+  }, [id, direct]);
+  const n = direct ?? alertNumber(found?.shortId);
+  const name = title ?? found?.title;
+  if (!n) return <Text weight="medium">{name ?? (found === undefined ? 'Loading…' : 'An earlier incident')}</Text>;
+  return (
+    <span>
+      <a href={`#/alerts?alert=${n}`} onClick={(e) => { e.preventDefault(); openAlert(n); }}>A-{n}</a>
+      {name && <Text weight="medium"> {name}</Text>}
+    </span>
+  );
 }
 
 export function SuggestionPanel({ alert, disabled }: { alert: V1Alert; disabled: boolean }) {
@@ -98,7 +120,7 @@ export function SuggestionPanel({ alert, disabled }: { alert: V1Alert; disabled:
   return (
     <AiDraft
       title={sg.aiUnavailable ? 'AI is unavailable: what we know from past incidents' : 'Suggested fix'}
-      label={sg.aiUnavailable ? 'Past incidents' : 'AI suggestion'}
+      label={sg.aiUnavailable ? 'Past incidents' : 'AI suggestion'} heuristic={!!sg.aiUnavailable}
       footnote={sg.aiUnavailable ? 'The AI model did not answer, so only matches with past incidents are shown.' : undefined}
       actions={decided ? <Lozenge appearance={sg.status === 'accepted' ? 'success' : 'removed'}>{sg.status === 'accepted' ? 'You accepted this' : 'You rejected this'}</Lozenge> : sg.aiUnavailable ? null : (
         <>
@@ -125,7 +147,10 @@ export function SuggestionPanel({ alert, disabled }: { alert: V1Alert; disabled:
           <Stack space="space.075">
             <Text size="small" weight="semibold" color="color.text.subtle">Fixed before</Text>
             {sg.fixedBefore.map((f) => (
-              <div key={f.alertId} className="memory"><AlertLink id={f.alertId} />{f.resolutionNote && <Text> “{f.resolutionNote}”</Text>}</div>
+              <div key={f.alertId} className="memory">
+                <AlertLink id={f.alertId} />
+                {f.resolutionNote && <div><Text color="color.text.subtle">Fixed by: “{f.resolutionNote}”</Text></div>}
+              </div>
             ))}
           </Stack>
         )}
@@ -134,7 +159,7 @@ export function SuggestionPanel({ alert, disabled }: { alert: V1Alert; disabled:
             <Text size="small" weight="semibold" color="color.text.subtle">Similar incidents</Text>
             {sg.similarIncidents.map((f) => (
               <div key={f.alertId} className="memory">
-                <AlertLink id={f.alertId} /> <Text>{f.title}</Text>
+                <AlertLink id={f.alertId} title={f.title} />
                 {f.similarity !== undefined && <Text size="small" color="color.text.subtlest"> · {percent(f.similarity)} alike</Text>}
                 {f.resolutionNote && <div><Text color="color.text.subtle">Fixed by: “{f.resolutionNote}”</Text></div>}
               </div>
@@ -161,13 +186,13 @@ export function ResolveDialog({ id, suspicious, onClose }: { id: number; suspici
   const h = useHerald();
   const [note, setNote] = useState('');
   const [draft, setDraft] = useState<NoteDraft | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'failed'>(suspicious ? 'ready' : 'loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'failed' | 'empty'>(suspicious ? 'ready' : 'loading');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (suspicious) return;
     let live = true;
     v1<NoteDraft>(`/v1/alerts/${alertRef(id)}/resolution-note-draft`).then(
-      (d) => { if (live) { setDraft(d); setNote(d.note); setState('ready'); } },
+      (d) => { if (live) { const text = (d.note ?? '').trim(); setDraft(text ? d : null); setNote(text); setState(text ? 'ready' : 'empty'); } },
       () => live && setState('failed'),
     );
     return () => { live = false; };
@@ -187,11 +212,12 @@ export function ResolveDialog({ id, suspicious, onClose }: { id: number; suspici
           {state === 'loading' && <Stack space="space.100"><AiLabel text="AI draft" /><Text>Drafting a note from the timeline…</Text><Skeletons lines={3} /></Stack>}
           {state !== 'loading' && draft && (
             <Inline space="space.100" alignBlock="center">
-              <AiLabel text={draft.aiUnavailable ? 'Draft from the timeline' : 'AI draft'} />
+              <AiLabel text={draft.aiUnavailable ? 'Heuristic draft from the timeline' : 'AI draft'} heuristic={!!draft.aiUnavailable} />
               <Text size="small" color="color.text.subtle">Edit it, or clear it and write your own.</Text>
             </Inline>
           )}
-          {state === 'failed' && <Text size="small" color="color.text.subtle">The AI draft did not load. Write the note yourself.</Text>}
+          {state === 'failed' && <Text size="small" color="color.text.subtle">The draft did not load. Write the note yourself.</Text>}
+          {state === 'empty' && <Text size="small" color="color.text.subtle">No draft — write what fixed it.</Text>}
           {suspicious && <Text size="small" color="color.text.subtle">No AI draft: this alert contains suspicious content.</Text>}
           {state !== 'loading' && (
             <TextArea aria-label="Resolution note" minimumRows={5} value={note} placeholder="What was wrong, and what you did" onChange={(e) => setNote(e.currentTarget.value)} />

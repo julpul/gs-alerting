@@ -102,6 +102,7 @@ textarea.in{resize:vertical;min-height:64px;line-height:1.4}
 .note{font-size:12.5px;color:var(--muted)}
 .banner{border:1px solid var(--warn);background:var(--warn-soft);color:var(--ink);border-radius:6px;padding:8px 12px;font-size:13px}
 .banner.info{border-color:var(--info);background:var(--info-soft)}
+.chon{color:var(--ok)}
 .banner.ok{border-color:var(--ok);background:var(--ok-soft)}
 .scroll-x{overflow-x:auto}
 th{text-align:left;font:600 11px var(--font-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -778,8 +779,19 @@ function typeOf(v){if(Array.isArray(v))return 'list';if(typeof v==='number')retu
 /* ============ talking to the service ============ */
 /* Who is signed in. In production this comes from single sign-on; the demo sends it as headers. */
 function ident(){if(OIDC())return {};const t=T();if(!t)return {};
-  const who=S.role==='responder'?t.oncallId:S.role==='lead'?t.leadId:t.editorId;
+  const who=S.as||(S.role==='responder'?t.oncallId:S.role==='lead'?t.leadId:t.editorId);
   return {'X-Herald-User':'person:'+who,'X-Herald-Role':{responder:'responder',lead:'approver',editor:'editor'}[S.role],'X-Herald-Teams':t.personal?'':t.id};}
+/* Demo "Viewing as": any person in the directory. The role and the teams they may look at come from the service (GET /api/me
+   as that person); the choice is remembered in this browser. */
+const AS_KEY='herald.viewingAs';
+function asSave(){try{localStorage.setItem(AS_KEY,JSON.stringify({as:S.as,team:S.team,role:S.role}));}catch(e){}}
+function asSaved(){try{return JSON.parse(localStorage.getItem(AS_KEY)||'null');}catch(e){return null;}}
+async function asLoad(){S.asTeams=null;if(OIDC()||!S.as)return;
+  try{const r=await fetch('/api/me',{credentials:'same-origin',headers:{'Accept':'application/json','X-Herald-User':'person:'+S.as}});const d=await r.json();
+    if(r.ok&&d){S.role=({admin:'lead',approver:'lead',editor:'editor'})[d.role]||(S.role==='editor'?'editor':'responder');S.asTeams=d.teams||[];S.asRole=d.role;
+      const ok=Object.keys(TEAMS).filter(k=>S.asTeams.includes(k));if(ok.length&&!ok.includes(S.team))S.team=ok[0];}}catch(e){}}
+const asTeamKeys=()=>Object.keys(TEAMS).filter(k=>!TEAMS[k].personal&&(!S.asTeams||S.asTeams.includes(k)));
+async function viewAs(id,team){S.as=id;if(team&&TEAMS[team])S.team=team;await asLoad();HO.data={};HO.err={};HO.prefs=null;HO.team=null;HO.comment={};asSave();}
 const me=()=>OIDC()?ME.user:ident()['X-Herald-User'];
 /* Single sign-on only. "step_up_required": this action needs a fresh sign-in, then you come back to the same alert.
    Any other 401: the session has ended, so sign in again and come back here. */
@@ -790,11 +802,25 @@ function signInAgain(detail){if(leaving)return;const step=detail==='step_up_requ
   if(step){try{sessionStorage.setItem('herald.stepup','1');}catch(e){}}
   const url=step?'/auth/login?'+new URLSearchParams({provider:ME.provider||'sso',step_up:'1',next:backHere()}):'/login?'+new URLSearchParams({error:'expired',next:backHere()});
   setTimeout(()=>location.assign(url),900);}
-async function api(path,o){o=o||{};const h=o.admin?{}:Object.assign({},ident());  /* admin: the demo's all-seeing view, used by the walkthrough */if(o.body!==undefined)h['Content-Type']='application/json';
-  const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:h,body:o.body!==undefined?JSON.stringify(o.body):undefined});
+/* The public /v1 API takes a Bearer token, not the demo headers. GET /api/session-token hands out a short-lived one for the
+   current identity (the "Viewing as" person in demo mode, the session under single sign-on). One token is kept per person;
+   a 401 drops it and asks once more. */
+const V1TOK={},V1PEND={};
+async function v1Token(fresh){const who=OIDC()?'session':(me()||'person:master'),c=V1TOK[who];
+  if(!fresh&&c&&c.exp>Date.now())return c.v;
+  if(!V1PEND[who])V1PEND[who]=(async()=>{const h={'Accept':'application/json'};if(!OIDC())h['X-Herald-User']=who;
+    const r=await fetch('/api/session-token',{credentials:'same-origin',headers:h});let d=null;try{d=await r.json();}catch(e){}
+    if(!r.ok||!d||!d.accessToken){const err=new Error('Could not get permission to talk to the service ('+r.status+').');err.status=r.status;throw err;}
+    V1TOK[who]={v:d.accessToken,exp:Date.now()+Math.max(30,(d.expiresIn||900)-30)*1000};return d.accessToken;})().finally(()=>{delete V1PEND[who];});
+  return V1PEND[who];}
+async function api(path,o){o=o||{};const v1=path.indexOf('/v1/')===0;
+  const h=v1?{'Accept':'application/json'}:o.admin?{}:Object.assign({},ident());  /* admin: the demo's all-seeing view, used by the walkthrough */if(o.body!==undefined)h['Content-Type']='application/json';
+  const send=async fresh=>{if(v1)h.Authorization='Bearer '+await v1Token(fresh);
+    return fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:h,credentials:'same-origin',body:o.body!==undefined?JSON.stringify(o.body):undefined});};
+  let r=await send(false);if(v1&&r.status===401)r=await send(true);
   let data=null;try{data=await r.json();}catch(e){}
   if(r.status===401&&OIDC()){signInAgain(data&&data.detail);const err=new Error('Taking you to sign in…');err.status=401;throw err;}
-  if(!r.ok){const d=data&&data.detail;
+  if(!r.ok){const d=data&&(data.detail!==undefined?data.detail:data.message);
     const msg=typeof d==='string'?d:Array.isArray(d)?d.map(x=>(x.loc&&x.loc.length?x.loc.join('.')+': ':'')+String(x.msg).replace(/^Value error, /,'')).join('; '):'The service answered '+r.status;
     const err=new Error(msg);err.status=r.status;throw err;}
   return data;}
@@ -803,16 +829,18 @@ function pname(ref){ref=String(ref||'');if(!ref)return '';if(ref.indexOf('system
   if(ref.indexOf('team:')===0){const id=ref.slice(5).replace('/on-call','');const n=TEAMS[id]?TEAMS[id].name:cap(id);return ref.endsWith('/on-call')?n+' on-call person':n+' team';}
   return ref;}
 
-async function loadDirectory(){const d=await api('/api/directory');d.people.forEach(p=>{PEOPLE[p.id]=p;});
+let DIRTEAMS=[];
+async function loadDirectory(){const d=await api('/api/directory',{admin:true});d.people.forEach(p=>{PEOPLE[p.id]=p;});DIRTEAMS=d.teams;
   const nm=id=>PEOPLE[id]?PEOPLE[id].name:(id||'nobody');const out={};
   d.teams.filter(t=>t.has_rules&&t.id!=='loadtest').forEach(t=>{const other=t.members.find(m=>m!==t.on_call&&m!==t.lead)||t.lead||t.on_call;
-    out[t.id]={id:t.id,name:t.name,owner:'team:'+t.id,memberIds:t.members,oncallId:t.on_call||t.lead,leadId:t.lead||t.on_call,editorId:other,oncall:nm(t.on_call||t.lead),lead:nm(t.lead),
+    out[t.id]={id:t.id,uuid:t.uuid||null,name:t.name,owner:'team:'+t.id,memberIds:t.members,oncallId:t.on_call||t.lead,leadId:t.lead||t.on_call,editorId:other,oncall:nm(t.on_call||t.lead),lead:nm(t.lead),
       members:t.members.map(m=>[nm(m),[m===t.on_call?'on call now':'',m===t.lead?'team lead, approver':''].filter(Boolean).join(', ')||'member']),
       rota:t.rota.map((m,i)=>['Shift '+(i+1)+' ('+t.shift_days+' days)',nm(m)]),prefs:t.preferences};});
   d.people.filter(p=>p.has_rules).forEach(p=>{out[p.id]={id:p.id,name:p.name+' (personal)',owner:'person:'+p.id,personal:true,memberIds:[p.id],oncallId:p.id,leadId:p.id,editorId:p.id,oncall:p.name,lead:p.name,
       members:[[p.name,'receives their own alerts']],rota:[],prefs:p.preferences};});
   TEAMS=out;if(!S.team||!TEAMS[S.team])S.team=Object.keys(TEAMS)[0];}
-function mapDelivery(d){return {channel:d.channel,to:pname(d.recipient),attempts:d.attempts,error:d.error||d.last_error,
+const rname=d=>d.channel==='ui'&&(!d.recipient||d.recipient==='unknown')?'Team feed':pname(d.recipient);
+function mapDelivery(d){return {channel:d.channel,to:rname(d),attempts:d.attempts,error:d.error||d.last_error,
   status:d.status==='sent'?'delivered':d.status==='retrying'?'retrying':d.status==='dead'?'parked':'pending'};}
 function mapAlert(a){const r=ruleById(a.rule_id);
   return {id:String(a.id),key:a.key,code:String(a.id),rule:a.rule_id,ruleName:r?r.name:a.rule_id,owner:a.owner,status:a.status,severity:a.severity,
@@ -929,11 +957,11 @@ function toast(text,btn){if(leaving)return;/* on the way to sign-in: no follow-u
 
 /* ============ send test events through the real sources ============ */
 const SIMS=[
-  {k:'workflow',t:'Workflow failed',d:'Kafka topic. Settlements: phone and SMS to the on-call person',src:'workflow-events',sample:'workflow_failed',team:'settlements'},
+  {k:'workflow',t:'Workflow failed',d:'Message queue (RabbitMQ). Settlements: phone and SMS to the on-call person',src:'workflow-events',sample:'workflow_failed',team:'settlements'},
   {k:'wfok',t:'Workflow succeeded',d:'Closes the settlement alert by itself',src:'workflow-events',sample:'workflow_succeeded',team:'settlements'},
   {k:'metric',t:'High error rate on payments-api',d:'Webhook. Anna: SMS by day, email otherwise',src:'metrics-webhook',sample:'metric_breach',team:'anna'},
   {k:'resolved',t:'Metric back to normal',d:'Closes the payments-api alert by itself',src:'metrics-webhook',sample:'metric_resolved',team:'anna'},
-  {k:'trade',t:'Trade rejected, 25,000,000 EUR',d:'Kafka topic, different envelope. Rates: email',src:'trade-events',sample:'trade_rejected',team:'rates'},
+  {k:'trade',t:'Trade rejected, 25,000,000 EUR',d:'Message queue (RabbitMQ), different envelope. Rates: email',src:'trade-events',sample:'trade_rejected',team:'rates'},
   {k:'tradeSmall',t:'Trade rejected, 2,000,000 EUR',d:'Under the limit, so it must not alert',src:'trade-events',sample:'trade_rejected',team:'rates',edit:e=>{e.payload.notional=2000000;e.payload.tradeId='T-998912';}},
   {k:'pricing',t:'Pricing warning, one log line',d:'Log source. Pricing: feed only',src:'pricing-logs',sample:'pricing_log',team:'pricing'},
   {k:'burst',t:'Pricing warning burst ×500',d:'Must become one alert with a counter',src:'pricing-logs',sample:'pricing_log',team:'pricing',count:500},
@@ -987,7 +1015,7 @@ function checkDraft(){if(!S.draft)return;clearTimeout(chkTimer);chkTimer=setTime
 const ic=(n,c)=>`<svg class="ic${c?' '+c:''}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const SEVICON={critical:'error_circle_f',error:'error_circle_f',warning:'warning_f',info:'info_f',debug:'info'};
 const CHICON={phone:'call',sms:'chat',email:'mail',ui:'desktop'};
-const SRCWORD={kafka:'message broker',webhook:'webhook',logtail:'log file',http_poll:'polled API'};
+const SRCWORD={kafka:'message queue (RabbitMQ)',webhook:'webhook',logtail:'log file',http_poll:'polled API'};
 const srcName=id=>{const x=S.sources.find(q=>q.id===id);return id+(x?' ('+SRCWORD[x.type]+')':'');};
 /* A field name the way each audience reads it: plain words in the simple view, the exact path in the technical one. */
 const fl=p=>`<span class="simple-only">${esc(cap(flabel(p)))}</span><code class="tech-only">${esc(p)}</code>`;
@@ -1006,7 +1034,7 @@ const LOZ={firing:['Open','danger'],acked:['Acknowledged','info'],resolved:['Res
 const statusLoz=a=>loz(LOZ[a.status][0],LOZ[a.status][1]);
 const SEVLOZ={critical:'danger',error:'danger',warning:'warning',info:'info',debug:''};
 const PICON={workflow:'arrow_sync',monitoring:'data_trending',trade:'money',logs:'document_bullet_list',webhook:'globe',kafka:'server',logtail:'document_bullet_list',http_poll:'arrow_clockwise'};
-const PTYPE={kafka:'Message broker (Kafka)',webhook:'HTTP webhook',logtail:'Log file',http_poll:'Polled API'};
+const PTYPE={kafka:'Message queue (RabbitMQ)',webhook:'HTTP webhook',logtail:'Log file',http_poll:'Polled API'};
 const plat=id=>S.platforms.find(x=>x.id===id);
 const platName=id=>{const x=plat(id);return x?x.name:(id||'Unknown');};
 const platIcon=(id,c)=>{const x=plat(id);return ic(PICON[x&&x.icon]||'plug_connected',c||'sm');};
@@ -1058,7 +1086,7 @@ async function runTrace(x){const ev=x.event;
       if(a.status==='resolved'&&!fired.length)tr.steps.push({ok:true,text:'The open alert was resolved automatically',sub:a.key+' · '+a.title});
       else if(hit.isNew){await sleep(1200);a=(await adminAlerts()).find(q=>q.id===a.id)||a;
         tr.steps.push({ok:true,text:'A new alert was created: '+a.key,sub:a.title+(a.count>1?' · all '+nf(a.count)+' events are counted on this one alert':'')});
-        const told=(a.deliveries||[]).map(d=>pname(d.recipient)+' by '+({phone:'phone call',sms:'text message',email:'email',ui:'the Herald screen'}[d.channel]||d.channel)+(d.status==='sent'?'':' ('+d.status+')'));
+        const told=(a.deliveries||[]).map(d=>rname(d)+' by '+({phone:'phone call',sms:'text message',email:'email',ui:'the Herald screen'}[d.channel]||d.channel)+(d.status==='sent'?'':' ('+d.status+')'));
         tr.steps.push({ok:true,text:told.length?'Notified: '+joinAnd(told):'Nobody is set to be notified'});}
       else tr.steps.push({ok:true,text:'It was added to '+a.key+', which is already open (seen '+nf(a.count)+' times)',sub:'Nobody was notified again: one problem, one alert.'});
       tr.alert={id:String(a.id),owner:a.owner};}
@@ -1105,7 +1133,7 @@ function defaultEvent(id){const last=S.events.find(e=>e.source===id);if(last)ret
   const s=SIMS.find(x=>x.src===id);if(s&&S.samples[s.sample])return JSON.stringify(S.samples[s.sample],null,2);
   return JSON.stringify({type:'EXAMPLE_FAILED',severity:'ERROR',service:'my-system',message:'Something went wrong'},null,2);}
 function snippetFor(x,body){
-  if(x.type==='kafka')return "echo '"+body+"' \\\n  | docker compose exec -T redpanda rpk topic produce "+x.topic;
+  if(x.type==='kafka')return "docker compose exec -T rabbitmq rabbitmqadmin publish exchange=amq.default routing_key="+x.topic+" \\\n  payload='"+body+"'";
   if(x.type==='logtail')return "echo '"+body+"' >> demo-logs/"+String(x.path||'').split('/').pop();
   if(x.type==='http_poll')return '# Herald fetches from this platform itself. Nothing to send.';
   return 'curl -X POST '+location.origin+'/ingest/'+x.id+' \\\n'+(x.needs_token?'  -H "X-Herald-Token: <the token for this platform>" \\\n':'')+'  -H "Content-Type: application/json" \\\n  -d \''+body+"'";}
@@ -1317,7 +1345,7 @@ function editorSide(){const d=S.draft,evs=S.events,t=S.edTest,p=S.edPrev;const s
   else if(p){const sev=p.severity,col=p.colour||SEVS[sev].col;
     prev=`${p.matches?'':'<div class="banner info">The sample event does not match this rule, so this is only how it would look.</div>'}
       <div class="prev"><span class="lab">In the Herald feed</span><div class="row top-al c-${esc(col)}"><div class="tile" aria-hidden="true">${SEVS[sev].g}</div><div class="stack grow" style="gap:4px"><div>${sevTag(sev)}</div><b style="overflow-wrap:anywhere">${esc(p.title)}</b>${p.body?`<span class="muted" style="overflow-wrap:anywhere">${esc(p.body)}</span>`:''}</div></div></div>
-      <div class="prev"><span class="lab">Who would be told right now</span><p>${p.notify.length?esc(p.notify.map(n=>pname(n.recipient)+' by '+(CH[n.channel]||n.channel)).join('; ')):'<span class="muted">Nobody. Add someone under “Then”.</span>'}</p></div>
+      <div class="prev"><span class="lab">Who would be told right now</span><p>${p.notify.length?esc(p.notify.map(n=>rname(n)+' by '+(CH[n.channel]||n.channel)).join('; ')):'<span class="muted">Nobody. Add someone under “Then”.</span>'}</p></div>
       <div class="prev"><span class="lab">Email</span><pre class="wrap">${esc(p.email)}</pre></div>
       <div class="prev"><div class="row"><span class="lab grow">SMS</span><span class="note num">${p.sms.length} of 160 characters</span></div><div class="smsb">${esc(p.sms)}</div></div>
       <div class="prev"><span class="lab">Phone call, read aloud</span><p style="overflow-wrap:anywhere">“${esc(p.voice)}”</p></div>`;}
@@ -1372,16 +1400,17 @@ function viewDeliveries(){const t=T(),th=threads();const people=[...new Set([t.o
         ${S.mail.page?`<a class="note" href="${esc(S.mail.page)}" target="_blank" rel="noopener">Open the full mailbox to read the emails</a>`:''}</section></div>
     <section class="card"><div class="row"><h2 class="grow">Delivery log</h2><span class="note">Latency is measured from the event arriving to the channel accepting the message.</span></div>
       <div class="scroll-x"><table><thead><tr><th>Time</th><th>Alert</th><th>To</th><th>Channel</th><th>Attempts</th><th>Status</th><th>Latency</th></tr></thead><tbody>
-        ${S.deliveries.map(n=>`<tr><td class="num">${clock(Date.parse(n.created_at))}</td><td style="min-width:180px">${esc(n.title)}</td><td>${esc(pname(n.recipient))}</td><td>${CH[n.channel]||esc(n.channel)}${n.last_error&&n.status!=='sent'?`<div class="note" style="overflow-wrap:anywhere">${esc(String(n.last_error).slice(0,90))}</div>`:''}</td><td class="num">${n.attempts}</td>
+        ${S.deliveries.map(n=>`<tr><td class="num">${clock(Date.parse(n.created_at))}</td><td style="min-width:180px">${esc(n.title)}</td><td>${esc(rname(n))}</td><td>${CH[n.channel]||esc(n.channel)}${n.last_error&&n.status!=='sent'?`<div class="note" style="overflow-wrap:anywhere">${esc(String(n.last_error).slice(0,90))}</div>`:''}</td><td class="num">${n.attempts}</td>
           <td><span class="chip ${cls(n)}">${st(n)}</span></td><td class="num">${n.latency_ms!=null?nf(Math.round(n.latency_ms))+' ms':'—'}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">Nothing sent for this team yet.</td></tr>'}</tbody></table></div></section>`;}
 
 /* ---- preferences, audit ---- */
 function viewPreferences(){const t=T();
-  return `<div><h1>Teams</h1><p class="muted">How ${esc(t.personal?t.oncall:'the '+t.name+' team')} is reached. Rules that notify “by preference” follow this table. It is read from <code>config/teams.yaml</code>; changing it on this screen is not built yet.</p></div>
+  return `<div><h1>Teams</h1><p class="muted">How ${esc(t.personal?t.oncall:'the '+t.name+' team')} is reached. The table shows the channels of the first escalation level of the team, per severity. Each person can also choose their own channels.</p>
+    <div class="row"><button class="btn pri" data-act="myPrefs">${ic('alert','sm')}Change my notification preferences</button><a class="btn" href="/ads/#/teams">${ic('open','sm')}Change the team's channel policy</a></div></div>
     <div class="grid2"><section class="card"><h2>On call now</h2><p><b>${esc(t.oncall)}</b></p>${t.rota.length?`<dl class="kv">${t.rota.map(r=>`<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>`:'<p class="note">No rota: alerts go straight to this person.</p>'}</section>
       <section class="card"><h2>People</h2><dl class="kv">${t.members.map(m=>`<dt>${esc(m[0])}</dt><dd>${esc(m[1])}</dd>`).join('')}</dl></section></div>
     <section class="card"><h2>Channel by severity</h2><div class="scroll-x"><table><thead><tr><th>Severity</th>${CHS.map(c=>`<th>${CH[c]}</th>`).join('')}</tr></thead><tbody>
-      ${['critical','error','warning','info'].map(s=>`<tr><td>${sevTag(s)}</td>${CHS.map(c=>`<td><input type="checkbox" disabled aria-label="${SEVS[s].label} by ${CH[c]}" ${(t.prefs[s]||[]).includes(c)?'checked':''}></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      ${['critical','error','warning','info'].map(s=>`<tr><td>${sevTag(s)}</td>${CHS.map(c=>{const on=(t.prefs[s]||[]).includes(c);return `<td>${on?`<span class="chon" role="img" aria-label="${SEVS[s].label}: ${CH[c]}">${ic('checkmark_circle_f','sm')}</span>`:`<span class="muted" role="img" aria-label="${SEVS[s].label}: not by ${CH[c]}">—</span>`}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>
       ${S.meta?`<dl class="kv">${['critical','error','warning','info'].map(s=>`<dt>${SEVS[s].label}</dt><dd>${esc(S.meta.severities[s].meaning)} <span class="muted">${esc(S.meta.severities[s].response)}</span></dd>`).join('')}</dl>`:''}</section>`;}
 const AUDIT_WORDS={ack:'Acknowledged alert',resolve:'Resolved alert',incident_manager:'Took charge of alert',step_done:'Completed runbook step',action_run:'Ran runbook step',
   approval_requested:'Asked for approval',approved:'Approved runbook step',rejected:'Rejected runbook step',note:'Added a note',rule_saved:'Saved rule',runbook_saved:'Saved runbook',assigned:'Handed the alert over',platform_connected:'Connected a platform'};
@@ -1403,7 +1432,7 @@ function navHtml(){const mine=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef=
   const item=(view,label,icon,extra,cur)=>`<button class="navb" data-act="nav" data-view="${view}" ${cur?'aria-current="page"':''}>${ic(icon)}<span class="nl">${label}</span>${extra||''}</button>`;
   return item('foryou','For you','person_circle',mine?`<span class="cnt">${mine}</span>`:'',forYou)
     +item('feed','Alerts','alert',open?`<span class="cnt red" title="${open} not acknowledged">${open}</span>`:'',S.view==='feed'&&!forYou)
-    +item('approvals','Approvals','shield_checkmark',(n=>n?`<span class="cnt" title="${n} waiting for a decision">${n}</span>`:'')((HO.data.approvals||[]).filter(a=>a.status==='pending').length),S.view==='approvals')
+    +item('approvals','Approvals','shield_checkmark',(n=>n?`<span class="cnt" title="${n} waiting for a decision">${n}</span>`:'')((HO.data.approvals||[]).filter(a=>a.status==='pending'&&!(a.requestedBy&&a.requestedBy.id===hoMeId())).length),S.view==='approvals')
     +`<div class="navrow">${item('platforms','Platforms','plug_connected','',S.view==='platforms'&&!S.platform)}<button class="iconbtn sm" data-act="platFold" aria-expanded="${S.platOpen}" title="${S.platOpen?'Hide':'Show'} the list of platforms" aria-label="${S.platOpen?'Hide':'Show'} the list of platforms">${ic(S.platOpen?'chevron_up':'chevron_down','sm')}</button><button class="iconbtn sm" data-act="connectOpen" title="${canEdit()?'Connect a platform':'Connecting a platform needs a rule editor or team lead'}" aria-label="Connect a platform" ${canEdit()?'':'disabled'}>${ic('add','sm')}</button></div>`
     +`<div class="navsub" ${S.platOpen?'':'hidden'}>${S.platforms.map(x=>{const n=x.firing+x.acked;return `<button class="navb" data-act="openPlatform" data-id="${esc(x.id)}" ${S.view==='platforms'&&S.platform===x.id?'aria-current="page"':''} title="${esc(x.name)}${n?': '+n+' open problem'+(n>1?'s':''):': no open problems'}">${ptile(x.id)}<span class="nl">${esc(x.name)}</span>${n?`<span class="cnt ${x.firing?'red':''}">${n}</span>`:''}</button>`;}).join('')}</div>`
     +item('logs','Logs','document_bullet_list','',S.view==='logs')
@@ -1411,11 +1440,21 @@ function navHtml(){const mine=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef=
     +item('deliveries','Sent messages','send','',S.view==='deliveries')+item('audit','Activity log','history','',S.view==='audit')
     +item('metrics','Metrics','pulse','',S.view==='metrics')+item('knowledge','History','book_open','',S.view==='knowledge')+item('settings','Settings','settings','',S.view==='settings')+item('report','Report a problem','megaphone','',S.view==='report')
     +`<div class="navfoot"><a class="navb" href="/lab.html" target="_blank" rel="noopener" title="Pages that play the connected platforms and send test cases">${ic('beaker')}<span class="nl">Test lab</span>${ic('open','sm')}</a></div>`;}
-function personas(){const out=[];Object.keys(TEAMS).forEach(k=>{const t=TEAMS[k];
-  if(t.personal){out.push([k+'|responder',t.oncall+' — own alerts']);out.push([k+'|lead',t.oncall+' — own alerts, can edit rules']);return;}
-  out.push([k+'|responder',pname('person:'+t.oncallId)+' — '+t.name+', on call']);
-  out.push([k+'|lead',pname('person:'+t.leadId)+' — '+t.name+', team lead (can approve)']);
-  if(t.editorId!==t.leadId&&t.editorId!==t.oncallId)out.push([k+'|editor',pname('person:'+t.editorId)+' — '+t.name+', rule editor']);});return out;}
+/* Everyone in the directory, grouped by team (lead first, then the on-call person, then the members). People in no team with
+   rules (Master, management, informed people) are listed under "Organisation". */
+function personas(){const groups=[],seen={};
+  const what=(id,t)=>id===t.leadId?'team lead, can approve':id===t.oncallId?'on call now':'member';
+  Object.keys(TEAMS).forEach(k=>{const t=TEAMS[k];if(t.personal)return;
+    const ids=[...new Set([t.leadId,t.oncallId].concat(t.memberIds||[]).filter(Boolean))];
+    groups.push({name:t.name,items:ids.map(id=>{seen[id]=1;return {team:k,id:id,name:pname('person:'+id),what:what(id,t)};})});});
+  const other=DIRTEAMS.filter(t=>!TEAMS[t.id]),inTeam=id=>(other.find(t=>(t.members||[]).includes(id)||t.lead===id)||{}).name;
+  const org=Object.keys(PEOPLE).filter(id=>!seen[id]).sort((a,b)=>(b==='master')-(a==='master')||pname('person:'+a).localeCompare(pname('person:'+b)));
+  groups.unshift({name:'Organisation',items:org.map(id=>({team:null,id:id,name:pname('person:'+id),what:id==='master'?'Master: every team, every domain':inTeam(id)?'member of '+inTeam(id):'informed, not on a team'}))});
+  return groups.filter(g=>g.items.length);}
+function whoMenuHtml(){const cur=S.as,tk=asTeamKeys();
+  return '<div class="mlab">Viewing as (demo only)</div>'
+    +(tk.length>1?`<div class="mlab" style="padding-top:2px">Looking at team</div>${tk.map(k=>`<button data-act="asTeam" data-v="${esc(k)}" aria-current="${k===S.team}">${ic('people_team')}<span>${esc(TEAMS[k].name)}</span></button>`).join('')}<div class="msep"></div>`:'')
+    +personas().map(g=>`<div class="mlab">${esc(g.name)}</div>`+g.items.map(x=>`<button data-act="persona" data-id="${esc(x.id)}" data-team="${esc(x.team||'')}" aria-current="${x.id===cur&&(!x.team||x.team===S.team)}">${avatar(x.name,true)}<span>${esc(x.name)}<small>${esc(x.what)}</small></span></button>`).join('')).join('');}
 /* Single sign-on: the avatar menu says who is signed in, switches between your own teams, and signs out. */
 function accountMenu(){const name=ME.name||pname(ME.user)||'?',teams=myTeams(),role=ROLE_WORD[ME.role]||cap(ME.role||'member');
   $('whoBtn').innerHTML=avatar(name);$('whoBtn').title='Signed in as '+name;$('whoBtn').setAttribute('aria-label','Your account: signed in as '+name);
@@ -1528,10 +1567,10 @@ function viewLogs(){const d=lgData(),all=d.all,pq=d.pq,win=d.win,rows=d.rows;
         what this page shows, not what the service allows. ---- */
 const LEVELS={L0:['Reporter','Anyone in the firm. Reports a problem in plain words.'],L1:['Support team','Small problems and reports from people. Brings in an engineer when needed.'],
   L2:['Engineering team','Every alert of the team, platforms, logs, runbooks. First to be called.'],L3:['Senior engineers','Also rules, escalation flows and approvals.'],L4:['Management','Sees everything. Is kept informed and is never called.']};
-const LV_VIEWS={L0:['report'],L1:['feed','report','knowledge','oncall'],
-  L2:['feed','approvals','platforms','logs','runbooks','preferences','oncall','knowledge','report'],
-  L3:['feed','approvals','platforms','logs','rules','flows','runbooks','preferences','oncall','deliveries','metrics','knowledge','report'],L4:null};
-const roleLevel=()=>OIDC()?({viewer:'L0',responder:'L2',editor:'L3',approver:'L3',admin:'L4'}[ME.role]||'L2'):(S.role==='responder'?'L2':'L3');
+const LV_VIEWS={L0:['report'],L1:['feed','report','knowledge','oncall','settings'],
+  L2:['feed','approvals','platforms','logs','runbooks','preferences','oncall','knowledge','report','settings'],
+  L3:['feed','approvals','platforms','logs','rules','flows','runbooks','preferences','oncall','deliveries','metrics','knowledge','report','settings'],L4:null};
+const roleLevel=()=>OIDC()?({viewer:'L0',responder:'L2',editor:'L3',approver:'L3',admin:'L4'}[ME.role]||'L2'):(S.as==='master'?'L4':S.role==='responder'?'L2':'L3');
 const level=()=>S.level||roleLevel();
 const lvCan=v=>{const a=LV_VIEWS[level()];return !a||a.includes(v==='foryou'?'feed':v);};
 const lvSees=a=>level()!=='L1'||['warning','info','debug'].includes(a.severity)||a.imRef===me();
@@ -1570,7 +1609,7 @@ function callPanel(a){const t=T(),names=[...new Set([a.imRef&&pname(a.imRef),t&&
 function hoChange(a){if(HO.open!==a.id)return '';const links=(a.links||[]).filter(l=>l&&/^https?:\/\//.test(l.url||''));
   return `<div class="hochg">${a.changes?`<h3>What will change</h3><pre class="hodiff">${String(a.changes).split('\n').map(l=>`<span class="${l[0]==='+'?'add':l[0]==='-'?'del':''}">${esc(l)||' '}</span>`).join('')}</pre>`:'<p class="muted" style="margin:0">The request describes the change only through the values above.</p>'}
     ${links.length?`<h3>Where it lives</h3><div class="row">${links.map(l=>`<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${ic('open','sm')}${esc(l.label||l.url)}</a>`).join('')}</div>`:''}
-    <dl class="kv"><dt>Asked</dt><dd>${ago(Date.parse(a.createdAt))} by ${esc(hoActor(a.requestedBy))}</dd><dt>Request number</dt><dd><code>${esc(a.id)}</code></dd></dl></div>`;}
+    <dl class="kv"><dt>Asked</dt><dd>${ago(Date.parse(a.createdAt))} by ${esc(hoActor(a.requestedBy))}</dd><dt>Request number</dt><dd><code>${esc(a.shortId!=null?a.shortId:a.id)}</code></dd></dl></div>`;}
 
 /* ---- Escalation flows: who is told first, how long they have, and who is next. Drawn with the flow editor (ui/flow/herald-flow.js).
         The flows are kept in this browser. The service does not run them yet: today it repeats a notification and falls back to
@@ -1617,13 +1656,14 @@ function flPanel(){const s=FL.sel,cur=flCur(),ro=!flCanEdit(),dis=ro?'disabled':
 function viewFlows(){flLoad();const cur=flCur(),ro=!flCanEdit(),list=FL.flows.filter(f=>f.problem===FL.tab);
   return pageHead({title:'Escalation flows',desc:'Who is told first when something breaks, how long they have to take the ticket, and who is told next. One flow per kind of problem and severity, so a critical vulnerability can go to the blue team while a low bug waits for support.',
       right:ro?'':`<button class="btn" data-act="flNew">${ic('add','sm')}New flow</button><button class="btn subtle" data-act="flReset" title="Throw away your changes and bring back the six starting flows">Reset</button>`})
-    +'<div class="banner info"><b>A design, saved in this browser.</b> The service does not run these chains yet. Today it repeats a notification until someone answers and falls back to another channel; telling the next person on a timer is drawn here and still has to be built.</div>'
+    +`<div class="banner info"><b>A drawing board, saved in this browser.</b> The boards below are for planning and are not sent to the service. What the service actually runs for ${esc((hoMyTeam()||{name:'your team'}).name)} is the escalation ladder at the bottom of this page: when nobody acknowledges, it repeats the notification and then tells the next level on a timer (on-call person, Domain Root, Master).</div>`
     +`<div class="flgrid"><aside class="flside"><span class="seg" role="group" aria-label="Kind of problem"><button data-act="flTab" data-v="bug" aria-pressed="${FL.tab==='bug'}">Bugs</button><button data-act="flTab" data-v="vulnerability" aria-pressed="${FL.tab==='vulnerability'}">Vulnerabilities</button></span>
         <div class="fllist">${list.map(f=>`<button class="navb" data-act="flPick" data-id="${esc(f.id)}" ${f.id===cur.id?'aria-current="page"':''}><span class="nl">${esc(f.name)}</span>${flSev(f.severity)}</button>`).join('')||'<p class="muted">No flow of this kind yet.</p>'}</div>
         <div class="flpanel">${flPanel()}</div>
         <div class="fllevels"><span class="flabel">Levels</span>${Object.keys(LEVELS).map(k=>`<div><span class="cnt">${k}</span> ${LEVELS[k][0]}</div>`).join('')}</div></aside>
       <div class="stack"><div class="flslot" id="flowSlot"></div>
-        <section class="card"><h2>The same flow in words</h2><ol class="flwords" id="flWords">${flWords(cur.flow)}</ol></section></div></div>`;}
+        <section class="card"><h2>The same flow in words</h2><ol class="flwords" id="flWords">${flWords(cur.flow)}</ol></section></div></div>
+    <div class="row" style="margin-top:20px"><h2 class="grow">What the service runs for ${esc((HO.data.teams||[]).concat([]).filter(t=>t.id===HO.team).map(t=>t.name)[0]||'this team')}</h2>${hoTeamSeg()}</div>`+hoBanner(['teams','esc'])+hoLadders();}
 /* The page is redrawn often and the board's element is replaced each time, so the board is started again after every redraw.
    Before that, whatever was dragged or connected is read back from the old board, and the view and the selection are carried over. */
 const flSync=()=>{if(!FL.ed)return;try{const c=flCur();if(FL.edFor===c.id){c.flow=FL.ed.getFlow();flSave();}}catch(e){}};
@@ -1639,136 +1679,127 @@ function flMount(){const slot=$('flowSlot');
     onSelect:x=>{FL.sel=x?Object.assign({},x,{kind:((FL.ed?FL.ed.getFlow():cur.flow).nodes.find(n=>n.id===x.id)||{}).kind}):null;const p=document.querySelector('.flpanel');if(p)p.innerHTML=flPanel();}};  /* only the side panel is redrawn: redrawing the page would restart the board in the middle of a drag */
   opts.viewport=vp||{x:28,y:44,zoom:0.8};if(FL.sel)opts.selectedId=FL.sel.id;
   try{FL.ed=window.HeraldFlow.mount(slot,opts);}catch(e){FL.ed=null;slot.innerHTML='<p class="muted" style="padding:16px">The drawing board failed to start. The flow is listed in words below.</p>';}}
-/* ---- Screens from the UI handoff: approvals, on-call schedule, metrics, knowledge and settings (escalation, my notifications,
-        trust levels, integrations, organisation). Each reads the /v1 endpoint the handoff names. This service does not have
-        those endpoints yet, so when a call fails the screen shows the handoff's example data and says so.
-        Nothing done on example data is sent anywhere. ---- */
-const HO={data:{},sample:{},tab:'escalation',team:null};
+/* ---- Screens from the UI handoff: approvals, on-call schedule, metrics, history and settings (escalation, my notifications,
+        trust levels, integrations, organisation). Each reads the public /v1 endpoint the handoff names, with a Bearer token for
+        the current person (see v1Token). When a call fails the screen says so and offers to try again: it never shows invented data. ---- */
+const HO={data:{},err:{},tab:'escalation',team:null,comment:{},prefs:null};
 const HO_SEV=['critical','error','warning','info'],HO_CH=['ui','email','sms','phone'];
 const HO_CHN={ui:'In Herald',email:'Email',sms:'Text message',phone:'Phone call',webhook:'Webhook'};
 const HO_TARGET={oncall:'On-call person',domain_root:'Domain Root',master:'Master',custom:'Named people'};
 const HO_TRUST={suggest:'Suggest only',run_after_approval:'Run after approval',auto:'Run automatically'};
 const HO_ORIGIN={org:'from Organisation',domain:'from Domain',team:'from Team',rule:'from Rule'};
 function hoWeekStart(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getTime();}
-function hoSample(){const now=Date.now(),iso=ms=>new Date(now+ms).toISOString(),w=hoWeekStart(),wi=h=>new Date(w+h*36e5).toISOString();
-  const U=(id,displayName,email,role)=>({id,displayName,email,phone:'',managerId:null,role}),A=(id,displayName,kind,onBehalfOf)=>({kind:kind||'user',id,displayName,onBehalfOf:onBehalfOf||null});
-  const users=[U('u-master','Master','master@demo','Master'),U('u-root-pay','Root Payments','root.payments@demo','Domain Root'),U('u-root-set','Root Settlements','root.settlements@demo','Domain Root'),
-    U('u-root-sec','Root Security','root.security@demo','Domain Root'),U('u-anna','Anna','anna@demo','Member'),U('u-piotr','Piotr','piotr@demo','Member'),U('u-manager','Manager','manager@demo','Informed')];
-  const lvl=(level,target,channels,t)=>({level,target,channels,ackTimeoutSeconds:t});
-  const pol=(severity,levels,renotifySeconds,softChannels,softDigestMinutes,origin)=>({scopeType:'team',scopeId:'t-settlements',severity,levels,renotifySeconds,softChannels,softDigestMinutes,origin});
-  return {
-    approvals:[
-      {id:'12',status:'pending',origin:'agent_request',requestedBy:A('ag-claude','Claude Code','agent','Anna'),alertId:null,action:'terraform_apply',parameters:{workspace:'payments-prod',change:'payments-api replicas 4 to 6'},changes:'  resource "kubernetes_deployment" "payments_api"\n-   replicas = 4\n+   replicas = 6\n\n  resource "kubernetes_horizontal_pod_autoscaler" "payments_api"\n-   max_replicas = 6\n+   max_replicas = 10',links:[{label:'Pull request 482 (example link)',url:'https://example.com/payments/infra/pull/482'},{label:'Plan in the pipeline (example link)',url:'https://example.com/payments/infra/pipelines/9917'}],risk:'high',reason:'Error rate on payments-api is 12%. More replicas take the load while the cause is found.',approvers:[A('u-root-pay','Root Payments')],decidedBy:null,comment:null,expiresAt:iso(11*6e4),createdAt:iso(-4*6e4)},
-      {id:'11',status:'pending',origin:'runbook_step',requestedBy:A('u-piotr','Piotr'),alertId:null,action:'restart_service',parameters:{service:'counterparty-service',environment:'prod'},changes:'  counterparty-service (prod)\n-   3 pods, running since 12 Nov\n+   3 pods, restarted one at a time, about 40 s each',links:[{label:'Runbook page (example link)',url:'https://example.com/runbooks/settlement-timeout'}],risk:'medium',reason:'Runbook step 3 of settlement-timeout: the health check failed twice.',approvers:[A('u-root-set','Root Settlements')],decidedBy:null,comment:null,expiresAt:iso(6*6e4),createdAt:iso(-9*6e4)},
-      {id:'10',status:'approved',origin:'runbook_step',requestedBy:A('u-anna','Anna'),alertId:null,action:'retry_workflow',parameters:{workflowId:'WF-20261023-00042'},risk:'low',reason:'Retry after the counterparty service recovered.',approvers:[A('u-root-pay','Root Payments')],decidedBy:A('u-root-pay','Root Payments'),comment:'Go ahead.',expiresAt:iso(-50*6e4),createdAt:iso(-70*6e4)}],
-    domains:[{id:'d-pay',name:'Payments',rootUserIds:['u-root-pay']},{id:'d-set',name:'Settlements',rootUserIds:['u-root-set']},{id:'d-sec',name:'Security',rootUserIds:['u-root-sec']},{id:'d-mkt',name:'Markets',rootUserIds:[]}],
-    teams:[{id:'t-settlements',name:'Team Settlements',domainIds:['d-set'],memberIds:['u-piotr','u-anna','u-root-set']},{id:'t-pricing',name:'Team Pricing',domainIds:['d-mkt'],memberIds:['u-anna']},{id:'t-rates',name:'Team Rates',domainIds:['d-mkt'],memberIds:['u-piotr']},
-      {id:'t-security',name:'Team Security',domainIds:['d-sec'],memberIds:['u-root-sec']},{id:'t-checkout',name:'Checkout Project',domainIds:['d-pay','d-sec'],memberIds:['u-anna','u-root-sec']}],
-    users,
-    schedules:[{id:'s1',teamId:'t-settlements',userId:'u-anna',start:wi(9),end:wi(81),kind:'rotation'},{id:'s2',teamId:'t-settlements',userId:'u-piotr',start:wi(81),end:wi(177),kind:'rotation'},{id:'s3',teamId:'t-settlements',userId:'u-piotr',start:wi(42),end:wi(57),kind:'override'}],
-    rotations:[{id:'r1',teamId:'t-settlements',name:'Weekly primary',memberIds:['u-anna','u-piotr'],startsAt:wi(9),shiftHours:72,handoverTime:'09:00',timezone:'Europe/Warsaw'}],
-    oncall:{teamId:'t-settlements',now:null,next:null,escalationChain:[A('u-piotr','On-call person'),A('u-root-set','Root Settlements'),A('u-master','Master')]},
-    esc:[pol('critical',[lvl(1,'oncall',['phone','sms'],300),lvl(2,'domain_root',['phone','sms'],300),lvl(3,'master',['phone','sms'],null)],120,['email','ui'],null,{levels:'org',renotifySeconds:'domain',softChannels:'org'}),
-      pol('error',[lvl(1,'oncall',['sms'],900),lvl(2,'domain_root',['sms'],900),lvl(3,'master',['sms'],null)],600,['email','ui'],null,{levels:'org',renotifySeconds:'org',softChannels:'org'}),
-      pol('warning',[lvl(1,'oncall',['email'],3600),lvl(2,'domain_root',['email'],null)],null,['email'],60,{levels:'team',softDigestMinutes:'org'}),
-      pol('info',[lvl(1,'oncall',['ui'],null)],null,[],null,{levels:'org'})],
-    prefs:{bySeverity:{critical:['phone','sms','ui'],error:['sms','ui'],warning:['email','ui'],info:['ui']},workingHours:{from:'08:00',to:'18:00',timezone:'Europe/Warsaw'}},
-    trust:[{domainId:'d-set',action:'restart_service',level:'run_after_approval',cap:'run_after_approval',successfulApprovedRuns:8,failures:0,promoteAfter:5,lastChangedAt:iso(-3*864e5)},
-      {domainId:'d-set',action:'retry_workflow',level:'auto',cap:null,successfulApprovedRuns:12,failures:0,promoteAfter:5,lastChangedAt:iso(-9*864e5)},
-      {domainId:'d-pay',action:'escalate',level:'suggest',cap:null,successfulApprovedRuns:2,failures:1,promoteAfter:5,lastChangedAt:iso(-864e5)}],
-    integrations:[{kind:'datadog',status:'not_connected',scopeDomainId:null,mode:null},{kind:'github',status:'not_connected',scopeDomainId:null,mode:null},{kind:'jira',status:'not_connected',scopeDomainId:null,mode:null},{kind:'confluence',status:'not_connected',scopeDomainId:null,mode:null},{kind:'llm',status:'connected',scopeDomainId:null,mode:'default'}],
-    knowledge:[{id:'k1',title:'How we fixed: order-settlement failed at validate-counterparty',kind:'resolution_note',teamId:'t-settlements',indexedAt:iso(-2*864e5)},{id:'k2',title:'Settlement operations handbook.pdf',kind:'upload',teamId:'t-settlements',indexedAt:iso(-12*864e5)},{id:'k3',title:'Payments on-call wiki',kind:'link',teamId:'t-checkout',indexedAt:null}],
-    metrics:null};}
-async function hoGet(key,load){if(key in HO.data)return;try{HO.data[key]=await load();HO.sample[key]=false;}catch(e){HO.data[key]=hoSample()[key];HO.sample[key]=true;}}
-async function loadHandoff(){const v=S.view,g=(k,p)=>hoGet(k,()=>api(p)),jobs=[g('approvals','/v1/approvals')];
-  if(v==='oncall'||v==='settings'){await Promise.all([g('teams','/v1/teams'),g('users','/v1/users')]);if(!HO.team)HO.team=((HO.data.teams||[])[0]||{}).id||null;}
-  if(v==='oncall'&&HO.team)jobs.push(g('schedules','/v1/schedules?teamId='+encodeURIComponent(HO.team)),g('rotations','/v1/rotations?teamId='+encodeURIComponent(HO.team)),g('oncall','/v1/teams/'+encodeURIComponent(HO.team)+'/oncall'));
-  if(v==='knowledge')jobs.push(g('knowledge','/v1/knowledge'));
-  if(v==='settings')jobs.push(g('domains','/v1/domains'),g('prefs','/v1/preferences/me'),g('trust','/v1/action-trust'),g('integrations','/v1/integrations'),
-    hoGet('esc',()=>Promise.all(HO_SEV.map(s=>api('/v1/escalation-policies/effective?severity='+s+(HO.team?'&teamId='+encodeURIComponent(HO.team):''))))));
-  if(v==='metrics'){delete HO.data.metrics;jobs.push(hoGet('metrics',()=>api('/v1/metrics/summary')));}
+async function hoGet(key,load,fresh){if(!fresh&&key in HO.data)return;try{HO.data[key]=await load();delete HO.err[key];}catch(e){if(!(key in HO.data))HO.data[key]=null;HO.err[key]=e.message||'The service did not answer.';}}
+/* The /v1 team of the team chosen under "Viewing as" (the directory gives both ids). */
+const hoMyTeam=()=>{const t=T(),teams=HO.data.teams||[];return (t&&t.uuid&&teams.find(x=>x.id===t.uuid))||(t&&teams.find(x=>x.name===t.name))||teams[0]||null;};
+async function loadHandoff(){const v=S.view,g=(k,p,fresh)=>hoGet(k,()=>api(p),fresh),jobs=[g('approvals','/v1/approvals',true)];
+  if(['oncall','settings','knowledge','flows'].includes(v)){await Promise.all([g('teams','/v1/teams'),g('users','/v1/users')]);if(!HO.team||!(HO.data.teams||[]).some(t=>t.id===HO.team))HO.team=(hoMyTeam()||{}).id||null;}
+  if(v==='oncall'&&HO.team)jobs.push(g('schedules','/v1/schedules?teamId='+encodeURIComponent(HO.team)),g('rotations','/v1/rotations?teamId='+encodeURIComponent(HO.team)),
+    hoGet('oncallAll',async()=>{const out={};await Promise.all((HO.data.teams||[]).map(t=>api('/v1/teams/'+encodeURIComponent(t.id)+'/oncall').then(o=>{out[t.id]=o;},()=>{out[t.id]=null;})));return out;}));
+  if(v==='knowledge')jobs.push(g('knowledge','/v1/knowledge'),hoGet('resolved',()=>api('/v1/alerts?status=resolved&limit=50').then(r=>r.items||[])));
+  if(v==='settings')jobs.push(g('domains','/v1/domains'),g('prefs','/v1/preferences/me'),g('trust','/v1/action-trust'),g('integrations','/v1/integrations'));
+  if((v==='settings'||v==='flows')&&HO.team)jobs.push(hoGet('esc',()=>Promise.all(HO_SEV.map(s=>api('/v1/escalation-policies/effective?severity='+s+'&teamId='+encodeURIComponent(HO.team))))));
+  if(v==='metrics'){delete HO.data.metrics;delete HO.partial;jobs.push(hoGet('metrics',()=>api('/v1/metrics/summary')));}
   await Promise.all(jobs);
   /* Metrics: without /v1/metrics/summary, show what this service does measure (GET /api/stats) instead of invented numbers. */
-  if(v==='metrics'&&HO.sample.metrics){try{const s=await api('/api/stats');HO.data.metrics={latencyP50Ms:s.p50_ms,latencyP99Ms:s.p99_ms,queueDepth:s.outstanding,notificationsDelivered:s.delivered,eventsMatched:s.matched_events};}catch(e){HO.data.metrics={};}}}
+  if(v==='metrics'&&HO.err.metrics){try{const s=await api('/api/stats');HO.data.metrics={latencyP50Ms:s.p50_ms,latencyP99Ms:s.p99_ms,queueDepth:s.outstanding,notificationsDelivered:s.delivered,eventsMatched:s.matched_events};HO.partial=true;}catch(e){HO.data.metrics={};}}}
 const hoUser=id=>((HO.data.users||[]).find(u=>u.id===id)||{displayName:id}).displayName;
 const hoActor=a=>!a?'':a.kind==='agent'?'Agent '+a.displayName+(a.onBehalfOf?' on behalf of '+a.onBehalfOf:''):a.displayName;
 const hoMins=s=>s==null?'':s%3600===0&&s>=3600?(s/3600)+' h':Math.round(s/60)+' min';
-function hoBanner(keys,paths){return keys.some(k=>HO.sample[k])?`<div class="banner info"><b>Example data.</b> This service does not answer <code>${esc(paths)}</code> yet, so the screen shows the examples from the UI handoff. Nothing you do here is saved. <button class="btn link" data-act="hoRetry">Check again</button></div>`:'';}
+const hoMeId=()=>{const p=PEOPLE[String(me()||'').replace(/^person:/,'')];return p&&p.uuid||null;};
+function hoBanner(keys){const bad=keys.filter(k=>HO.err[k]);return bad.length?`<div class="banner warn"><b>Could not load this from the service.</b> ${esc(HO.err[bad[0]])} <button class="btn link" data-act="hoRetry">Try again</button></div>`:'';}
 const hoKv=o=>`<dl class="kv">${Object.keys(o||{}).map(k=>`<dt>${esc(k)}</dt><dd>${esc(typeof o[k]==='object'?JSON.stringify(o[k]):o[k])}</dd>`).join('')}</dl>`;
 const hoRisk=r=>loz((r==='high'?'High':r==='medium'?'Medium':'Low')+' risk',r==='high'?'danger':r==='medium'?'warning':'');
-function viewApprovals(){const list=HO.data.approvals||[],pending=list.filter(a=>a.status==='pending'),done=list.filter(a=>a.status!=='pending');
+const hoTeamSeg=act=>{const teams=HO.data.teams||[];return teams.length>1?`<span class="seg" role="group" aria-label="Team">${teams.map(t=>`<button data-act="${act||'hoTeam'}" data-v="${esc(t.id)}" aria-pressed="${t.id===HO.team}">${esc(t.name)}</button>`).join('')}</span>`:'';};
+function viewApprovals(){const list=HO.data.approvals||[],pending=list.filter(a=>a.status==='pending'),done=list.filter(a=>a.status!=='pending'),meId=hoMeId();
   const left=a=>{const m=Math.round((Date.parse(a.expiresAt)-Date.now())/6e4);return m>0?'Expires in '+m+' min':'Expired';};
-  return pageHead({title:'Approvals',desc:'Risky actions wait here until a second person agrees. Requests come from runbook steps and from AI agents; an agent can never approve its own request.'})
-    +hoBanner(['approvals'],'/v1/approvals')
-    +(pending.length?`<div class="stack" style="gap:12px">${pending.map(a=>`<section class="card hoap">
+  const num=a=>a.shortId!=null?a.shortId:a.id;
+  return pageHead({title:'Approvals',desc:'Risky actions wait here until a second person agrees. Requests come from runbook steps and from AI agents; nobody approves their own request.'})
+    +hoBanner(['approvals'])
+    +(pending.length?`<div class="stack" style="gap:12px">${pending.map(a=>{const mine=!!(meId&&a.requestedBy&&a.requestedBy.id===meId);return `<section class="card hoap">
         <div class="row"><h2 class="grow">${esc(hoActor(a.requestedBy))} asks to run <code>${esc(a.action)}</code></h2>${loz(a.origin==='agent_request'?'Agent request':'Runbook step',a.origin==='agent_request'?'new':'')}${hoRisk(a.risk)}<span class="muted num">${left(a)}</span></div>
         <p style="margin:0">${esc(a.reason||'')}</p>${hoKv(a.parameters)}${hoChange(a)}
-        <p class="help" style="margin:0">Who can approve: ${esc((a.approvers||[]).map(hoActor).join(', ')||'an approver of this team')}. They can also reply <code>APPROVE ${esc(a.id)}</code> to the text message they received.</p>
-        <div class="row"><button class="btn" data-act="hoOpen" data-id="${esc(a.id)}" aria-expanded="${HO.open===a.id}">${HO.open===a.id?'Hide the change':'See what changes'}</button>${a.alertId?`<button class="btn" data-act="openAlert" data-id="${esc(a.alertId)}">Open the alert</button>`:''}<span class="grow"></span><button class="btn" data-act="hoDecide" data-id="${esc(a.id)}" data-v="reject">Reject</button><button class="btn pri" data-act="hoDecide" data-id="${esc(a.id)}" data-v="approve">Approve</button></div></section>`).join('')}</div>`
-      :emptyState('shield_checkmark','Nothing is waiting for you','When a runbook step or an agent needs a second person, the request appears here and on your phone.',''))
+        <p class="help" style="margin:0">Who can approve: ${esc((a.approvers||[]).filter(x=>!(a.requestedBy&&x.id===a.requestedBy.id)).map(hoActor).join(', ')||'an approver of this team')}. They can also reply <code>APPROVE ${esc(num(a))}</code> to the text message they received.</p>
+        ${mine?'':`<label class="field"><span>Comment (optional, kept with the decision)</span><input class="in" id="hoc-${esc(a.id)}" data-oni="hoComment" data-id="${esc(a.id)}" value="${esc(HO.comment[a.id]||'')}" placeholder="Why you approve or reject"></label>`}
+        <div class="row"><button class="btn" data-act="hoOpen" data-id="${esc(a.id)}" aria-expanded="${HO.open===a.id}">${HO.open===a.id?'Hide the details':'Details'}</button>${a.alertId?`<button class="btn" data-act="hoAlert" data-id="${esc(a.alertId)}">Open the alert</button>`:''}<span class="grow"></span>
+          ${mine?'<span class="loz">Waiting for another approver</span><span class="muted">You asked for this, so someone else has to decide.</span>':`<button class="btn" data-act="hoDecide" data-id="${esc(a.id)}" data-v="reject">Reject</button><button class="btn pri" data-act="hoDecide" data-id="${esc(a.id)}" data-v="approve">Approve</button>`}</div></section>`;}).join('')}</div>`
+      :HO.err.approvals?'':emptyState('shield_checkmark','Nothing is waiting for you','When a runbook step or an agent needs a second person, the request appears here and on your phone.',''))
     +(done.length?`<h2>Decided</h2><div class="tablewrap"><table><thead><tr><th>Action</th><th>Asked by</th><th>Decided by</th><th>Comment</th><th>Result</th></tr></thead><tbody>${done.map(a=>`<tr><td><code>${esc(a.action)}</code></td><td>${esc(hoActor(a.requestedBy))}</td><td>${esc(hoActor(a.decidedBy)||'Nobody')}</td><td>${esc(a.comment||'')}</td><td>${loz(cap(a.status),a.status==='approved'?'success':a.status==='rejected'?'danger':'')}</td></tr>`).join('')}</tbody></table></div>`:'');}
-function viewOncall(){const d=HO.data,teams=d.teams||[],team=teams.find(t=>t.id===HO.team)||teams[0];
-  const head=pageHead({title:'On-call schedule',desc:'Who is paged first this week, who covers for whom, and who is asked next when nobody answers.',
-    right:teams.length>1?`<span class="seg" role="group" aria-label="Team">${teams.map(t=>`<button data-act="hoTeam" data-v="${esc(t.id)}" aria-pressed="${team&&t.id===team.id}">${esc(t.name)}</button>`).join('')}</span>`:''})+hoBanner(['schedules','teams'],'/v1/schedules');
-  if(!team)return head+emptyState('clock','No teams yet','A schedule belongs to a team. Create a team first.','');
+function viewOncall(){const d=HO.data,teams=d.teams||[],team=teams.find(t=>t.id===HO.team)||teams[0],all=d.oncallAll||{};
+  const head=pageHead({title:'On-call schedule',desc:'Who is paged first this week, who covers for whom, and who is asked next when nobody answers.'})+hoBanner(['teams','schedules','oncallAll']);
+  if(!team)return head+(HO.err.teams?'':emptyState('clock','No teams yet','A schedule belongs to a team. Create a team first.',''));
+  const nm=s=>s?(s.userName||hoUser(s.userId)):'Nobody';
+  const summary=`<section class="card"><h2>On call now, by team</h2><div class="tablewrap"><table><thead><tr><th>Team</th><th>On call now</th><th>Until</th><th>Next</th></tr></thead><tbody>${teams.map(t=>{const o=all[t.id];
+      return `<tr class="clickable" data-act="hoTeam" data-v="${esc(t.id)}" ${t.id===team.id?'aria-current="true"':''}><td>${esc(t.name)}</td><td>${o?`<b>${esc(nm(o.now))}</b>`:'<span class="muted">Not visible to you</span>'}</td><td>${o&&o.now?lgStamp(Date.parse(o.now.end)):''}</td><td>${o&&o.next?esc(nm(o.next))+' <span class="muted">from '+lgStamp(Date.parse(o.next.start))+'</span>':''}</td></tr>`;}).join('')}</tbody></table></div></section>`;
   const shifts=(d.schedules||[]).filter(s=>s.teamId===team.id),w0=hoWeekStart(),w1=w0+7*864e5,now=Date.now(),pct=t=>((t-w0)/(w1-w0)*100).toFixed(3);
-  const active=at=>shifts.filter(s=>Date.parse(s.start)<=at&&Date.parse(s.end)>at).sort((a,b)=>(b.kind==='override')-(a.kind==='override'))[0];
-  const cur=(d.oncall&&d.oncall.now)||active(now),nxt=(d.oncall&&d.oncall.next)||shifts.filter(s=>Date.parse(s.start)>now).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start))[0];
-  const chain=((d.oncall||{}).escalationChain||[]).map((a,i)=>`<li><span class="cnt">Level ${i+1}</span> ${esc(i===0&&cur?hoUser(cur.userId):hoActor(a))}</li>`).join('');
+  const oc=all[team.id]||{},cur=oc.now,nxt=oc.next;
+  const chain=(oc.escalationChain||[]).map((a,i)=>`<li><span class="cnt">Level ${i+1}</span> ${esc(hoActor(a))}</li>`).join('');
   const bar=s=>{const a=Math.max(w0,Date.parse(s.start)),b=Math.min(w1,Date.parse(s.end));if(b<=a)return '';
-    return `<span class="shift k-${esc(s.kind)}" style="left:${pct(a)}%;width:${((b-a)/(w1-w0)*100).toFixed(3)}%" title="${esc(hoUser(s.userId))}: ${lgStamp(Date.parse(s.start))} to ${lgStamp(Date.parse(s.end))}${s.kind==='override'?' (override)':''}">${s.kind==='override'?'Override':''}</span>`;};
-  return head+`<section class="card"><div class="hooc"><div><span class="flabel">On call now</span><b>${cur?esc(hoUser(cur.userId)):'Nobody'}</b><small class="muted">${cur?'until '+lgStamp(Date.parse(cur.end)):'No shift covers this moment'}</small></div>
-      <div><span class="flabel">Next</span><b>${nxt?esc(hoUser(nxt.userId)):'Nobody'}</b><small class="muted">${nxt?'from '+lgStamp(Date.parse(nxt.start)):''}</small></div>
+    return `<span class="shift k-${esc(s.kind)}" style="left:${pct(a)}%;width:${((b-a)/(w1-w0)*100).toFixed(3)}%" title="${esc(nm(s))}: ${lgStamp(Date.parse(s.start))} to ${lgStamp(Date.parse(s.end))}${s.kind==='override'?' (override)':''}">${s.kind==='override'?'Override':''}</span>`;};
+  return head+summary+`<div class="row"><h2 class="grow">${esc(team.name)}</h2>${hoTeamSeg()}</div><section class="card"><div class="hooc"><div><span class="flabel">On call now</span><b>${esc(nm(cur))}</b><small class="muted">${cur?'until '+lgStamp(Date.parse(cur.end)):'No shift covers this moment'}</small></div>
+      <div><span class="flabel">Next</span><b>${esc(nm(nxt))}</b><small class="muted">${nxt?'from '+lgStamp(Date.parse(nxt.start)):''}</small></div>
       <div><span class="flabel">If nobody answers</span><ol class="hochain">${chain||'<li class="muted">No escalation chain</li>'}</ol></div></div></section>
     <div class="sched" role="table" aria-label="This week">
       <div class="sched-h" role="row"><span></span><div class="sched-days">${[0,1,2,3,4,5,6].map(i=>{const x=new Date(w0+i*864e5);return `<span>${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]} ${x.getDate()}</span>`;}).join('')}</div></div>
-      ${team.memberIds.map(id=>`<div class="sched-r" role="row"><span class="user">${avatar(hoUser(id),true)}${esc(hoUser(id))}</span><div class="sched-t">${shifts.filter(s=>s.userId===id).map(bar).join('')}${now>w0&&now<w1?`<i class="sched-now" style="left:${pct(now)}%"></i>`:''}</div></div>`).join('')}</div>
+      ${(team.memberIds||[]).map(id=>`<div class="sched-r" role="row"><span class="user">${avatar(hoUser(id),true)}${esc(hoUser(id))}</span><div class="sched-t">${shifts.filter(s=>s.userId===id).map(bar).join('')}${now>w0&&now<w1?`<i class="sched-now" style="left:${pct(now)}%"></i>`:''}</div></div>`).join('')}</div>
     <p class="help">Solid bars come from a rotation. A bar marked Override was added by hand and wins over the rotation for that time. The thin line is now.</p>
     ${(d.rotations||[]).length?`<h2>Rotations</h2><div class="tablewrap"><table><thead><tr><th>Name</th><th>Handover order</th><th>Shift length</th><th>Handover</th></tr></thead><tbody>${d.rotations.map(r=>`<tr><td>${esc(r.name||'Rotation')}</td><td>${esc(r.memberIds.map(hoUser).join(' → '))}</td><td>${r.shiftHours%24===0?(r.shiftHours/24)+' days':r.shiftHours+' hours'}</td><td>${esc(r.handoverTime||'')} ${esc(r.timezone||'')}</td></tr>`).join('')}</tbody></table></div>`:''}`;}
-function viewMetrics(){const m=HO.data.metrics||{},live=!HO.sample.metrics,n=v=>v==null?'—':Math.round(v).toLocaleString('en-GB');
+function viewMetrics(){const m=HO.data.metrics||{},n=v=>v==null?'—':Math.round(v).toLocaleString('en-GB');
   const tile=(label,val,unit,note,cls)=>`<div class="hotile ${cls||''}"><span class="flabel">${label}</span><b>${val}${unit&&val!=='—'?`<small> ${unit}</small>`:''}</b><small class="muted">${note||''}</small></div>`;
   return pageHead({title:'Metrics',desc:'How fast events become notifications, and proof that none is lost on the way.'})
-    +(live?'':'<div class="banner info"><b>Partly live.</b> This service does not answer <code>/v1/metrics/summary</code> yet. The numbers shown are real and come from its own counter (<code>/api/stats</code>, last 15 minutes); the ones it does not measure are left empty. <button class="btn link" data-act="hoRetry">Check again</button></div>')
-    +`<div class="hogrid">${tile('Events per second',n(m.eventsPerSecond),'/s',m.eventsPerSecond==null?'Not measured by this service':'')}${tile('Typical delay (p50)',n(m.latencyP50Ms),'ms','From arrival to the first notification')}${tile('Slowest 1% (p99)',n(m.latencyP99Ms),'ms','')}
+    +(HO.partial?'<div class="banner info"><b>Partly live.</b> <code>/v1/metrics/summary</code> did not answer. The numbers shown are real and come from the delivery counter (<code>/api/stats</code>, last 15 minutes); the ones it does not measure are left empty. <button class="btn link" data-act="hoRetry">Try again</button></div>':'')
+    +`<div class="hogrid">${tile('Events per second',n(m.eventsPerSecond),'/s',m.eventsPerSecond==null?'Not measured':'')}${tile('Typical delay (p50)',n(m.latencyP50Ms),'ms','From arrival to the first notification')}${tile('Slowest 1% (p99)',n(m.latencyP99Ms),'ms','')}
       ${tile('Waiting to be sent',n(m.queueDepth),'','Notifications in the queue')}${tile('Events received',n(m.eventsIngested!=null?m.eventsIngested:m.eventsMatched),'',m.eventsIngested==null&&m.eventsMatched!=null?'Events that matched a rule':'')}${tile('Notifications delivered',n(m.notificationsDelivered),'','')}
-      ${tile('Parked after retries',n(m.inDeadLetter),'',m.inDeadLetter==null?'Not measured by this service':'Kept for a person to look at')}${tile('Lost',n(m.lost),'',m.lost==null?'Not measured by this service':'Received minus delivered, parked and suppressed',m.lost===0?'good':m.lost>0?'bad':'')}</div>`;}
-function viewKnowledge(){const docs=HO.data.knowledge||[],K={upload:'Uploaded file',link:'Link',jira:'Jira',confluence:'Confluence',resolution_note:'Resolution note'},tn=id=>((HO.data.teams||[]).find(t=>t.id===id)||{name:id||''}).name;
-  return pageHead({title:'History',desc:'What the team already knows: uploaded documents, links, and the notes people write when they resolve an alert. The next similar alert shows how it was fixed before.'})
-    +hoBanner(['knowledge'],'/v1/knowledge')
-    +(docs.length?`<div class="tablewrap"><table><thead><tr><th>Title</th><th>Kind</th><th>Team</th><th>Searchable since</th></tr></thead><tbody>${docs.map(k=>`<tr><td>${esc(k.title)}</td><td>${loz(K[k.kind]||k.kind,k.kind==='resolution_note'?'success':'')}</td><td>${esc(tn(k.teamId))}</td><td>${k.indexedAt?ago(Date.parse(k.indexedAt)):'<span class="muted">Being indexed</span>'}</td></tr>`).join('')}</tbody></table></div>`
-      :emptyState('book_open','Nothing here yet','Resolve an alert and write how you fixed it: the note is kept here.',''))
-    +'<p class="help">Uploading files and connecting Jira or Confluence are not built in this interface yet.</p>';}
-function viewSettings(){const d=HO.data,tab=HO.tab,teams=d.teams||[],tn=id=>((d.teams||[]).find(t=>t.id===id)||{name:id||''}).name,dn=id=>((d.domains||[]).find(x=>x.id===id)||{name:id||''}).name;let body='';
-  if(tab==='escalation'){const origin=(p,k)=>p.origin&&p.origin[k]?loz(HO_ORIGIN[p.origin[k]]||p.origin[k],p.origin[k]==='org'?'':'info'):'';
-    body=hoBanner(['esc'],'/v1/escalation-policies/effective')+`<p class="pdesc">What happens when nobody acknowledges, for ${esc(tn(HO.team)||'the organisation')}. A value is inherited from the level above unless it is overridden here.</p>
-      <div class="pgrid">${(d.esc||[]).map(p=>`<section class="card"><div class="row"><h2 class="grow">${sevTag(p.severity)}</h2>${origin(p,'levels')}</div>
+      ${tile('Parked after retries',n(m.inDeadLetter),'',m.inDeadLetter==null?'Not measured':'Kept for a person to look at')}${tile('Lost',n(m.lost),'',m.lost==null?'Not measured':'Received minus delivered, parked and suppressed',m.lost===0?'good':m.lost>0?'bad':'')}</div>`;}
+function viewKnowledge(){const docs=HO.data.knowledge||[],res=HO.data.resolved||[],K={upload:'Uploaded file',link:'Link',jira:'Jira',confluence:'Confluence',resolution_note:'Resolution note'},tn=id=>((HO.data.teams||[]).find(t=>t.id===id)||{name:id||''}).name;
+  const num=a=>(/^A-(\d+)$/.exec(a.shortId||'')||[])[1];
+  return pageHead({title:'History',desc:'Alerts that were resolved, and what the team already knows: uploaded documents, links, and the notes people write when they resolve an alert. The next similar alert shows how it was fixed before.'})
+    +hoBanner(['resolved','knowledge'])
+    +`<h2>Resolved alerts</h2>`+(res.length?`<div class="tablewrap"><table><thead><tr><th style="width:90px">Alert</th><th>Title</th><th>Severity</th><th>Team</th><th>Last seen</th></tr></thead><tbody>${res.map(a=>`<tr ${num(a)?`class="clickable" data-act="openAlert" data-id="${esc(num(a))}" tabindex="0"`:''}><td class="num">${esc(a.shortId||'')}</td><td>${esc(a.title)}${a.count>1?` <span class="muted">×${nf(a.count)}</span>`:''}</td><td>${SEVS[a.severity]?sevTag(a.severity):esc(a.severity)}</td><td>${esc(a.teamName||tn(a.teamId))}</td><td>${a.lastSeenAt?ago(Date.parse(a.lastSeenAt)):''}</td></tr>`).join('')}</tbody></table></div>`
+      :HO.err.resolved?'':emptyState('checkmark','Nothing resolved yet','Resolved alerts of your teams are listed here.',''))
+    +`<h2>Knowledge</h2>`+(docs.length?`<div class="tablewrap"><table><thead><tr><th>Title</th><th>Kind</th><th>Team</th><th>Searchable since</th></tr></thead><tbody>${docs.map(k=>`<tr><td>${esc(k.title)}</td><td>${loz(K[k.kind]||k.kind,k.kind==='resolution_note'?'success':'')}</td><td>${esc(k.teamId?tn(k.teamId):'Organisation')}</td><td>${k.indexedAt?ago(Date.parse(k.indexedAt)):'<span class="muted">Being indexed</span>'}</td></tr>`).join('')}</tbody></table></div>`
+      :HO.err.knowledge?'':emptyState('book_open','Nothing here yet','Resolve an alert and write how you fixed it: the note is kept here.',''))
+    +'<p class="help">To upload a document or add a link, use Knowledge in the <a href="/ads/#/knowledge">new interface</a>.</p>';}
+/* The effective escalation ladder of one team, per severity, read from the service. Used by Settings and by Escalation flows. */
+function hoLadders(){const d=HO.data,origin=(p,k)=>p.origin&&p.origin[k]?loz(HO_ORIGIN[p.origin[k]]||p.origin[k],p.origin[k]==='org'?'':'info'):'';
+  return `<div class="pgrid">${(d.esc||[]).map(p=>`<section class="card"><div class="row"><h2 class="grow">${sevTag(p.severity)}</h2>${origin(p,'levels')}</div>
         <ol class="ladder">${(p.levels||[]).map(l=>`<li><b>Level ${l.level}: ${esc(HO_TARGET[l.target]||l.target)}</b><span>${esc((l.channels||[]).map(c=>HO_CHN[c]||c).join(' and '))}</span>${l.ackTimeoutSeconds?`<small>after ${hoMins(l.ackTimeoutSeconds)} without acknowledgement</small>`:''}</li>`).join('')}</ol>
         <dl class="kv"><dt>Repeat</dt><dd>${p.renotifySeconds?'every '+hoMins(p.renotifySeconds)+' until acknowledged':'No'} ${origin(p,'renotifySeconds')}</dd>
-          <dt>Kept informed</dt><dd>${(p.softChannels||[]).length?esc(p.softChannels.map(c=>HO_CHN[c]||c).join(', '))+(p.softDigestMinutes?', one summary every '+p.softDigestMinutes+' min':', at once'):'Nobody'} ${origin(p,p.softDigestMinutes?'softDigestMinutes':'softChannels')}</dd></dl></section>`).join('')}</div>
-      <p class="help">Changing a ladder here (override, reset to inherited) is not built in this interface yet.</p>`;}
-  else if(tab==='notifications'){const p=d.prefs||{bySeverity:{}},wh=p.workingHours||{};
-    body=hoBanner(['prefs'],'/v1/preferences/me')+`<p class="pdesc">How you want to be told, by severity. A critical alert should reach you wherever you are; a warning can wait in email.</p>
+          <dt>Kept informed</dt><dd>${(p.softChannels||[]).length?esc(p.softChannels.map(c=>HO_CHN[c]||c).join(', '))+(p.softDigestMinutes?', one summary every '+p.softDigestMinutes+' min':', at once'):'Nobody'} ${origin(p,p.softDigestMinutes?'softDigestMinutes':'softChannels')}</dd></dl></section>`).join('')}</div>`;}
+const TZS=['UTC','Europe/Warsaw','Europe/London','Europe/Berlin','America/New_York','America/Chicago','America/Los_Angeles','Asia/Singapore','Asia/Tokyo','Australia/Sydney'];
+/* My notification preferences (GET/PUT /v1/preferences/me): channels per severity and working hours. Changes stay a draft until Save. */
+function prefsHtml(){const base=HO.data.prefs;if(!base)return HO.err.prefs?'':'<p class="muted">Loading…</p>';
+  const p=HO.prefs||(HO.prefs=clone({bySeverity:base.bySeverity||{},workingHours:base.workingHours||null})),wh=p.workingHours,dirty=JSON.stringify(p)!==JSON.stringify({bySeverity:base.bySeverity||{},workingHours:base.workingHours||null});
+  const tz=wh&&wh.timezone||'Europe/Warsaw';
+  return `<p class="pdesc">How you (${esc(pname(me()))}) want to be told, by severity. A critical alert should reach you wherever you are; a warning can wait in email.</p>
       <div class="tablewrap"><table><thead><tr><th>Severity</th>${HO_CH.map(c=>`<th>${HO_CHN[c]}</th>`).join('')}</tr></thead><tbody>${HO_SEV.map(s=>`<tr><td>${sevTag(s)}</td>${HO_CH.map(c=>{const on=(p.bySeverity[s]||[]).includes(c);return `<td><button class="lgchk" style="width:auto" role="checkbox" aria-checked="${on}" aria-label="${HO_CHN[c]} for ${s}" data-act="hoPref" data-s="${s}" data-c="${c}"><span class="bx" aria-hidden="true"></span></button></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>
-      <dl class="kv"><dt>Working hours</dt><dd>${esc(wh.from||'')} to ${esc(wh.to||'')} ${esc(wh.timezone||'')}</dd></dl>`;}
-  else if(tab==='trust'){body=hoBanner(['trust'],'/v1/action-trust')+`<p class="pdesc">An action starts as a suggestion. After enough approved runs without a failure it may run after approval, then by itself, never above the cap a Domain Root sets.</p>
+      <div class="row" style="align-items:flex-end;margin-top:12px"><label class="chk"><input type="checkbox" id="whOn" data-onc="hoWhOn" ${wh?'checked':''}> I have working hours</label>
+        ${wh?`<label class="field" style="width:120px"><span>From</span><input class="in" type="time" id="whFrom" data-onc="hoWh" data-k="from" value="${esc(wh.from||'08:00')}"></label>
+        <label class="field" style="width:120px"><span>To</span><input class="in" type="time" id="whTo" data-onc="hoWh" data-k="to" value="${esc(wh.to||'18:00')}"></label>
+        <label class="field" style="width:220px"><span>Time zone</span><select class="in" id="whTz" data-onc="hoWh" data-k="timezone" style="width:100%">${(TZS.includes(tz)?TZS:[tz].concat(TZS)).map(z=>opt(z,z,tz)).join('')}</select></label>`:''}</div>
+      <div class="row" style="margin-top:12px"><span class="grow muted">${dirty?'You have changes that are not saved.':'Saved.'}</span><button class="btn subtle" data-act="hoPrefReset" ${dirty?'':'disabled'}>Undo changes</button><button class="btn pri" data-act="hoPrefSave" ${dirty?'':'disabled'}>Save my preferences</button></div>`;}
+function viewSettings(){const d=HO.data,tab=HO.tab,teams=d.teams||[],tn=id=>((d.teams||[]).find(t=>t.id===id)||{name:id||''}).name,dn=id=>((d.domains||[]).find(x=>x.id===id)||{name:id||''}).name;let body='';
+  if(tab==='escalation'){body=hoBanner(['teams','esc'])+`<div class="row"><p class="pdesc grow">What happens when nobody acknowledges, for ${esc(tn(HO.team)||'the organisation')}. A value is inherited from the level above unless it is overridden.</p>${hoTeamSeg()}</div>`
+      +hoLadders()+'<p class="help">To change the channels of a team by severity, open Teams in the <a href="/ads/#/teams">new interface</a> (Domain Roots and the Master).</p>';}
+  else if(tab==='notifications'){body=hoBanner(['prefs'])+prefsHtml();}
+  else if(tab==='trust'){body=hoBanner(['trust'])+`<p class="pdesc">An action starts as a suggestion. After enough approved runs without a failure it may run after approval, then by itself, never above the cap a Domain Root sets.</p>
       <div class="tablewrap"><table><thead><tr><th>Action</th><th>Domain</th><th>Level now</th><th>Evidence</th><th>Cap</th></tr></thead><tbody>${(d.trust||[]).map(t=>`<tr><td><code>${esc(t.action)}</code></td><td>${esc(dn(t.domainId))}</td><td>${loz(HO_TRUST[t.level]||t.level,t.level==='auto'?'success':t.level==='run_after_approval'?'info':'')}</td>
         <td>${t.successfulApprovedRuns} approved run${t.successfulApprovedRuns===1?'':'s'} without a problem, ${t.failures} failure${t.failures===1?'':'s'}${t.level!=='auto'&&t.promoteAfter?' · moves up after '+t.promoteAfter:''}</td><td>${t.cap?esc(HO_TRUST[t.cap]||t.cap):'<span class="muted">None</span>'}</td></tr>`).join('')}</tbody></table></div>`;}
   else if(tab==='integrations'){const N={datadog:'Datadog',github:'GitHub',jira:'Jira',confluence:'Confluence',llm:'AI model'},soon={jira:1,confluence:1},M={default:'Default provider',own_key:'Your own API key',own_endpoint:'Your own endpoint'};
-    body=hoBanner(['integrations'],'/v1/integrations')+`<p class="pdesc">Read-only connections that give an alert more context. Keys are write-only: once saved they are never shown again.</p>
+    body=hoBanner(['integrations'])+`<p class="pdesc">Read-only connections that give an alert more context. Keys are write-only: once saved they are never shown again.</p>
       <div class="pgrid">${(d.integrations||[]).map(i=>`<section class="card"><div class="row"><h2 class="grow">${N[i.kind]||esc(i.kind)}</h2>${soon[i.kind]?loz('Coming soon'):loz(i.status==='connected'?'Connected':i.status==='error'?'Error':'Not connected',i.status==='connected'?'success':i.status==='error'?'danger':'')}</div>
-        <p class="muted" style="margin:0">${i.kind==='llm'?'Used for suggestions and drafts. Mode: '+esc(M[i.mode]||i.mode||'not set')+'.':i.kind==='github'?'Recent commits and pull requests next to an alert.':i.kind==='datadog'?'Logs and metrics around the time of an alert.':'Tickets and pages as knowledge.'}</p></section>`).join('')}</div>
-      <p class="help">Connecting an integration from this screen is not built yet.</p>`;}
-  else{body=hoBanner(['domains','teams','users'],'/v1/domains, /v1/teams, /v1/users')+`<p class="pdesc">Permissions flow down: Master, then Domain Root, then Member. Escalation flows up the same way. A team can belong to more than one domain.</p>
+        <p class="muted" style="margin:0">${i.kind==='llm'?'Used for suggestions and drafts. Mode: '+esc(M[i.mode]||i.mode||'not set')+'.':i.kind==='github'?'Recent commits and pull requests next to an alert.':i.kind==='datadog'?'Logs and metrics around the time of an alert.':'Tickets and pages as knowledge.'}</p></section>`).join('')}</div>`;}
+  else{body=hoBanner(['domains','teams','users'])+`<p class="pdesc">Permissions flow down: Master, then Domain Root, then Member. Escalation flows up the same way. A team can belong to more than one domain. You see the part of the organisation you have access to.</p>
       <h2>Domains</h2><div class="tablewrap"><table><thead><tr><th>Domain</th><th>Domain Root</th></tr></thead><tbody>${(d.domains||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc((x.rootUserIds||[]).map(hoUser).join(', ')||'Nobody yet')}</td></tr>`).join('')}</tbody></table></div>
       <h2>Teams</h2><div class="tablewrap"><table><thead><tr><th>Team</th><th>Domains</th><th>Members</th></tr></thead><tbody>${teams.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc((t.domainIds||[]).map(dn).join(', '))}${(t.domainIds||[]).length>1?' '+loz('Cross-domain','info'):''}</td><td>${esc((t.memberIds||[]).map(hoUser).join(', '))}</td></tr>`).join('')}</tbody></table></div>
-      <h2>People</h2><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody>${(d.users||[]).map(u=>`<tr><td><span class="user">${avatar(u.displayName,true)}${esc(u.displayName)}</span></td><td>${esc(u.email||'')}</td><td>${esc(u.role||'')}</td></tr>`).join('')}</tbody></table></div>`;}
+      <h2>People</h2><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>${(d.users||[]).map(u=>`<tr><td><span class="user">${avatar(u.displayName,true)}${esc(u.displayName)}</span></td><td>${esc(u.email||'')}</td><td>${esc(u.phone||'')}</td></tr>`).join('')}</tbody></table></div>`;}
   return pageHead({title:'Settings'})+tabsHtml('hoTab',tab,[['escalation','Escalation','','alert_urgent'],['notifications','My notifications','','alert'],['trust','Trust levels','','shield_checkmark'],['integrations','Integrations','','plug_connected'],['org','Organisation','','building_bank']])+body;}
 const VIEWS={feed:viewFeed,platforms:viewPlatforms,logs:viewLogs,approvals:viewApprovals,oncall:viewOncall,metrics:viewMetrics,knowledge:viewKnowledge,settings:viewSettings,report:viewReport,flows:viewFlows,rules:viewRules,runbooks:viewRunbooks,deliveries:viewDeliveries,preferences:viewPreferences,audit:viewAudit};
 function render(){
   const a=document.activeElement,fid=a&&a.id;let ss=null,se=null;try{ss=a.selectionStart;se=a.selectionEnd;}catch(e){}
   if(OIDC())accountMenu();else{
   const meName=pname(me())||'?';$('whoBtn').innerHTML=avatar(meName);$('whoBtn').title='Viewing as '+meName+'. Click to switch (demo).';
-  $('whoMenu').hidden=S.menu!=='who';$('whoMenu').innerHTML='<div class="mlab">Viewing as (demo only)</div>'+personas().map(x=>`<button data-act="persona" data-v="${x[0]}" aria-current="${x[0]===S.team+'|'+S.role}">${avatar(x[1].split(' — ')[0],true)}<span>${esc(x[1].split(' — ')[0])}<small>${esc(x[1].split(' — ')[1]||'')}</small></span></button>`).join('');}
+  $('whoMenu').hidden=S.menu!=='who';$('whoMenu').innerHTML=whoMenuHtml();}
   $('whoMenu').innerHTML+=levelMenu();
   $('createMenu').hidden=S.menu!=='create';$('createMenu').innerHTML=`<button data-act="createEvent">${ic('send')}<span>Event<small>Write an event to a platform and follow it</small></span></button><button data-act="createRule">${ic('flow')}<span>Rule<small>Decide which events alert whom</small></span></button><button data-act="createPlatform" ${canEdit()?'':'disabled'}>${ic('plug_connected')}<span>Platform<small>Connect a new system to Herald</small></span></button>`;
   const bell=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef===me()).length;$('bellN').hidden=!bell;$('bellN').textContent=bell;
@@ -1818,13 +1849,17 @@ const ACT={
   flNew(){const id='flow-'+Date.now().toString(36),name=(FL.tab==='bug'?'New bug':'New vulnerability')+' flow';flSync();FL.flows.push({id:id,name:name,problem:FL.tab,severity:'high',flow:flChain(name,FL.tab,'high',[['L2','Engineer on call',['call'],10]])});flSave();FL.cur=id;FL.sel=null;},
   platFold(){S.platOpen=!S.platOpen;try{localStorage.setItem('herald.platOpen',S.platOpen?'1':'0');}catch(e){}},
   hoTab(el){HO.tab=el.dataset.v;},
-  hoRetry(){HO.data={};HO.sample={};loadHandoff().then(render,e=>toast(e.message));},
-  hoTeam(el){HO.team=el.dataset.v;['schedules','rotations','oncall','esc'].forEach(k=>{delete HO.data[k];});loadHandoff().then(render,e=>toast(e.message));},
-  hoDecide(el){const a=(HO.data.approvals||[]).find(x=>x.id===el.dataset.id),yes=el.dataset.v==='approve';if(!a)return;
-    if(HO.sample.approvals){a.status=yes?'approved':'rejected';a.decidedBy={kind:'user',id:me(),displayName:pname(me())||'You'};toast('Example data: nothing was sent.');return;}
-    api('/v1/approvals/'+encodeURIComponent(a.id)+'/decision',{body:{decision:yes?'approve':'reject'}}).then(()=>{delete HO.data.approvals;return loadHandoff();}).then(render,e=>toast(e.message));},
-  hoPref(el){const p=HO.data.prefs;if(!p)return;const list=p.bySeverity[el.dataset.s]||(p.bySeverity[el.dataset.s]=[]),i=list.indexOf(el.dataset.c);if(i<0)list.push(el.dataset.c);else list.splice(i,1);
-    if(!HO.sample.prefs)api('/v1/preferences/me',{method:'PUT',body:p}).catch(e=>toast(e.message));},
+  hoRetry(){HO.data={};HO.err={};HO.prefs=null;loadHandoff().then(render,e=>toast(e.message));},
+  hoTeam(el){HO.team=el.dataset.v;['schedules','rotations','esc'].forEach(k=>{delete HO.data[k];delete HO.err[k];});loadHandoff().then(render,e=>toast(e.message));},
+  hoAlert(el){api('/v1/alerts/'+encodeURIComponent(el.dataset.id)).then(a=>{const m=/^A-(\d+)$/.exec(a.shortId||'');if(!m)return;go('feed');S.platform=null;S.f.resolved=true;ACT.openAlert({dataset:{id:m[1]}});render();},e=>toast(e.message));},
+  hoDecide(el){const a=(HO.data.approvals||[]).find(x=>x.id===el.dataset.id),yes=el.dataset.v==='approve';if(!a)return;const comment=(HO.comment[a.id]||'').trim();
+    api('/v1/approvals/'+encodeURIComponent(a.id)+'/decision',{body:comment?{decision:yes?'approve':'reject',comment:comment}:{decision:yes?'approve':'reject'}})
+      .then(()=>{delete HO.comment[a.id];toast(yes?'Approved.':'Rejected.');return loadHandoff();}).then(render,e=>{toast(e.status===403?'You cannot decide this one: '+e.message:e.message);});},
+  hoPref(el){const p=HO.prefs;if(!p)return;const list=p.bySeverity[el.dataset.s]||(p.bySeverity[el.dataset.s]=[]),i=list.indexOf(el.dataset.c);if(i<0)list.push(el.dataset.c);else list.splice(i,1);},
+  hoPrefReset(){HO.prefs=null;},
+  myPrefs(){HO.tab='notifications';go('settings');window.scrollTo(0,0);loadView().then(render,e=>toast(e.message));},
+  hoPrefSave(){const p=HO.prefs;if(!p)return;api('/v1/preferences/me',{method:'PUT',body:p.workingHours?p:{bySeverity:p.bySeverity}})
+    .then(r=>{HO.data.prefs=r;HO.prefs=null;toast('Your preferences are saved. New alerts use them.');render();},e=>toast('Not saved: '+e.message));},
   poster(el){S.poster=el.dataset.v==='a';try{localStorage.setItem('herald.poster',S.poster?'a':'b');}catch(e){}},
   lgAll(){S.lg.range='all';S.lg.win=null;},
   lgClearQ(){S.lg.q='';},
@@ -1838,7 +1873,7 @@ const ACT={
   viewMode(el){setMode(el.dataset.v==='technical');},
   traceOpen(){const tr=S.trace;if(!tr||!tr.alert)return;const open=()=>{go('feed');S.platform=null;S.f.assignee='';S.f.platform='';S.f.resolved=true;ACT.openAlert({dataset:{id:tr.alert.id}});render();};
     if(tr.alert.owner!==T().owner&&OIDC()){const k=teamKey(tr.alert.owner);if(canSwitchTo(k)&&TEAMS[k].owner===tr.alert.owner){S.team=k;reloadFor().then(open);}else toast('This alert belongs to '+pname(tr.alert.owner)+'. Only members of that team can open it.');}
-    else if(tr.alert.owner!==T().owner){S.team=teamKey(tr.alert.owner);S.role='responder';reloadFor().then(open);}else open();},
+    else if(tr.alert.owner!==T().owner){const k=teamKey(tr.alert.owner);viewAs(TEAMS[k].oncallId,k).then(reloadFor).then(open);}else open();},
   simToggle(){S.simOpen=!S.simOpen;if(S.simOpen)loadPhone().then(render);},
   sim(el){S.simOpen=false;sim(el.dataset.k);},
   async smsToggle(){S.simOpen=false;try{const r=await api('/api/sim/gateway',{body:{down:!S.phone.down}});S.phone.down=!!r.down;
@@ -1896,7 +1931,9 @@ const ACT={
   sideToggle(){S.sideHidden=!S.sideHidden;},
   createToggle(){S.menu=S.menu==='create'?null:'create';},
   whoToggle(){S.menu=S.menu==='who'?null:'who';},
-  persona(el){S.menu=null;if(OIDC())return;const x=el.dataset.v.split('|'),same=x[0]===S.team;S.team=x[0];S.role=x[1];S.f.assignee='';if(same)reloadKeepDraft();else reloadFor();},
+  persona(el){S.menu=null;if(OIDC())return;const before=S.team;S.f.assignee='';
+    viewAs(el.dataset.id,el.dataset.team||null).then(()=>{loadSources().catch(()=>{});if(S.team===before)reloadKeepDraft();else reloadFor();});},
+  asTeam(el){S.menu=null;const k=el.dataset.v;if(!TEAMS[k]||k===S.team)return;S.team=k;S.f.assignee='';HO.data={};HO.err={};HO.prefs=null;HO.team=null;asSave();reloadFor();},
   bell(){S.platform=null;go('feed');S.f.assignee=me();},
   myTeam(el){S.menu=null;const k=el.dataset.v;if(!canSwitchTo(k)||k===S.team)return;S.team=k;S.f.assignee='';reloadFor();},
   async signOut(){S.menu=null;leaving=true;if(streamCtl){const c=streamCtl;streamCtl=null;c.abort();}
@@ -1926,6 +1963,7 @@ const ACT={
 };
 async function reloadKeepDraft(){const d=S.draft,n=S.draftNew;try{await loadAll();}catch(e){}S.draft=d;S.draftNew=n;render();connect();}
 const ONI={
+  hoComment(el){HO.comment[el.dataset.id]=el.value;return false;},
   rpText(el){RP.text=el.value;const b=$('rpSend');if(b)b.disabled=RP.text.trim().length<8;return false;},
   callUrl(el){S.callUrl=el.value;return false;},
   lgq(el){S.lg.q=el.value;render();return false;},
@@ -1949,6 +1987,8 @@ const ONI={
   newPlatName(el){S.newPlat.name=el.value;return false;}
 };
 const ONC={
+  hoWhOn(el){const p=HO.prefs;if(!p)return;p.workingHours=el.checked?{from:'08:00',to:'18:00',timezone:(PEOPLE[String(me()).replace(/^person:/,'')]||{}).tz||'Europe/Warsaw'}:null;},
+  hoWh(el){const p=HO.prefs;if(!p||!p.workingHours)return;p.workingHours[el.dataset.k]=el.value;},
   rpSys(el){RP.sys=el.value;},
   flSet(el){const s=FL.sel;if(!s||!FL.ed)return;const k=el.dataset.k;s.data=s.data||{};
     if(k==='channel'){const list=(s.data.channels||[]).slice(),i=list.indexOf(el.value);if(el.checked&&i<0)list.push(el.value);if(!el.checked&&i>=0)list.splice(i,1);s.data.channels=list;FL.ed.updateNode(s.id,{channels:list});flSync();return;}
@@ -2026,7 +2066,7 @@ document.addEventListener('drop',e=>{const c=e.target.closest&&e.target.closest(
 /* Links in emails and texts look like #alert-17: open that alert. */
 async function deepLink(){const m=/^#alert-(\d+)$/.exec(location.hash);if(!m||!S.ready)return;
   try{const a=await api('/api/alerts/'+m[1],{admin:true});   /* demo: find whose alert it is, and look at it as them */
-    if(a.owner!==T().owner&&canSwitchTo(teamKey(a.owner))&&TEAMS[teamKey(a.owner)].owner===a.owner){S.team=teamKey(a.owner);if(!OIDC())S.role='responder';await reloadFor();}}catch(e){}
+    if(a.owner!==T().owner&&canSwitchTo(teamKey(a.owner))&&TEAMS[teamKey(a.owner)].owner===a.owner){S.team=teamKey(a.owner);if(!OIDC()&&S.as!=='master')await viewAs(TEAMS[S.team].oncallId,S.team);await reloadFor();}}catch(e){}
   S.view='feed';S.platform=null;S.f.assignee='';S.f.platform='';S.f.resolved=true;ACT.openAlert({dataset:{id:m[1]}});render();}
 /* Ask the service who is signed in. With single sign-on and no session it answers 401: go to the sign-in page and come back here.
    A service without /api/me (or one that cannot be reached) is treated as demo mode, so the demo works exactly as before. */
@@ -2040,6 +2080,8 @@ async function boot(){
     await loadDirectory();
     if(OIDC()){S.role=UI_ROLE[ME.role]||'responder';const ok=myTeams();S.team=(ME.teams||[]).find(k=>ok.includes(k))||ok[0]||null;
       if(!S.team){S.noTeam=true;render();return;}}
+    else{const sv=asSaved();if(sv&&sv.team&&TEAMS[sv.team])S.team=sv.team;if(sv&&sv.role)S.role=sv.role;
+      S.as=sv&&sv.as&&PEOPLE[sv.as]?sv.as:(T()?T().oncallId:'master');await asLoad();}
     const [meta,sources,samples]=await Promise.all([api('/api/meta'),api('/api/sources'),api('/api/sim/samples').catch(()=>({}))]);
     S.meta=meta;S.sources=sources;S.samples=samples;await Promise.all([loadAll(),loadPhone()]);S.ready=true;S.error=null;
   }catch(e){S.error=e.message||'The service did not answer.';render();return;}

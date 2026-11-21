@@ -3,16 +3,20 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, ApiError, identityHeaders, setIdentity, signInUrl, type Alert, type Directory, type Me, type Person, type Platform, type RuleRow, type Team } from './api';
 import { resetIdentity } from './v1';
 
-export type Viewing = { team: string; role: 'responder' | 'approver' | 'editor' };
+export type Viewing = { team: string; role: 'responder' | 'approver' | 'editor'; person?: string };
+export type PersonaGroup = { name: string; items: { id: string; team: string | null; name: string; what: string }[] };
 export type FlagItem = { id: number; title: string; description?: string; appearance: 'success' | 'error' | 'warning' | 'info' };
 export type Scope = { id: string; name: string; owner: string; personal: boolean };
 
 type Store = {
   me: Me;
   scopes: Scope[];                       // demo mode: the teams you can view as
+  personas: PersonaGroup[];              // demo mode: everyone in the directory, by team
+  viewTeams: Scope[];                    // demo mode: the teams the current person may look at
   viewing: Viewing; setViewing: (v: Viewing) => void;
   owner: string | null;                  // whose alerts are shown; null = everything (admin)
   myRef: string;                         // person:<id> of the current person
+  myUserId: string | null;               // our user uuid of the current person (as /v1 names people)
   canEdit: boolean; canApprove: boolean;
   people: Record<string, Person>; teams: Record<string, Team>;
   alerts: Alert[]; platforms: Platform[]; rules: RuleRow[];
@@ -55,9 +59,37 @@ export function HeraldProvider({ children }: { children: ReactNode }) {
     ...dir.people.filter((p) => p.has_rules).map((p) => ({ id: p.id, name: `${p.name} (personal)`, owner: `person:${p.id}`, personal: true })),
   ], [dir]);
 
+  /* Everyone in the directory: grouped by team (lead, on-call person, members); people in no team with rules
+     (Master, management, informed people) under "Organisation". */
+  const personas = useMemo<PersonaGroup[]>(() => {
+    const seen = new Set<string>();
+    const named = (id: string) => people[id]?.name ?? id;
+    const groups: PersonaGroup[] = dir.teams.filter((t) => t.has_rules && t.id !== 'loadtest').map((t) => ({
+      name: t.name,
+      items: [...new Set([t.lead, t.on_call, ...t.members].filter((x): x is string => !!x))].map((id) => {
+        seen.add(id);
+        return { id, team: t.id, name: named(id), what: id === t.lead ? 'Team lead, approves' : id === t.on_call ? 'On call now' : 'Member' };
+      }),
+    }));
+    const elsewhere = (id: string) => dir.teams.find((t) => !(t.has_rules && t.id !== 'loadtest') && (t.members.includes(id) || t.lead === id))?.name;
+    const org = dir.people.map((p) => p.id).filter((id) => !seen.has(id))
+      .sort((a, b) => Number(b === 'master') - Number(a === 'master') || named(a).localeCompare(named(b)));
+    return [
+      { name: 'Organisation', items: org.map((id) => ({ id, team: null, name: named(id), what: id === 'master' ? 'Master: every team' : elsewhere(id) ? `Member of ${elsewhere(id)}` : 'Informed, not on a team' })) },
+      ...groups,
+    ].filter((g) => g.items.length);
+  }, [dir, people]);
+
+  /* The chosen person's role and teams, as the service sees them (GET /api/me as that person). */
+  const [personInfo, setPersonInfo] = useState<{ id: string; role: string; teams: string[] } | null>(null);
+  const chosen = viewing.person && people[viewing.person] ? viewing.person : null;
+  const chosenInfo = personInfo && personInfo.id === chosen ? personInfo : null;
+
   /* Who am I, and whose alerts do I see. */
-  const scope = scopes.find((s) => s.id === viewing.team) ?? scopes[0];
+  const scope = (chosenInfo && !chosenInfo.teams.includes(viewing.team) ? scopes.find((s) => chosenInfo.teams.includes(s.id)) : undefined)
+    ?? scopes.find((s) => s.id === viewing.team) ?? scopes[0];
   const demoPerson = useMemo(() => {
+    if (chosen) return chosen;
     if (!scope) return '';
     if (scope.personal) return scope.id;
     const t = teams[scope.id];
@@ -65,12 +97,24 @@ export function HeraldProvider({ children }: { children: ReactNode }) {
     if (viewing.role === 'approver') return t.lead || t.on_call || t.members[0];
     if (viewing.role === 'editor') return t.members.find((m) => m !== t.on_call && m !== t.lead) || t.lead || t.on_call || t.members[0];
     return t.on_call || t.lead || t.members[0];
-  }, [scope, teams, viewing.role]);
+  }, [chosen, scope, teams, viewing.role]);
+  useEffect(() => {
+    if (!demoPerson || me.mode === 'oidc') { setPersonInfo(null); return; }
+    let live = true;
+    fetch('/api/me', { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Herald-User': `person:${demoPerson}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: Me | null) => { if (live && d) setPersonInfo({ id: demoPerson, role: d.role, teams: d.teams ?? [] }); })
+      .catch(() => { /* keep the guess */ });
+    return () => { live = false; };
+  }, [demoPerson, me.mode]);
+  const info = personInfo && personInfo.id === demoPerson ? personInfo : null;
+  const viewTeams = useMemo(() => scopes.filter((s) => !s.personal && (!info || info.teams.includes(s.id))), [scopes, info]);
 
   const sso = me.mode === 'oidc';
   const myRef = sso ? me.user : `person:${demoPerson}`;
-  const role = sso ? me.role : viewing.role;
-  const owner = sso ? (me.role === 'admin' ? null : me.teams[0] ? `team:${me.teams[0]}` : me.user) : scope?.owner ?? null;
+  const personRole = chosen && info ? ({ admin: 'admin', approver: 'approver', editor: 'editor' } as Record<string, string>)[info.role] ?? 'responder' : null;
+  const role = sso ? me.role : personRole ?? (chosen === 'master' ? 'admin' : viewing.role);
+  const owner = sso ? (me.role === 'admin' ? null : me.teams[0] ? `team:${me.teams[0]}` : me.user) : chosen === 'master' && !viewing.team ? null : scope?.owner ?? null;
   // Set during render so every request made by this render's effects carries the right identity.
   setIdentity(me.mode, sso || !scope ? {} : {
     'X-Herald-User': myRef, 'X-Herald-Role': role, 'X-Herald-Teams': scope.personal ? '' : scope.id,
@@ -194,7 +238,8 @@ export function HeraldProvider({ children }: { children: ReactNode }) {
 
   const value: Store = {
     me: sso ? me : { ...me, user: myRef, name: people[demoPerson]?.name ?? 'Demo', role },
-    scopes, viewing: { team: scope?.id ?? '', role: viewing.role }, setViewing, owner, myRef,
+    scopes, personas, viewTeams, viewing: { team: owner === null && !sso ? '' : scope?.id ?? '', role: viewing.role, person: chosen ?? demoPerson }, setViewing, owner, myRef,
+    myUserId: sso ? me.userId ?? null : people[demoPerson]?.uuid ?? null,
     canEdit: ['editor', 'approver', 'admin'].includes(role), canApprove: ['approver', 'admin'].includes(role),
     people, teams, alerts, platforms, rules, tick, ready, offline, refresh, run, flags, notify, dismissFlag, name,
   };

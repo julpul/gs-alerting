@@ -32,7 +32,7 @@ type Option = { label: string; value: string };
 
 const KIND: Record<string, { label: string; how: string; icon: typeof LinkIcon; colour: 'blue' | 'purple' | 'teal' | 'green' }> = {
   webhook: { label: 'Webhook', how: 'The platform posts each event to Herald over HTTPS.', icon: LinkIcon, colour: 'blue' },
-  kafka: { label: 'Message broker', how: 'Herald reads the platform’s topic on the message broker.', icon: DataFlowIcon, colour: 'purple' },
+  kafka: { label: 'Message queue (RabbitMQ)', how: 'Herald reads the platform’s queue on the message queue (RabbitMQ).', icon: DataFlowIcon, colour: 'purple' },
   logtail: { label: 'Log file', how: 'Herald follows the platform’s log file line by line.', icon: PageIcon, colour: 'teal' },
   http_poll: { label: 'Polled address', how: 'Herald asks the platform’s address for news on a timer.', icon: RefreshIcon, colour: 'green' },
 };
@@ -229,7 +229,7 @@ function Setup({ platform }: { platform: Platform }) {
         <dt>How it is connected</dt><dd>{k.label}. {k.how}</dd>
         {platform.type === 'webhook' && <><dt>Address</dt><dd><Code>{location.origin}/ingest/{platform.id}</Code></dd></>}
         {platform.type === 'webhook' && <><dt>Token</dt><dd>{platform.needs_token ? 'Required, sent in the X-Herald-Token header. It was shown once when the platform was connected.' : 'Not required for this platform in the demo.'}</dd></>}
-        {platform.topic && <><dt>Topic</dt><dd><Code>{platform.topic}</Code></dd></>}
+        {platform.topic && <><dt>Queue</dt><dd><Code>{platform.topic}</Code></dd></>}
         {platform.path && <><dt>File</dt><dd><Code>{platform.path}</Code></dd></>}
         {platform.url && <><dt>Polled address</dt><dd><Code>{platform.url}</Code></dd></>}
         <dt>Set up in</dt><dd>{platform.managed === 'file' ? 'A configuration file (config/sources.yaml), reviewed like code' : 'This interface'}</dd>

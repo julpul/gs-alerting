@@ -55,9 +55,15 @@ function NewToken({ onCreated }: { onCreated: (t: PersonalTokenCreated) => void 
 }
 
 function AgentActivity() {
+  const { canApprove } = useHerald();
+  /* The activity log is open to approvers and admins only: others are not asked (no 403 in the console). */
   const { data, error, loading } = useV1(async () => {
-    try { return await api<AuditEntry[]>('/api/audit?limit=200'); } catch { return null; }   // Herald adapters not deployed: leave it out
-  }, []);
+    if (!canApprove) return null;
+    try {
+      const r = await api<AuditEntry[] | { entries?: AuditEntry[] }>('/api/audit?limit=200');
+      return Array.isArray(r) ? r : r?.entries ?? [];
+    } catch { return null; }   // not allowed, or the Herald adapters are not deployed: leave it out
+  }, [canApprove]);
   if (loading) return <Skeletons lines={3} />;
   if (error || data === null || data === undefined) return null;
   const agentic = data.filter((e) => /^agent[:\s]/i.test(e.actor) || (e.detail as { actor?: { type?: string; kind?: string } })?.actor?.type === 'agent' || 'onBehalfOf' in (e.detail ?? {})).slice(0, 20);

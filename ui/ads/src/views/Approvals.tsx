@@ -19,8 +19,9 @@ const STATUS_LABEL: Record<string, string> = { pending: 'Waiting', approved: 'Ap
 
 /* How many approvals wait for the current person; kept live for the badge in the side bar. */
 export function useApprovalCount(): number {
+  const { myUserId } = useHerald();
   const { data } = useV1(() => v1<Approval[]>('/v1/approvals?status=pending'), [], { on: LIVE });
-  return data?.length ?? 0;
+  return data?.filter((a) => !(myUserId && a.requestedBy?.id === myUserId)).length ?? 0;   // your own requests wait for someone else
 }
 
 const human = (key: string) => key.replace(/[_.]/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
@@ -31,6 +32,8 @@ function ApprovalCard({ a, onDecided }: { a: Approval; onDecided: () => void }) 
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const pending = a.status === 'pending';
+  const mine = !!h.myUserId && a.requestedBy?.id === h.myUserId;   // four eyes: nobody approves their own request
+  const approvers = (a.approvers ?? []).filter((x) => x.id !== a.requestedBy?.id);
   const alertNo = alertNumber(a.alertId);
   const decide = async (decision: 'approve' | 'reject') => {
     setBusy(decision);
@@ -66,10 +69,16 @@ function ApprovalCard({ a, onDecided }: { a: Approval; onDecided: () => void }) 
         )}
         <Inline space="space.200" alignBlock="center" shouldWrap>
           {alertNo && <Button appearance="subtle" onClick={() => openAlert(alertNo)}>Open alert A-{alertNo}</Button>}
-          {a.approvers?.length ? <Text size="small" color="color.text.subtle">Who can approve: {a.approvers.map(actorName).join(', ')}</Text> : null}
+          {approvers.length ? <Text size="small" color="color.text.subtle">Who can approve: {approvers.map(actorName).join(', ')}</Text> : null}
         </Inline>
         {!pending && a.decidedBy && <Text size="small" color="color.text.subtle">{STATUS_LABEL[a.status]} by {actorName(a.decidedBy)}{a.comment ? `: “${a.comment}”` : ''}</Text>}
-        {pending && (
+        {pending && mine && (
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Lozenge appearance="inprogress">Waiting for another approver</Lozenge>
+            <Text size="small" color="color.text.subtle">You asked for this, so someone else has to decide.</Text>
+          </Inline>
+        )}
+        {pending && !mine && (
           <Stack space="space.100">
             <TextArea aria-label="Comment for the requester" placeholder="Comment (optional): why you approve or reject" minimumRows={1} value={comment} onChange={(e) => setComment(e.currentTarget.value)} />
             <Inline space="space.100">

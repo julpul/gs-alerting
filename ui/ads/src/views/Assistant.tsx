@@ -14,7 +14,7 @@ import Textfield from '@atlaskit/textfield';
 
 import { AiDraft, ErrorRetry, RawToggle, Risk, Skeletons, useV1 } from '../ai';
 import { useHerald } from '../store';
-import { channelName, go, Page, Severity } from '../ui';
+import { channelName, docTitle, go, Page, Severity } from '../ui';
 import { v1, V1Error, type Condition, type DryRun, type Mapping, type RawEvent, type Recipient, type Rule, type RuleDraft, type Source, type V1Runbook, type V1Team } from '../v1';
 
 type Option = { label: string; value: string };
@@ -189,13 +189,14 @@ function MappingBuilder() {
       {busy === 'suggest' && <Skeletons lines={4} />}
       {error && <SectionMessage appearance="warning"><Text>{error}</Text></SectionMessage>}
       {draft && (
-        <AiDraft title={draft.detectedSchema ? `Looks like ${draft.detectedSchema}` : 'Proposed mapping'} actions={(
+        <AiDraft title={draft.detectedSchema ? `Looks like ${draft.detectedSchema}` : 'Proposed mapping'}
+          heuristic={/^AI unavailable/i.test(draft.explanation ?? '')} actions={(
           <>
             <Button appearance="primary" isLoading={busy === 'save'} onClick={accept}>Accept</Button>
             <Button appearance="subtle" onClick={() => setDraft(null)}>Reject</Button>
           </>
         )}>
-          {draft.explanation && <Text>{draft.explanation}</Text>}
+          {draft.explanation && <Text>{draft.explanation.replace(/^AI unavailable, heuristic draft\.\s*/i, '')}</Text>}
           <div className="map-grid">
             <Text size="small" weight="semibold" color="color.text.subtle">Herald field</Text>
             <Text size="small" weight="semibold" color="color.text.subtle">Taken from (edit if wrong)</Text>
@@ -223,6 +224,12 @@ function MappingBuilder() {
 }
 
 /* ---- runbook -------------------------------------------------------------------------- */
+/* A runbook's name: what the parser found, else the first heading or line of the text (never just "Runbook"). */
+export function runbookName(name: string | null | undefined, text: string): string {
+  const n = (name ?? '').trim();
+  if (n && !/^(runbook|untitled)$/i.test(n)) return n;
+  return docTitle(text) ?? (n || 'Untitled runbook');
+}
 function RunbookBuilder() {
   const h = useHerald();
   const teams = useTeams();
@@ -233,7 +240,10 @@ function RunbookBuilder() {
   const [draft, setDraft] = useState<V1Runbook | null>(null);
   const parse = async () => {
     setBusy('parse'); setError(null); setDraft(null);
-    try { setDraft(await v1<V1Runbook>('/v1/runbooks/parse', { body: { content: text, format: 'auto' } })); } catch (e) { setError(failure(e)); }
+    try {
+      const parsed = await v1<V1Runbook>('/v1/runbooks/parse', { body: { content: text, format: 'auto' } });
+      setDraft({ ...parsed, name: runbookName(parsed.name, text) });
+    } catch (e) { setError(failure(e)); }
     setBusy(null);
   };
   const save = async () => {
@@ -243,7 +253,8 @@ function RunbookBuilder() {
     setBusy(null);
     if (ok) { setDraft(null); setText(''); }
   };
-  const byAi = draft?.parsedBy === 'ai' || draft?.parsedBy === 'heuristic' || draft?.steps?.some((s) => s.suggested);
+  const byAi = draft?.parsedBy === 'ai' || draft?.parsedBy === 'llm' || draft?.steps?.some((s) => s.parsedBy === 'ai' || s.parsedBy === 'llm');
+  const guessed = !byAi && (draft?.parsedBy === 'heuristic' || draft?.steps?.some((s) => s.suggested));
   return (
     <Stack space="space.200">
       <Text color="color.text.subtle">Paste a runbook as you have it: a wiki page, a checklist, notes, YAML or a link. It becomes steps people can tick off and actions Herald can run.</Text>
@@ -253,8 +264,8 @@ function RunbookBuilder() {
       {busy === 'parse' && <Skeletons lines={4} />}
       {error && <SectionMessage appearance="warning"><Text>{error}</Text></SectionMessage>}
       {draft && (
-        <AiDraft title={`${draft.steps?.length ?? 0} steps`} label={byAi ? 'AI suggestion' : 'Read from your text'}
-          footnote={byAi ? undefined : 'Read straight from the structure of your text; check it before you save.'}
+        <AiDraft title={`${draft.steps?.length ?? 0} steps`} label={byAi ? 'AI suggestion' : guessed ? 'Heuristic draft' : 'Read from your text'} heuristic={!byAi}
+          footnote={byAi ? undefined : guessed ? undefined : 'Read straight from the structure of your text; check it before you save.'}
           actions={(
             <>
               <Button appearance="primary" isLoading={busy === 'save'} onClick={save}>Save</Button>

@@ -1,7 +1,7 @@
 /* Talking to the Herald API. Two ways of saying who you are, decided by the service (GET /api/me):
    single sign-on (a session cookie; nothing to send) or demo mode (the "Viewing as" choice, sent as headers). */
 
-export type Me = { mode: 'oidc' | 'demo'; user: string; name: string; role: string; teams: string[]; provider?: string | null };
+export type Me = { mode: 'oidc' | 'demo'; user: string; name: string; role: string; teams: string[]; provider?: string | null; userId?: string };
 
 export type Delivery = {
   id?: number; alert_id?: number; title?: string; recipient: string; channel: string; status: string;
@@ -47,9 +47,9 @@ export type Runbook = {
 };
 export type Team = {
   id: string; name: string; members: string[]; lead: string | null; on_call: string | null; rota: string[];
-  shift_days: number; preferences: Record<string, string[]>; has_rules: boolean;
+  shift_days: number; preferences: Record<string, string[]>; has_rules: boolean; uuid?: string;
 };
-export type Person = { id: string; name: string; tz?: string; preferences: Record<string, string[]>; has_rules: boolean };
+export type Person = { id: string; name: string; tz?: string; preferences: Record<string, string[]>; has_rules: boolean; uuid?: string };
 export type Directory = { teams: Team[]; people: Person[] };
 export type RecentEvent = {
   id: number; source: string; received_at: string; raw: unknown;

@@ -15,7 +15,7 @@ import Textfield from '@atlaskit/textfield';
 import { ErrorRetry, Skeletons, useV1 } from '../ai';
 import { useHerald } from '../store';
 import { Table } from '../Table';
-import { ago, Page } from '../ui';
+import { ago, docTitle, Page } from '../ui';
 import { v1, type KnowledgeDoc, type V1Team } from '../v1';
 
 type Option = { label: string; value: string };
@@ -38,12 +38,14 @@ function AddDocument({ teams, onAdded }: { teams: V1Team[]; onAdded: () => void 
     setFileError(null);
     if (!file) return;
     if (file.size > MAX_BYTES) { setFileError('That file is larger than 1 MB.'); return; }
-    setContent(await file.text());
-    if (!title) setTitle(file.name.replace(/\.(md|markdown|txt)$/i, ''));
+    const text = await file.text();
+    setContent(text);
+    if (!title) setTitle(docTitle(text, false) ?? file.name.replace(/\.(md|markdown|txt)$/i, ''));
   };
   const add = async () => {
     setBusy(true);
-    const body = { ...(title.trim() ? { title: title.trim() } : {}), ...(team ? { teamId: team } : {}), ...(mode === 1 ? { url: url.trim() } : { content }) };
+    const named = title.trim() || (mode === 0 ? docTitle(content, false) ?? '' : '');
+    const body = { ...(named ? { title: named } : {}), ...(team ? { teamId: team } : {}), ...(mode === 1 ? { url: url.trim() } : { content }) };
     const ok = await h.run(() => v1<KnowledgeDoc>('/v1/knowledge', { body }), (d) => `“${d.title}” added. The AI can use it from now on.`);
     setBusy(false);
     if (ok) { setTitle(''); setContent(''); setUrl(''); onAdded(); }

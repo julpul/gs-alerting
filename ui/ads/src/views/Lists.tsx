@@ -14,8 +14,9 @@ import SectionMessage from '@atlaskit/section-message';
 
 import { api, type AuditEntry, type Delivery, type RuleRow, type Runbook } from '../api';
 import { Table } from '../Table';
+import { MyPreferences, TeamPolicy } from './Preferences';
 import { useHerald, useLoad } from '../store';
-import { ago, channelName, clock, DeliveryState, face, Loading, openAlert, Page, pretty, sentence, Severity, Who } from '../ui';
+import { ago, channelName, clock, isTeamFeed, DeliveryState, face, Loading, openAlert, Page, pretty, sentence, Severity, Who } from '../ui';
 
 /* ---- rules ------------------------------------------------------------------------------ */
 function RuleModal({ row, onClose }: { row: RuleRow; onClose: () => void }) {
@@ -198,6 +199,14 @@ export function Teams() {
           ))}
         </StaggeredEntrance>
       </div>
+      <div className="panel"><TeamPolicy /></div>
+      <div className="panel">
+        <Stack space="space.150">
+          <Heading size="small" as="h2">Your notification preferences</Heading>
+          <Text color="color.text.subtle">{h.me.name}: the channels you want per severity, and your working hours.</Text>
+          <MyPreferences compact />
+        </Stack>
+      </div>
     </Page>
   );
 }
@@ -225,7 +234,7 @@ export function Sent() {
             onClick: () => d.alert_id && openAlert(d.alert_id),
             cells: [
               { key: Date.parse(d.created_at ?? ''), content: clock(d.created_at) },
-              { key: h.name(d.recipient), content: <Who who={d.recipient} /> },
+              { key: isTeamFeed(d) ? 'Team feed' : h.name(d.recipient), content: isTeamFeed(d) ? <Text>Team feed</Text> : <Who who={d.recipient} /> },
               { key: d.channel, content: channelName(d.channel) },
               { key: d.title ?? '', content: <Stack space="space.0"><Text>{d.title}</Text>{d.last_error && <Text size="small" color="color.text.danger">{d.last_error}</Text>}</Stack> },
               { key: d.status, content: <DeliveryState value={d.status} /> },
@@ -252,23 +261,31 @@ const DID: Record<string, string> = {
 
 export function Activity() {
   const h = useHerald();
-  const { data, error } = useLoad(() => api<{ intact: boolean; entries: AuditEntry[] }>('/api/audit?limit=300'), [h.myRef]);
+  const { data, error } = useLoad(() => (h.canApprove
+    ? api<{ intact: boolean; chained?: boolean; entries: AuditEntry[] }>('/api/audit?limit=300')
+    : Promise.reject(new Error('Only team leads and administrators can read the activity log'))), [h.myRef, h.canApprove]);
   const target = (t: string) => {
     const [kind, id] = t.split(':');
     if (kind === 'alert') return h.alerts.find((a) => String(a.id) === id)?.key ?? `alert ${id}`;
     return id ?? t;
   };
   return (
-    <Page title="Activity log" lead="Who did what, and when. Entries are chained together, so a changed or removed entry is detected.">
+    <Page title="Activity log" lead="Who did what, and when.">
       {error ? (
         <SectionMessage appearance="information" title="The activity log is for team leads">
-          <Text>{error}. Sign in, or view as a team lead, to read it.</Text>
+          <Text>{error}. Choose a team lead or the Master under “Viewing as” to read it.</Text>
         </SectionMessage>
       ) : !data ? <Loading /> : (
         <Stack space="space.200">
-          <SectionMessage appearance={data.intact ? 'success' : 'error'} title={data.intact ? 'The log is intact' : 'The log has been tampered with'}>
-            <Text>{data.intact ? `All ${data.entries.length} entries link to the one before, as they should.` : 'At least one entry does not link to the one before it.'}</Text>
-          </SectionMessage>
+          {data.chained === false ? (
+            <SectionMessage appearance="information" title="Append-only log">
+              <Text>{`${data.entries.length} entries. Entries are only ever added: none can be changed or removed.`}</Text>
+            </SectionMessage>
+          ) : (
+            <SectionMessage appearance={data.intact ? 'success' : 'error'} title={data.intact ? 'The log is intact' : 'The log has been tampered with'}>
+              <Text>{data.intact ? `All ${data.entries.length} entries link to the one before, as they should.` : 'At least one entry does not link to the one before it.'}</Text>
+            </SectionMessage>
+          )}
           <Table
             head={{ cells: [
               { key: 'at', content: 'When', isSortable: true, width: 14 },

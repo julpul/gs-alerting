@@ -50,13 +50,22 @@ with `fetch` (an `EventSource` cannot POST).
 | Approvals | `#/approvals` | `GET /v1/approvals?status=`, `POST /v1/approvals/{id}/decision` |
 | Copilot | `#/copilot[/A-<n>]` | `POST /v1/agent/chat` (SSE) |
 | AI assistant | `#/assistant/rule\|mapping\|runbook` | `POST /v1/rules/from-text`, `/v1/rules/dry-run`, `/v1/rules`, `/v1/sources/{id}/mapping/suggest`, `PUT …/mapping`, `/v1/runbooks/parse`, `/v1/runbooks` |
-| Agents & MCP | `#/agents` | `GET/POST/DELETE /v1/tokens`, `/api/audit` (optional) |
+| Agents & MCP | `#/agents` | `GET/POST/DELETE /v1/tokens`, `/api/audit` (approvers and admins only; not asked otherwise) |
+| My notification preferences | `#/preferences` (profile menu; also on Teams) | `GET/PUT /v1/preferences/me` |
+| Team channel policy | `#/teams` | `GET /v1/teams`, `/v1/escalation-policies/effective`, `PUT/DELETE /v1/escalation-policies` (scope team; Domain Roots and the Master) |
 | On-call | `#/oncall` | `GET /v1/teams`, `/v1/teams/{id}/oncall`, `/v1/escalation-policies/effective` |
 | Knowledge | `#/knowledge` | `GET/POST /v1/knowledge` |
 | Health | `#/health` | `GET /v1/metrics/summary` every 5 s |
 
 Every AI output is framed by `AiDraft` (`src/ai.tsx`): labelled, with Accept / Edit / Reject, never applied
 without a click.
+
+## Viewing as (demo mode)
+
+The profile menu lists every person in `/api/directory`: Master, management and informed people under
+"Organisation", then each team (lead, on-call person, members). The person's role and teams come from
+`GET /api/me` as that person; a person in several teams also gets "Looking at team". The choice is kept in
+`localStorage` (`herald.ads.viewing`).
 
 ## Things that are easy to trip over
 

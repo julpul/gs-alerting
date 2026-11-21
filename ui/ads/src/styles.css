@@ -47,6 +47,7 @@ a.tile:focus-visible { outline: 2px solid var(--ds-border-focused); outline-offs
 .field { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--ds-space-100); align-items: center; min-height: 32px; }
 .kv { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); gap: var(--ds-space-075) var(--ds-space-200); margin: 0; padding: 0; align-items: center; }
 .kv dt { color: var(--ds-text-subtle); margin: 0; padding: 0; font-weight: inherit; } .kv dd { margin: 0; padding: 0; overflow-wrap: anywhere; }
+.pref-grid { display: grid; grid-template-columns: 96px minmax(0, 420px); gap: var(--ds-space-100) var(--ds-space-200); align-items: center; }
 .prefs { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: var(--ds-space-075) var(--ds-space-100); align-items: center; }
 .step { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: var(--ds-space-150); align-items: start;
   padding: var(--ds-space-150); border-radius: var(--ds-radius-large); background: var(--ds-surface-sunken); }
