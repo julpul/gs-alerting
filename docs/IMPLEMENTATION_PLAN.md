@@ -295,7 +295,7 @@ async def parse_text(text: str) -> list[RunbookStep]                            
 ```
 
 ### 3.6 Metric names (P1 defines in `app/core/metrics.py`)
-`alerting_ingested_total{source}`, `alerting_events_outcome_total{outcome}`, `alerting_processing_latency_seconds` (histogram), `alerting_delivery_latency_seconds{channel}` (histogram), `alerting_deliveries_total{channel,status}`, `alerting_rule_eval_seconds` (histogram), `alerting_sse_clients`, `alerting_outbox_unpublished`.
+`alerting_ingested_total{source}`, `alerting_events_outcome_total{outcome=alerted_new|deduplicated|grouped|unrouted|invalid|auto_resolved}`, `alerting_processing_latency_seconds` (histogram), `alerting_delivery_latency_seconds{channel}` (histogram), `alerting_deliveries_total{channel,status}`, `alerting_rule_eval_seconds` (histogram), `alerting_sse_clients`, `alerting_outbox_unpublished`.
 
 Non-API roles expose their metrics with `prometheus_client.start_http_server(METRICS_PORT)` (default **9101**); the api serves `/metrics` on its HTTP port. Prometheus scrapes both (`infra/prometheus.yml`).
 

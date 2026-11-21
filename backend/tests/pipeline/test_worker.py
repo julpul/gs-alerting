@@ -81,10 +81,15 @@ async def test_first_event_creates_alert_with_everything(
     timeline = await worker_env.pool.fetch("SELECT type, text FROM timeline WHERE alert_id = $1", alert["id"])
     assert [t["type"] for t in timeline] == ["created"]
 
-    outbox = await worker_env.pool.fetch(
-        "SELECT topic, routing_key, published_at FROM outbox WHERE payload::text LIKE $1",
-        f"%{alert['id']}%",
-    )
+    async def published_outbox():
+        rows = await worker_env.pool.fetch(
+            "SELECT topic, routing_key, published_at FROM outbox WHERE payload::text LIKE $1",
+            f"%{alert['id']}%",
+        )
+        # rows are published right after the commit that made the alert visible: poll, don't race
+        return rows if rows and all(r["published_at"] is not None for r in rows) else None
+
+    outbox = await eventually(published_outbox)
     topics = {(o["topic"], o["routing_key"]) for o in outbox}
     assert ("ai", "ai.tasks") in topics and ("deliveries", "ui") in topics
     assert ("sse", f"sse:team:{source['team_id']}") in topics
