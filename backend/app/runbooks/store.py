@@ -138,6 +138,44 @@ async def create_runbook(
     return runbook_out(row)
 
 
+async def update_runbook(
+    conn: asyncpg.Connection,
+    scope: Scope,
+    user: User,
+    row: asyncpg.Record,
+    *,
+    name: str | None,
+    fmt: str | None,
+    source: str,
+    attached: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Re-parse pasted content into an existing runbook (same id, so rules keep pointing at it)."""
+    if row["team_id"] is not None:
+        await _require_team_role(conn, scope, row["team_id"])
+    elif not scope.is_master:
+        raise forbidden("only the master can change org-wide runbooks")
+    parsed = await parse_runbook(source, fmt or "auto")
+    _check_actions(parsed.steps)
+    meta, _ = split_attached(row["attached"])
+    meta.update(parsed.attached)
+    meta.update(attached or {})
+    if parsed.parsed_by != "deterministic":
+        meta["parsedBy"] = parsed.parsed_by
+    async with conn.transaction():
+        updated = await conn.fetchrow(
+            "UPDATE runbooks SET name = $2, format = $3, source = $4, steps = $5, attached = $6 "
+            "WHERE id = $1 RETURNING *",
+            row["id"],
+            (name or row["name"])[:200],
+            parsed.format,
+            source,
+            [to_stored(s) for s in parsed.steps],
+            meta,
+        )
+        await audit(conn, user_actor(user.id, user.display_name), "runbook.update", "runbook", str(row["id"]))
+    return runbook_out(updated)
+
+
 async def upsert_seed(
     conn: asyncpg.Connection,
     runbook_id: UUID,

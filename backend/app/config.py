@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     smtp_from: str = "alerts@gs-alerting.local"
     mockgw_url: str = "http://localhost:8090"
     public_base_url: str = "http://localhost:8080"
+    # Herald UI demo tools: Mailpit's HTTP API (empty = http://<SMTP_HOST>:8025) and the pages people open.
+    mailpit_api_url: str = ""
+    mailpit_public_url: str = "http://localhost:8025"
+    mockgw_public_url: str = "http://localhost:8090"
 
     # secrets (dev defaults; override in .env / Railway)
     jwt_secret: str = "dev-jwt-secret-change-me"
@@ -55,6 +59,10 @@ class Settings(BaseSettings):
     # test isolation / multi-tenant prefixes
     mq_prefix: str = ""
     redis_prefix: str = ""
+
+    @property
+    def mailpit_api(self) -> str:
+        return (self.mailpit_api_url or f"http://{self.smtp_host}:8025").rstrip("/")
 
     @property
     def cors_origin_list(self) -> list[str]:
