@@ -887,9 +887,10 @@ function tlText(t){const who=pname(t.actor),d=t.detail||{},via=d.via?' ('+({ui:'
     case 'approved':return 'Step '+d.step+' approved by '+who+via;
     case 'rejected':return 'Step '+d.step+' rejected by '+who+via;
     case 'note':return who+' noted: '+d.text;
+    case 'pr_opened':return who+' opened a draft pull request';
     default:return who+': '+String(t.action).replace(/_/g,' ');}}
 function mapDetail(d){const a=mapAlert(d);a.raw=d.sample_event;a.trace=d.why?mapWhy(d.why):null;a.runbook=d.runbook||null;a.stepState=d.step_state||{};
-  a.approvals=d.approvals||[];a.notifs=(d.deliveries||[]).map(mapDelivery);
+  a.codebase=d.codebase||null;a.obsLinks=d.observability_links||[];a.approvals=d.approvals||[];a.notifs=(d.deliveries||[]).map(mapDelivery);
   a.timeline=(d.timeline||[]).map(t=>({at:Date.parse(t.at),text:tlText(t),who:pname(t.actor),action:t.action,actor:t.actor,detail:t.detail||{}}));
   /* Who put the person in charge, and why: the alert says so (assigned_by / assign_reason), or the last hand-over in the timeline does. */
   const last=a.timeline.filter(t=>t.action==='assigned'&&(t.detail.to||t.detail.assignee)===a.imRef).pop();
@@ -1178,6 +1179,20 @@ function viewPlatforms(){const cur=S.platform&&plat(S.platform);if(cur)return vi
           <small>${x.last_event_at?'Last event '+ago(Date.parse(x.last_event_at)):'No events received yet'}</small></span>
         ${ic('chevron_right')}</button>`;}).join('')}</div>`
       :emptyState('plug_connected','No platforms connected','Connect the first system that should send its failures, warnings or business events to Herald.',''));}
+function codeSettingsHtml(x){if(!S.cf||S.cf.id!==x.id){const c=x.codebase||{},ls=(x.observability&&x.observability.links)||[];
+    S.cf={id:x.id,repo:c.repo||'',branch:c.branch||'main',path:c.path||'',language:c.language||'',links:ls.map(l=>({label:l.label||'',url:l.url||''})),busy:false};}
+  const f=S.cf,ro=canEdit()?'':'disabled',fld=(k,label,ph)=>`<label class="field"><span>${label}</span><input class="in" data-oni="cfField" data-k="${k}" value="${esc(f[k])}" placeholder="${esc(ph)}" autocomplete="off" ${ro}></label>`;
+  return `<div class="split"><section class="card"><h2>Code</h2>
+      <p class="help">Link the repository behind ${esc(x.name)}. Every alert from it then gets a “Fix it in the code” card. Leave the repository empty to remove the link.</p>
+      ${fld('repo','Repository URL','https://github.com/owner/name')}${fld('branch','Branch','main')}${fld('path','Folder in the repo (optional)','services/risk-engine')}${fld('language','Language (optional)','Python')}</section>
+    <section class="card"><h2>Logs and dashboards</h2>
+      <p class="help">Links shown on each alert. <code>{{labels.service}}</code>, <code>{{from_ms}}</code> and <code>{{to_ms}}</code> are filled from the alert.</p>
+      ${f.links.map((l,i)=>`<div class="row" style="flex-wrap:nowrap"><input class="in" style="width:34%" data-oni="cfLink" data-i="${i}" data-k="label" value="${esc(l.label)}" placeholder="Logs in Datadog" aria-label="Link label" ${ro}>
+        <input class="in grow" data-oni="cfLink" data-i="${i}" data-k="url" value="${esc(l.url)}" placeholder="https://app.datadoghq.com/logs?query={{labels.service}}" aria-label="Link address" ${ro}>
+        <button class="btn sm subtle" data-act="cfObsDel" data-i="${i}" ${ro} aria-label="Remove link">Remove</button></div>`).join('')}
+      <div class="row"><button class="btn sm" data-act="cfObsAdd" ${ro}>${ic('add','sm')}Add a link</button></div></section></div>
+    <div class="row" style="margin-top:12px"><button class="btn pri" data-act="cfSave" data-id="${esc(x.id)}" ${canEdit()&&!f.busy?'':'disabled'}>${f.busy?'Saving…':'Save'}</button>
+      ${canEdit()?'':'<span class="help">'+sso('Choose a rule editor or team lead under Viewing as','Needs the rule editor or team lead role')+'</span>'}</div>`;}
 function viewPlatform(x){const tab=S.ptab,mine=S.alerts.filter(a=>a.source===x.id),open=mine.filter(a=>a.status!=='resolved'),done=mine.filter(a=>a.status==='resolved'),evs=S.events.filter(e=>e.source===x.id);
   const examples=SIMS.filter(q=>q.src===x.id);let body;
   if(tab==='events')body=evs.length?`<div class="tablewrap"><table><thead><tr><th style="width:90px">Time</th><th>Event</th><th>What Herald did</th><th></th></tr></thead><tbody>
@@ -1194,6 +1209,7 @@ function viewPlatform(x){const tab=S.ptab,mine=S.alerts.filter(a=>a.source===x.i
           <button class="btn pri" data-act="plSend" style="align-self:flex-end" ${S.trace&&!S.trace.done?'disabled':''}>${ic('send','sm')}Send event</button></div>
         <p class="help">Send the same event many times to see that repeats become one alert with a counter.</p></section>
       <section class="stack"><h2>What Herald did with it</h2>${S.trace?traceBox(S.trace):'<p class="muted">Send an event to follow it step by step: which rule matched, which alert was created or updated, and who was notified.</p>'}</section></div>`;
+  else if(tab==='code')body=codeSettingsHtml(x);
   else if(tab==='setup')body=`<div class="split"><section class="card"><h2>Connection</h2>
         <dl class="kv"><dt>Type</dt><dd>${PTYPE[x.type]||esc(x.type)}</dd><dt>Identifier</dt><dd><code>${esc(x.id)}</code></dd>
           ${x.type==='webhook'?`<dt>Address</dt><dd><code>${esc(location.origin)}/ingest/${esc(x.id)}</code></dd><dt>Token</dt><dd>${x.needs_token?'Required, sent in the <code>X-Herald-Token</code> header':'Not required for this platform in the demo'}</dd>`:''}
@@ -1208,7 +1224,7 @@ function viewPlatform(x){const tab=S.ptab,mine=S.alerts.filter(a=>a.source===x.i
       title:`${ptile(x.id,'lg')}${esc(x.name)}`,
       right:`${open.length?loz(open.length+' open problem'+(open.length>1?'s':''),'danger'):loz('No open problems','success')}`,
       desc:(PTYPE[x.type]||esc(x.type))+(x.last_event_at?' · last event '+ago(Date.parse(x.last_event_at)): ' · no events received yet')}))
-    +tabsHtml('ptab',tab,[['problems','Problems',open.length,'board'],['events','Events',evs.length,'list'],['send','Send event','','send'],['setup','Setup','','settings']])+body;}
+    +tabsHtml('ptab',tab,[['problems','Problems',open.length,'board'],['events','Events',evs.length,'list'],['send','Send event','','send'],['setup','Setup','','settings'],['code','Code &amp; logs','','code']])+body;}
 function modalHtml(){const n=S.newPlat,r=n.result;const step=!r?1:n.got?3:2;
   const track=`<ol class="ptrack">${['Name it','Send an event','See it in Herald'].map((t,i)=>`<li class="${i+1<step?'done':i+1===step?'cur':''}">${t}</li>`).join('')}</ol>`;
   if(!r)return `<div class="mbox" role="dialog" aria-modal="true" aria-label="Connect a platform"><div class="mhead"><h2 style="font-size:20px;line-height:24px">Connect a platform</h2></div>
@@ -1339,6 +1355,22 @@ function runStepHtml(a,st,i){const rs=a.stepState[String(st.id)]||{};const state
       ${st.condition?`<div class="note">Only if: ${esc(st.condition)}</div>`:''}
       ${st.action&&st.kind!=='wait'&&st.action!=='manual'?`<div class="note mono tech-only" style="overflow-wrap:anywhere">${esc(st.action)}(${esc(ps)})</div>`:''}
       ${out}${ctl}</div></li>`;}
+function safeUrl(u){return /^https?:\/\//i.test(String(u||''))?u:'';}
+function codeCardHtml(a){const c=a.codebase,ls=(a.obsLinks||[]).filter(l=>l&&safeUrl(l.url));if(!c&&!ls.length)return '';
+  let head='',acts='',panel='';
+  if(c){const pr=c.pr||{},k=S.cb&&S.cb.for===a.id?S.cb:{},url=safeUrl(pr.url||k.url),num=pr.number||k.number;
+    head=`<div class="row" style="gap:6px"><b class="grow" style="overflow-wrap:anywhere">${esc(c.repo)}${c.path?' <span class="muted">/ '+esc(c.path)+'</span>':''}</b>${c.branch?`<span class="badge">${ic('branch','sm')}${esc(c.branch)}</span>`:''}${c.language?`<span class="muted">${esc(c.language)}</span>`:''}
+      ${safeUrl(c.web_url)?`<a href="${esc(c.web_url)}" target="_blank" rel="noopener">Open the code</a>`:''}</div>`;
+    const prBtn=url?`<a class="btn" href="${esc(url)}" target="_blank" rel="noopener">${ic('open','sm')}Pull request${num?' #'+esc(num):''}</a>`
+      :k.busy?'<button class="btn" disabled>Opening…</button>'
+      :`<button class="btn" data-act="codePr" data-id="${a.id}" ${pr.available===false?'disabled':''}>Open a draft PR</button>`;
+    acts=`<div class="row"><button class="btn pri" data-act="codeOpen" data-id="${a.id}" aria-expanded="${!!(S.cb&&S.cb.for===a.id&&S.cb.panel)}">${ic('code','sm')}Open in Claude Code</button>${prBtn}</div>
+      ${!url&&pr.available===false&&pr.reason?`<p class="help">${esc(pr.reason)}</p>`:''}`;
+    if(S.cb&&S.cb.for===a.id&&S.cb.panel)panel=`<div class="stack" style="gap:8px">
+      ${[['cbClone','Get the code',c.clone_cmd],['cbRun','Start Claude Code',c.claude_cmd]].filter(x=>x[2]).map(x=>`<div class="stack" style="gap:4px"><div class="row"><span class="flabel grow">${x[1]}</span><button class="btn sm" data-act="copy" data-src="${x[0]}">${ic('copy','sm')}Copy</button></div><pre class="wrap" id="${x[0]}">${esc(x[2])}</pre></div>`).join('')}
+      <p class="help">Runs Claude Code in the repo with this alert as context. Connect Herald’s MCP server once (<button class="btn link" data-act="nav" data-view="agents">Agents &amp; MCP</button>) so Claude can read the alert itself.</p></div>`;}
+  const links=ls.length?`<div class="row" style="gap:6px">${ls.map(l=>`<a class="btn sm" href="${esc(l.url)}" target="_blank" rel="noopener">${ic('open','sm')}${esc(l.label||l.url)}</a>`).join('')}</div>`:'';
+  return `<section class="aicard" id="codeCard"><div class="aihead"><h2 class="grow">${ic('code')}Fix it in the code</h2></div>${head}${acts}${panel}${links}</section>`;}
 function drawerAlert(a){const rb=a.runbook,t=TEAMS[teamKey(a.owner)],ns=a.notifs,doc=S.docText,open=a.status!=='resolved';
   const people=[...new Set((t.memberIds||[]).concat(a.imRef?[String(a.imRef).replace('person:','')]:[]))];
   $('drawerHead').innerHTML=`<div class="row"><nav class="crumbs grow" aria-label="Breadcrumbs"><span>Alerts</span><span>/</span><span class="ikey">${ic(SEVICON[a.severity],'sm sv-'+a.severity)}${esc(a.key)}</span></nav><button class="btn subtle" id="drClose" data-act="closeDrawer" aria-label="Close">${ic('dismiss')}</button></div>
@@ -1351,7 +1383,7 @@ function drawerAlert(a){const rb=a.runbook,t=TEAMS[teamKey(a.owner)],ns=a.notifs
       ${open?'':`<span class="help">Resolved by ${esc(a.resolvedBy)}.</span>`}</div>${open?resolvePanel(a):''}${open&&S.callFor===String(a.id)?callPanel(a):''}`;
   const q=AI.ask||{q:''};
   $('drawerBody').innerHTML=`<div class="issue"><div class="issue-main">
-    ${aiCardHtml(a)}
+    ${aiCardHtml(a)}${codeCardHtml(a)}
     <section class="sec" aria-label="Ask about this alert"><div class="askbox"><input class="in" id="aiQ" data-oni="aiQ" value="${esc(q.q)}" placeholder="Ask about this alert, e.g. what changed before it started?" aria-label="Ask about this alert" autocomplete="off"><button class="btn" id="aiAskBtn" data-act="aiAsk" ${q.busy?'disabled':''}>${ic('sparkle','sm')}Ask</button></div><div id="aiAnswer">${askHtml()}</div></section>
     <section class="sec"><h2>Description</h2>${a.body?`<p style="overflow-wrap:anywhere">${esc(a.body)}</p>`:''}
       ${a.fields.length?`<dl class="kv">${a.fields.map(f=>`<dt>${fl(f.path)}</dt><dd class="${f.hi?'hi':''}">${f.value===undefined?'<span class="muted">not in the event</span>':esc(vfmt(f.value))}</dd>`).join('')}</dl>`:''}</section>
@@ -1361,7 +1393,7 @@ function drawerAlert(a){const rb=a.runbook,t=TEAMS[teamKey(a.owner)],ns=a.notifs
           :'<p class="muted">This rule has no runbook yet. A rule editor can attach one when editing the rule.</p>'}</section>
     <section class="sec"><h2>Activity</h2>
       <div class="row" style="flex-wrap:nowrap">${avatar(pname(me()),true)}<input class="in" id="noteText" data-oni="noteText" value="${esc(S.noteText)}" placeholder="Add a comment: what you saw or decided" aria-label="Add a comment"><button class="btn" data-act="addNote" data-id="${a.id}">Save</button></div>
-      <ul class="act">${a.timeline.slice().reverse().map(x=>`<li>${avatar(x.who,true)}<span style="overflow-wrap:anywhere">${esc(x.text)}</span><small class="num">${clock(x.at)}</small></li>`).join('')}
+      <ul class="act">${a.timeline.slice().reverse().map(x=>`<li>${avatar(x.who,true)}<span style="overflow-wrap:anywhere">${esc(x.text)}${x.action==='pr_opened'&&safeUrl(x.detail.url)?` <a href="${esc(x.detail.url)}" target="_blank" rel="noopener">${esc(x.detail.number?'#'+x.detail.number:'Open')}</a>`:''}</span><small class="num">${clock(x.at)}</small></li>`).join('')}
         <li><span class="av sm none" aria-hidden="true">${ic('alert','sm')}</span><span>Alert created by the rule “${esc(a.ruleName)}”</span><small class="num">${clock(a.firstSeen)}</small></li></ul></section>
     <section class="sec"><h2>Tell others</h2><p class="help">Herald drafts these from what is recorded on the alert. Edit before sending.</p>
       <div class="row"><button class="btn" data-act="statusUpdate" data-id="${a.id}">Draft a status update</button><button class="btn" data-act="postmortem" data-id="${a.id}">Draft a postmortem</button></div>
@@ -2088,6 +2120,18 @@ const ACT={
   statusUpdate(el){api('/api/alerts/'+el.dataset.id+'/status-update').then(r=>{S.docText={title:'Status update, ready to edit and send',text:r.text};render();},e=>toast(e.message));},
   postmortem(el){api('/api/alerts/'+el.dataset.id+'/postmortem').then(r=>{S.docText={title:'Postmortem draft from the audit trail (roles, not names)',text:r.markdown};render();},e=>toast(e.message));},
   closeDoc(){S.docText=null;},
+  codeOpen(el){const k=S.cb&&S.cb.for===el.dataset.id?S.cb:{for:el.dataset.id};k.panel=!k.panel;S.cb=k;},
+  async codePr(el){const id=el.dataset.id;S.cb=Object.assign(S.cb&&S.cb.for===id?S.cb:{for:id},{busy:true});render();
+    try{const r=await api('/api/alerts/'+id+'/codebase/pr',{method:'POST',body:{}});S.cb=Object.assign(S.cb,{busy:false,url:r.url,number:r.number});toast('Draft pull request opened.');await refresh();}
+    catch(e){S.cb=Object.assign(S.cb,{busy:false});toast(e.message);render();}},
+  cfObsAdd(){S.cf.links.push({label:'',url:''});},
+  cfObsDel(el){S.cf.links.splice(+el.dataset.i,1);},
+  async cfSave(el){if(!canEdit()||!S.cf)return;const f=S.cf,repo=f.repo.trim();
+    const body={codebase:repo?{repo:repo,branch:f.branch.trim()||'main',path:f.path.trim()||null,language:f.language.trim()||null}:null,
+      observability:{links:f.links.filter(l=>l.label.trim()||l.url.trim()).map(l=>({label:l.label.trim(),url:l.url.trim()}))}};
+    f.busy=true;render();
+    try{await api('/api/platforms/'+encodeURIComponent(el.dataset.id),{method:'PUT',body:body});S.cf=null;toast('Saved.');await loadPlatforms();}
+    catch(e){f.busy=false;toast(e.message);}render();},
   newRule(){startEdit(blankRule(),true);setTimeout(()=>{const n=$('nlText');if(n)n.focus();},0);},
   edAiOpen(){S.edAi.open=true;setTimeout(()=>{const n=$('nlText');if(n)n.focus();},0);},
   edAiClose(){S.edAi.open=false;},
@@ -2163,7 +2207,7 @@ const ACT={
   createRule(){S.menu=null;S.platform=null;startEdit(blankRule(),true);go('rules');},
   createPlatform(){S.menu=null;ACT.connectOpen();},
   techToggle(){setMode(!S.tech);},
-  openPlatform(el){if(!plat(el.dataset.id))return;S.platform=el.dataset.id;S.ptab='problems';S.drawer=null;S.detail=null;S.draft=null;S.trace=null;S.plat={text:'',count:1,label:''};go('platforms');window.scrollTo(0,0);},
+  openPlatform(el){if(!plat(el.dataset.id))return;S.platform=el.dataset.id;S.cf=null;S.ptab='problems';S.drawer=null;S.detail=null;S.draft=null;S.trace=null;S.plat={text:'',count:1,label:''};go('platforms');window.scrollTo(0,0);},
   closePlatform(){S.platform=null;},
   ptab(el){S.ptab=el.dataset.v;if(S.ptab==='send'&&!S.plat.text)S.plat.text=defaultEvent(S.platform);},
   plExample(el){const x=SIMS.find(q=>q.k===el.dataset.k);if(!x)return;const ev=clone(S.samples[x.sample]||{});if(x.edit)x.edit(ev);S.plat={text:JSON.stringify(ev,null,2),count:x.count||1,label:x.t};},
@@ -2181,6 +2225,8 @@ const ACT={
 };
 async function reloadKeepDraft(){const d=S.draft,n=S.draftNew;try{await loadAll();}catch(e){}S.draft=d;S.draftNew=n;render();connect();}
 const ONI={
+  cfField(el){S.cf[el.dataset.k]=el.value;return false;},
+  cfLink(el){S.cf.links[+el.dataset.i][el.dataset.k]=el.value;return false;},
   aiQ(el){if(AI.ask)AI.ask.q=el.value;return false;},
   rsvNote(el){if(S.rsv)S.rsv.note=el.value;return false;},
   nlText(el){if(S.edAi)S.edAi.text=el.value;return false;},

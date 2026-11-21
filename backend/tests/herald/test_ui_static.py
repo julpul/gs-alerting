@@ -128,3 +128,17 @@ async def test_escalation_flows_page_edits_the_real_policy():
     assert "localStorage.getItem('herald.flows')" not in html
     assert "The same flow in words" not in html
     assert "A drawing board, saved in this browser" not in html
+
+
+def test_ui_has_codebase_card_and_platform_settings():
+    page = (herald_ui.STATIC_DIR / "index.html").read_text()
+    needles = (
+        "Fix it in the code",
+        "Open in Claude Code",
+        "Open a draft PR",
+        "codeCardHtml",
+        "codePr",
+        "cfSave",
+    )
+    for needle in (*needles, "pr_opened"):
+        assert needle in page, needle
