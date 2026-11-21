@@ -120,3 +120,11 @@ async def test_fallback_on_bare_app(tmp_path):
         assert (await c.get("/")).text == "<p>ui</p>"
         assert (await c.get("/api/late")).json() == {"late": True}
         assert (await c.get("/api/other")).status_code == 404
+
+
+async def test_escalation_flows_page_edits_the_real_policy():
+    html = (herald_ui.STATIC_DIR / "index.html").read_text()
+    assert "/v1/escalation-policies" in html and "method:'PUT'" in html
+    assert "localStorage.getItem('herald.flows')" not in html
+    assert "The same flow in words" not in html
+    assert "A drawing board, saved in this browser" not in html
