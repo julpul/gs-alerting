@@ -16,6 +16,7 @@ import asyncpg
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import get_settings
+from app.herald import github
 from app.pipeline.fields import EventView
 from app.pipeline.rules.templates import render
 
@@ -23,7 +24,7 @@ LOOKBACK = timedelta(minutes=15)
 LOOKAHEAD = timedelta(minutes=5)
 MAX_LINKS = 10
 MAX_URL = 2000
-PR_REASON = "Set GITHUB_TOKEN on the server to open pull requests from Herald"
+PR_REASON = "Connect GitHub in Settings → Integrations to open pull requests from Herald"
 NOT_GITHUB_REASON = "Pull requests can only be opened for GitHub repositories"
 SERVICE_PATHS = ("service", "labels.service", "workflowName", "Service")
 
@@ -180,8 +181,10 @@ async def pr_url_for(conn: asyncpg.Connection, alert_id: Any) -> dict[str, Any] 
     return data if isinstance(data, dict) and data.get("url") else None
 
 
-def pr_state(cb: dict[str, Any], opened: dict[str, Any] | None) -> dict[str, Any]:
-    token = bool(get_settings().github_token)
+async def pr_state(
+    conn: asyncpg.Connection, cb: dict[str, Any], opened: dict[str, Any] | None, domain_id: Any
+) -> dict[str, Any]:
+    token = bool(await github.token_for(conn, domain_id))
     is_github = github_slug(cb["repo"]) is not None
     available = token and is_github
     reason = None if available else (PR_REASON if is_github else NOT_GITHUB_REASON)
@@ -214,7 +217,7 @@ async def codebase_bundle(
             "clone_cmd": clone_cmd(cb),
             "claude_prompt": prompt,
             "claude_cmd": claude_cmd(prompt),
-            "pr": pr_state(cb, await pr_url_for(conn, row["id"])),
+            "pr": await pr_state(conn, cb, await pr_url_for(conn, row["id"]), row["domain_id"]),
         },
         "observability_links": links,
     }

@@ -1876,7 +1876,7 @@ function flMount(){const slot=$('flowSlot'),d=FL.draft;
         trust levels, integrations, organisation). Each reads the public /v1 endpoint the handoff names, with a Bearer token for
         the current person (see v1Token). When a call fails the screen says so and offers to try again: it never shows invented data. ---- */
 const HO={data:{},err:{},tab:'escalation',team:null,prefs:null,pat:null,patName:'claude-code',patBusy:false,
-  kn:{mode:'text',title:'',content:'',url:'',team:'',busy:false}};
+  kn:{mode:'text',title:'',content:'',url:'',team:'',busy:false},gh:{token:'',busy:false}};
 const HO_SEV=['critical','error','warning','info'],HO_CH=['ui','email','sms','phone'];
 const HO_CHN={ui:'In Herald',email:'Email',sms:'Text message',phone:'Phone call',webhook:'Webhook'};
 const HO_TARGET={oncall:'On-call person',domain_root:'Domain Root',master:'Master',custom:'Named people'};
@@ -1971,6 +1971,16 @@ function knowledgeForm(){const k=HO.kn,teams=HO.data.teams||[],ok=k.mode==='link
     ${k.mode==='link'?`<label class="field"><span>Address</span><input class="in" id="knUrl" data-oni="knUrl" value="${esc(k.url)}" placeholder="https://wiki.example.com/runbooks/ledger"></label>`
       :`<label class="field"><span>Text</span><textarea class="in" id="knContent" data-oni="knContent" rows="5" placeholder="What to know, in plain words or Markdown">${esc(k.content)}</textarea></label>`}
     <div class="row"><button class="btn pri" data-act="knAdd" ${k.busy?'disabled':''} ${ok?'':'aria-disabled="true"'}>Add to knowledge</button></div></section>`;}
+function ghCard(dn){const rows=(HO.data.integrations||[]).filter(i=>i.kind==='github'),on=rows.filter(i=>i.status==='connected'),edit=rows.some(i=>i.canEdit),g=HO.gh,ok=g.token.trim().length>=20;
+  const where=i=>i.scopeDomainId?'for '+dn(i.scopeDomainId):'org-wide';
+  const list=on.length?on.map(i=>`<div class="row"><span class="grow">Connected as <b>${esc(i.login||'GitHub')}</b> · ${esc(where(i))}</span>${i.canEdit?`<button class="btn" data-act="ghOff" data-d="${esc(i.scopeDomainId||'')}">Disconnect</button>`:''}</div>`).join('')
+    :'<p class="muted" style="margin:0">Not connected</p>';
+  return `<section class="card"><div class="row"><h2 class="grow">GitHub</h2>${loz(on.length?'Connected':'Not connected',on.length?'success':'')}</div>
+    <p class="muted" style="margin:0 0 8px">Lets Herald open a draft pull request from an alert ("Fix it in the code"). The token is write-only: once saved it is never shown again.</p>${list}
+    ${edit?`<label class="field"><span>Fine-grained token (Contents + Pull requests: read and write)</span><input class="in" type="password" id="ghToken" data-oni="ghToken" autocomplete="off" value="${esc(g.token)}" placeholder="github_pat_…"></label>
+    <p class="help">Create one at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>, limited to the repositories Herald may open pull requests in.</p>
+    <div class="row"><button class="btn pri" data-act="ghSave" ${g.busy?'disabled':''}>Save</button></div>`
+    :'<p class="help">Only a Master or a Domain Root can connect GitHub.</p>'}</section>`;}
 /* The effective escalation ladder of one team, per severity, read from the service. Used by Settings and by Escalation flows. */
 function hoLadders(){const d=HO.data,origin=(p,k)=>p.origin&&p.origin[k]?loz(HO_ORIGIN[p.origin[k]]||p.origin[k],p.origin[k]==='org'?'':'info'):'';
   return `<div class="pgrid">${(d.esc||[]).map(p=>`<section class="card"><div class="row"><h2 class="grow">${sevTag(p.severity)}</h2>${origin(p,'levels')}</div>
@@ -1998,7 +2008,7 @@ function viewSettings(){const d=HO.data,tab=HO.tab,teams=d.teams||[],tn=id=>((d.
         <td>${t.successfulApprovedRuns} approved run${t.successfulApprovedRuns===1?'':'s'} without a problem, ${t.failures} failure${t.failures===1?'':'s'}${t.level!=='auto'&&t.promoteAfter?' · moves up after '+t.promoteAfter:''}</td><td>${t.cap?esc(HO_TRUST[t.cap]||t.cap):'<span class="muted">None</span>'}</td></tr>`).join('')}</tbody></table></div>`;}
   else if(tab==='integrations'){const N={datadog:'Datadog',github:'GitHub',jira:'Jira',confluence:'Confluence',llm:'AI model'},soon={jira:1,confluence:1},M={default:'Default provider',own_key:'Your own API key',own_endpoint:'Your own endpoint'};
     body=hoBanner(['integrations'])+`<p class="pdesc">Read-only connections that give an alert more context. Keys are write-only: once saved they are never shown again.</p>
-      <div class="pgrid">${(d.integrations||[]).map(i=>`<section class="card"><div class="row"><h2 class="grow">${N[i.kind]||esc(i.kind)}</h2>${soon[i.kind]?loz('Coming soon'):loz(i.status==='connected'?'Connected':i.status==='error'?'Error':'Not connected',i.status==='connected'?'success':i.status==='error'?'danger':'')}</div>
+      <div class="pgrid">${ghCard(dn)}${(d.integrations||[]).filter(i=>i.kind!=='github').map(i=>`<section class="card"><div class="row"><h2 class="grow">${N[i.kind]||esc(i.kind)}</h2>${soon[i.kind]?loz('Coming soon'):loz(i.status==='connected'?'Connected':i.status==='error'?'Error':'Not connected',i.status==='connected'?'success':i.status==='error'?'danger':'')}</div>
         <p class="muted" style="margin:0">${i.kind==='llm'?'Used for suggestions and drafts. Mode: '+esc(M[i.mode]||i.mode||'not set')+'.':i.kind==='github'?'Recent commits and pull requests next to an alert.':i.kind==='datadog'?'Logs and metrics around the time of an alert.':'Tickets and pages as knowledge.'}</p></section>`).join('')}</div>`;}
   else{body=hoBanner(['domains','teams','users'])+`<p class="pdesc">Permissions flow down: Master, then Domain Root, then Member. Escalation flows up the same way. A team can belong to more than one domain. You see the part of the organisation you have access to.</p>
       <h2>Domains</h2><div class="tablewrap"><table><thead><tr><th>Domain</th><th>Domain Root</th></tr></thead><tbody>${(d.domains||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc((x.rootUserIds||[]).map(hoUser).join(', ')||'Nobody yet')}</td></tr>`).join('')}</tbody></table></div>
@@ -2062,6 +2072,12 @@ const ACT={
   platFold(){S.platOpen=!S.platOpen;try{localStorage.setItem('herald.platOpen',S.platOpen?'1':'0');}catch(e){}},
   hoTab(el){HO.tab=el.dataset.v;},
   teamPolicy(){HO.tab='escalation';go('settings');window.scrollTo(0,0);loadView().then(render,e=>toast(e.message));},
+  ghSave(){const g=HO.gh,token=g.token.trim();if(g.busy)return;if(token.length<20){toast('Paste the whole token first.');return;}
+    g.busy=true;api('/v1/integrations/github',{method:'PUT',body:{config:{token:token}}})
+      .then(r=>{g.token='';toast('GitHub connected as '+(r.login||'your account')+'. Draft pull requests are now available on alerts.');return hoGet('integrations',()=>api('/v1/integrations'),true);},e=>toast('Not saved: '+e.message)).then(()=>{g.busy=false;render();});},
+  ghOff(el){const g=HO.gh,d=el.dataset.d;if(g.busy)return;g.busy=true;
+    api('/v1/integrations/github'+(d?'?scopeDomainId='+encodeURIComponent(d):''),{method:'DELETE'})
+      .then(()=>{toast('GitHub disconnected.');return hoGet('integrations',()=>api('/v1/integrations'),true);},e=>toast('Not disconnected: '+e.message)).then(()=>{g.busy=false;render();});},
   knMode(el){HO.kn.mode=el.dataset.v;},
   knAdd(){const k=HO.kn,link=k.mode==='link',url=k.url.trim(),content=k.content.trim();if(k.busy)return;
     if(link?!/^https?:\/\/\S+$/.test(url):!content){toast(link?'Paste an address that starts with https://':'Write something first.');return;}
@@ -2270,6 +2286,7 @@ const ONI={
   rsvNote(el){if(S.rsv)S.rsv.note=el.value;return false;},
   nlText(el){if(S.edAi)S.edAi.text=el.value;return false;},
   patName(el){HO.patName=el.value;return false;},
+  ghToken(el){HO.gh.token=el.value;return false;},
   knTitle(el){HO.kn.title=el.value;return false;},
   knUrl(el){HO.kn.url=el.value;return false;},
   knContent(el){HO.kn.content=el.value;return false;},

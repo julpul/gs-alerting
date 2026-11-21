@@ -720,6 +720,16 @@ paths:
       responses:
         '200': { description: Saved (secrets are write-only and never returned), content: { application/json: { schema: { $ref: '#/components/schemas/Integration' } } } }
         '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error', description: 'Includes "GitHub rejected this token" for an invalid github token (verified with GET /user on save)' }
+    delete:
+      tags: [integrations]
+      summary: Disconnect an integration (github without scopeDomainId = the organisation-wide one, Master only)
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [datadog, github, jira, confluence, llm] } }
+        - { name: scopeDomainId, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: Disconnected, content: { application/json: { schema: { $ref: '#/components/schemas/Integration' } } } }
+        '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
   # ---------------- Personal access tokens (MCP / agents) ----------------
@@ -1376,6 +1386,8 @@ components:
         status: { type: string, enum: [not_connected, connected, error] }
         scopeDomainId: { type: [string, 'null'] }
         mode: { type: [string, 'null'], description: 'For llm: default | own_key | own_endpoint' }
+        login: { type: [string, 'null'], description: 'github: the account the saved token belongs to (non-secret)' }
+        canEdit: { type: boolean, description: 'Whether the caller may change or remove this integration' }
 
     StreamEvent:
       type: object

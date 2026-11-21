@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 from uuid import UUID, uuid4
 
+import httpx
+
 from app.ai.llm import domain_override
 from app.core.errors import AppError
 from app.core.security import decrypt_secret
+from app.herald import github as github_client
 from tests.api.alerts_helpers import domain, make_alert, team
 
 DOC = "# Card gateway runbook\n\n" + "Failover the card gateway to the secondary acquirer. " * 40
@@ -154,6 +157,8 @@ async def test_integrations_store_secrets_encrypted_and_never_return_them(client
         "status": "connected",
         "scopeDomainId": str(domain("settlements")),
         "mode": "own_key",
+        "login": None,
+        "canEdit": True,
     }
     listing = await client.get("/v1/integrations", headers=root)
     assert "sk-super-secret-123" not in listing.text and "apiKey" not in listing.text
@@ -200,7 +205,15 @@ async def test_integrations_store_secrets_encrypted_and_never_return_them(client
     assert audits and "sk-super-secret-123" not in json.dumps([dict(a)["data"] for a in audits])
 
 
-async def test_integration_validation_and_permissions(client, auth_headers):
+async def test_integration_validation_and_permissions(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(
+        github_client,
+        "make_client",
+        lambda tok: httpx.AsyncClient(
+            base_url="https://api.github.test",
+            transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"login": "octo"})),
+        ),
+    )
     root = await auth_headers("root.payments@demo")
     put = lambda kind, body, h=root: client.put(f"/v1/integrations/{kind}", json=body, headers=h)  # noqa: E731
     assert (await put("llm", {"config": {"mode": "nope"}})).status_code == 422
@@ -213,6 +226,7 @@ async def test_integration_validation_and_permissions(client, auth_headers):
     assert (await put("jira", {"config": {}})).status_code == 422
     github = await put("github", {"config": {"token": "ghp_x"}})
     assert github.status_code == 200 and github.json()["mode"] is None and "ghp_x" not in github.text
+    assert (await client.delete("/v1/integrations/github", headers=root)).status_code == 200
     assert (await put("slack", {"config": {"a": 1}})).status_code == 422
     assert (await put("llm", {"scopeDomainId": "nowhere", "config": {"mode": "default"}})).status_code == 422
     assert (
