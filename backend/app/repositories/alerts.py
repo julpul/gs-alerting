@@ -12,6 +12,7 @@ import asyncpg
 import orjson
 from pydantic import ValidationError
 
+from app.ai.retrieval import enrich_history
 from app.core.errors import AppError
 from app.core.ids import format_short_id, parse_short_id, parse_uuid
 from app.core.scope import Scope
@@ -258,7 +259,7 @@ async def _suggestion(conn: asyncpg.Connection, alert_id: UUID) -> dict[str, Any
     )
     if row is None:
         return None
-    content = row["content"] or {}
+    content = await enrich_history(conn, row["content"] or {})
     data = {k: content[k] for k in SUGGESTION_KEYS if k in content}
     data.update(
         id=str(row["id"]),

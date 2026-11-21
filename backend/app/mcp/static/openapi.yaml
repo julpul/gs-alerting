@@ -967,7 +967,9 @@ components:
             type: object
             properties:
               alertId: { type: string }
-              resolvedAt: { type: string, format: date-time }
+              title: { type: string, description: 'Title of the past alert (never a bare id)' }
+              shortId: { type: [string, 'null'], example: A-123 }
+              resolvedAt: { type: [string, 'null'], format: date-time }
               resolutionNote: { type: string }
         similarIncidents:
           type: array
@@ -975,7 +977,9 @@ components:
             type: object
             properties:
               alertId: { type: string }
-              title: { type: string }
+              title: { type: string, description: 'Title of the past alert (never a bare id)' }
+              shortId: { type: [string, 'null'], example: A-123 }
+              resolvedAt: { type: [string, 'null'], format: date-time }
               similarity: { type: number }
               resolutionNote: { type: string }
         sources:
