@@ -8,7 +8,8 @@ import pytest
 
 from app.core.ids import stable_id
 from app.core.security import hash_token
-from app.pipeline.fields import EventView, get_path
+from app.pipeline.fields import EventView
+from app.pipeline.normalize import normalize
 from app.pipeline.rules.index import RuleIndex
 from app.pipeline.rules.templates import render
 from seed.seed import run_seed
@@ -44,41 +45,60 @@ PRICING_EVENT = {
     "level": "WARN",
     "logger": "pricing-engine-3",
     "instrument": "EURUSD",
-    "latencyMs": 450,
+    "latencyMs": 1500,
     "message": "quote latency above threshold",
 }
 
+SECURITY_EVENT = {
+    "type": "security.secret_leaked",
+    "severity": "critical",
+    "title": "AWS access key committed in PR #4812 (payments-api)",
+    "dedupKey": "pr-4812-aws-key",
+    "attributes": {"repo": "payments-api", "pullRequest": 4812, "secretType": "aws_access_key"},
+}
+SECURITY_ENVELOPE = {
+    "typed": True,
+    "_meta": {
+        "source": "pr-review-agent",
+        "source_name": "pr-review-agent",
+        "schema": "security.secret_leaked",
+        "severity": "critical",
+        "type": "security.secret_leaked",
+        "title": SECURITY_EVENT["title"],
+    },
+}
+
+EXTRA = {"pr-review-agent": SECURITY_ENVELOPE}
 SAMPLES = {
     "workflow-broker": (SETTLEMENTS_EVENT, "Settlements - workflow failed"),
     "prometheus": (ALERTMANAGER_EVENT, "Anna - critical payments-api"),
     "trade-gateway": (TRADE_EVENT, "Rates - big rejected trades"),
     "pricing-logs": (PRICING_EVENT, "Pricing - engine warnings (grouped)"),
+    "pr-review-agent": (SECURITY_EVENT, "Security - typed alerts"),
 }
 
 
-def detect_schema(raw: dict) -> str:
-    meta = raw.get("meta")
-    for value in (
-        meta.get("schema") if isinstance(meta, dict) else None,
-        raw.get("type"),
-        raw.get("alertname"),
-    ):
-        if isinstance(value, str):
-            return value
-    return "unknown"
-
-
-def event_view(source: dict, raw: dict) -> EventView:
-    """Minimal stand-in for the worker's normalization (P2-INGEST owns the real one)."""
-    mapping = source["mapping"]
-    meta = {"source": source["name"], "schema": detect_schema(raw)}
-    for name, path in mapping["fields"].items():
-        meta[name] = get_path(raw, path)
-    severity = meta.get("severity")
-    meta["severity"] = (
-        mapping.get("severityValueMap", {}).get(severity, severity) or source["default_severity"]
+SEEDED_RULE_IDS = {
+    stable_id("rule", key)
+    for key in (
+        "settlements-workflow-failed",
+        "pricing-engine-warnings",
+        "rates-big-rejected-trades",
+        "anna-payments-api-critical",
+        "security-typed-alerts",
     )
-    return EventView(raw, meta)
+}
+
+
+def seeded_matches(index: RuleIndex, view: EventView) -> list[str]:
+    """Names of the seeded rules matching `view` (other tests may leave their own rules in the DB)."""
+    return [c.rule.name for c in index.candidates(view) if c.rule.id in SEEDED_RULE_IDS and c.matches(view)]
+
+
+def event_view(source: dict, raw: dict, envelope_extra: dict | None = None) -> EventView:
+    """The worker's own normalization (mapping, schema detection, `_meta`)."""
+    envelope = {"raw": raw, "received_at": "2026-11-21T09:00:00.000Z", **(envelope_extra or {})}
+    return normalize(envelope, source)
 
 
 @pytest.fixture
@@ -175,8 +195,8 @@ async def test_appendix_a_event_matches_exactly_its_seeded_rule(seeded, sources,
     raw, rule_name = SAMPLES[source_name]
     index = RuleIndex()
     await index.load_all(seeded)
-    view = event_view(sources[source_name], raw)
-    matching = [c.rule.name for c in index.candidates(view) if c.matches(view)]
+    view = event_view(sources[source_name], raw, EXTRA.get(source_name))
+    matching = seeded_matches(index, view)
     assert matching == [rule_name]
 
 
@@ -186,7 +206,7 @@ async def test_seeded_rules_reject_near_misses(seeded, sources):
 
     def matches(source: str, raw: dict) -> list[str]:
         view = event_view(sources[source], raw)
-        return [c.rule.name for c in index.candidates(view) if c.matches(view)]
+        return seeded_matches(index, view)
 
     staging = {**SETTLEMENTS_EVENT, "environment": "staging"}
     assert matches("workflow-broker", staging) == []
@@ -207,10 +227,44 @@ async def test_seeded_titles_render_from_appendix_a(seeded, sources):
     await index.load_all(seeded)
     titles = {}
     for source_name, (raw, rule_name) in SAMPLES.items():
-        view = event_view(sources[source_name], raw)
+        view = event_view(sources[source_name], raw, EXTRA.get(source_name))
         rule = next(c.rule for c in index.candidates(view) if c.rule.name == rule_name)
         titles[source_name] = render(rule.presentation.title_template, view)
     assert titles["workflow-broker"] == "order-settlement failed at validate-counterparty"
     assert titles["trade-gateway"] == "Rejected EUR 25000000 — LIMIT_BREACH"
     assert titles["prometheus"] == "HighErrorRate: Error rate 12% over the last 5 minutes"
     assert titles["pricing-logs"] == "Pricing WARN: EURUSD"
+    assert titles["pr-review-agent"] == SECURITY_EVENT["title"]
+
+
+async def test_security_rule_routes_typed_alerts_to_oncall_by_phone_and_sms(seeded):
+    row = await seeded.fetchrow(
+        "SELECT * FROM rules WHERE id = $1", stable_id("rule", "security-typed-alerts")
+    )
+    assert row["team_id"] == stable_id("team", "team-security")
+    routing = row["definition"]["routing"]
+    assert routing["hard"] == [{"kind": "oncall", "id": "team-security"}]
+    assert routing["channelsBySeverity"]["critical"] == ["phone", "sms"]
+
+
+async def test_security_rule_ignores_other_security_sources_and_types(seeded, sources):
+    index = RuleIndex()
+    await index.load_all(seeded)
+    other_type = {**SECURITY_EVENT, "type": "billing.invoice"}
+    meta = {**SECURITY_ENVELOPE["_meta"], "type": "billing.invoice", "schema": "billing.invoice"}
+    view = event_view(sources["pr-review-agent"], other_type, {"typed": True, "_meta": meta})
+    assert seeded_matches(index, view) == []
+    view = event_view(
+        sources["pricing-logs"],
+        SECURITY_EVENT,
+        SECURITY_ENVELOPE | {"_meta": {**SECURITY_ENVELOPE["_meta"], "source": "pricing-logs"}},
+    )
+    assert seeded_matches(index, view) == []
+
+
+async def test_custody_demo_source_has_no_mapping_and_no_rules(seeded, sources):
+    custody = sources["custody"]
+    assert custody["key_hash"] == hash_token("demo-key-custody")
+    assert custody["team_id"] == stable_id("team", "team-settlements")
+    assert custody["mapping"] is None and custody["mapping_status"] is None
+    assert await seeded.fetchval("SELECT count(*) FROM rules WHERE definition::text LIKE '%custody%'") == 0

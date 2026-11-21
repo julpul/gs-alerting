@@ -44,9 +44,9 @@ def _ms_to_dt(ms: int) -> datetime:
 
 
 def parse_stream_entry(entry_id: str, fields: dict[str, str]) -> RecentEvent | None:
-    """A `recent:{id}` entry: field `e` = JSON of the envelope (`raw`, `_meta`, `event_id`, `received_at`)."""
+    """A `recent:{id}` entry: field `envelope` = JSON of `{event_id, source_id, received_at, raw, _meta}`."""
     try:
-        env = orjson.loads(fields["e"])
+        env = orjson.loads(fields["envelope"])
     except (KeyError, orjson.JSONDecodeError, TypeError):
         return None
     if not isinstance(env, dict):

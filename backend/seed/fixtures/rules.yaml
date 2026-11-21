@@ -97,3 +97,25 @@ rules:
         fields: [labels.service, labels.region, annotations.summary]
         color: red
       dedup: { fields: [alertname, labels.service] }
+
+  - key: security-typed-alerts
+    rule:
+      name: Security - typed alerts
+      teamId: team-security
+      priority: critical
+      match:
+        op: and
+        conditions:
+          - { field: _source, operator: eq, value: pr-review-agent }
+          - { field: _type, operator: glob, value: "security.*" }
+      routing:
+        hard: [{ kind: oncall, id: team-security }]
+        channelsBySeverity:
+          critical: [phone, sms]
+          error: [sms]
+      presentation:
+        titleTemplate: "{{_title}}"
+        bodyTemplate: "{{description}}"
+        fields: [attributes.repo, attributes.pullRequest, attributes.secretType]
+        color: red
+      dedup: { fields: [type, dedupKey] }

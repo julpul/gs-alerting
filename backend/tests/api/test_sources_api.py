@@ -43,7 +43,7 @@ async def push_events(redis, source_id: str, raws: list[dict]) -> str:
             "received_at": "2026-11-21T10:00:00.000Z",
             "raw": raw,
         }
-        await redis.xadd(key, {"e": orjson.dumps(env).decode()})
+        await redis.xadd(key, {"envelope": orjson.dumps(env).decode()})
     return key
 
 
@@ -59,7 +59,12 @@ async def test_list_is_scoped_and_contract_shaped(client, auth_headers, redis):
     assert "apiKey" not in row and "key_hash" not in row
 
     piotr = await auth_headers("piotr@demo")
-    assert {r["name"] for r in (await client.get("/v1/sources", headers=piotr)).json()} == {"workflow-broker"}
+    names = {r["name"] for r in (await client.get("/v1/sources", headers=piotr)).json()}
+    assert {"workflow-broker", "custody"} <= names and not names & {
+        "prometheus",
+        "pricing-logs",
+        "trade-gateway",
+    }
     master = await auth_headers("master@demo")
     assert {"workflow-broker", "prometheus", "pricing-logs", "pr-review-agent", "trade-gateway"} <= {
         r["name"] for r in (await client.get("/v1/sources", headers=master)).json()
@@ -201,10 +206,10 @@ async def test_sample_events_skip_malformed_entries_and_accept_bare_payloads(cli
     anna = await auth_headers("anna@demo")
     key = rkey("recent", PROMETHEUS)
     await redis.delete(key)
-    await redis.xadd(key, {"e": "not json"})
+    await redis.xadd(key, {"envelope": "not json"})
     await redis.xadd(key, {"other": "field"})
-    await redis.xadd(key, {"e": orjson.dumps({"plain": "payload"}).decode()})
-    await redis.xadd(key, {"e": orjson.dumps([1, 2]).decode()})
+    await redis.xadd(key, {"envelope": orjson.dumps({"plain": "payload"}).decode()})
+    await redis.xadd(key, {"envelope": orjson.dumps([1, 2]).decode()})
     try:
         events = (await client.get(f"/v1/sources/{PROMETHEUS}/sample-events", headers=anna)).json()
         assert [e["payload"] for e in events] == [{"plain": "payload"}]

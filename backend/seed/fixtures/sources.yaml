@@ -71,3 +71,10 @@ sources:
         type: meta.schema
       severityValueMap: {}
       explanation: Trade gateway messages; severity falls back to the source default (error).
+
+  # Demo source for the "unseen schema" scenario: no mapping, no rules.
+  - name: custody
+    team: team-settlements
+    type: webhook
+    key: demo-key-custody
+    default_severity: warning

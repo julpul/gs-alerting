@@ -6,8 +6,9 @@ of a sample event and proposes a `SchemaMapping` draft. Every proposed path exis
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
+
+from app.pipeline.schema_detect import detect_schema
 
 MAX_DEPTH = 5
 
@@ -75,18 +76,6 @@ def _leaves(obj: Any, prefix: str = "", depth: int = 0):
 
 def _norm(key: str) -> str:
     return key.replace("_", "").replace("-", "").lower()
-
-
-def detect_schema(sample: dict[str, Any]) -> str:
-    """meta.schema -> type -> alertname -> schema -> hash of the sorted top-level keys."""
-    meta = sample.get("meta")
-    candidates = [meta.get("schema") if isinstance(meta, dict) else None]
-    candidates += [sample.get(k) for k in ("type", "alertname", "schema")]
-    for value in candidates:
-        if isinstance(value, str) and value:
-            return value
-    digest = hashlib.sha1(",".join(sorted(sample)).encode()).hexdigest()[:8]
-    return f"keys:{digest}"
 
 
 def _accepts(target: str, value: Any) -> bool:

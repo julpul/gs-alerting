@@ -268,7 +268,7 @@ async def _seed_stream(redis, source_id: UUID, events: list[dict], old: list[dic
     for i, raw in enumerate(old):
         await redis.xadd(
             key,
-            {"e": orjson.dumps({"event_id": f"old{i}", "raw": raw}).decode()},
+            {"envelope": orjson.dumps({"event_id": f"old{i}", "raw": raw}).decode()},
             id=f"{two_hours_ago + i}-0",
         )
     for i, raw in enumerate(events):
@@ -278,7 +278,7 @@ async def _seed_stream(redis, source_id: UUID, events: list[dict], old: list[dic
             "raw": raw,
             "_meta": {"schema": "trade.rejected.v2"},
         }
-        await redis.xadd(key, {"e": orjson.dumps(env).decode()})
+        await redis.xadd(key, {"envelope": orjson.dumps(env).decode()})
     return key
 
 
