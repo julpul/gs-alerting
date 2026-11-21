@@ -36,9 +36,7 @@ def test_fallback_note_summarises_times_steps_approvals_and_comments():
         "Approvals: Approval requested for escalate (high risk) by Anna (Anna).",
         "Comments: Counterparty confirmed the fix (Anna).",
     ]
-    assert "after 30 s" in fallback_note(
-        [entry("acked", "a")], {"first_seen_at": T0 - timedelta(seconds=30)}
-    )
+    assert "after 30 s" in fallback_note([entry("acked", "a")], {"first_seen_at": T0 - timedelta(seconds=30)})
     assert "after 3 h 5 min" in fallback_note([entry("resolved", "r", minutes=185)], {"first_seen_at": T0})
 
 

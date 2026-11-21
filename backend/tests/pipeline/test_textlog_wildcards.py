@@ -1,4 +1,4 @@
-"""Unit tests: text log parsing (`textlog`), wildcard paths (`fields`), wildcard rule semantics and templates."""
+"""Unit tests: text logs (`textlog`), wildcard paths (`fields`), wildcard rule semantics and templates."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.pipeline.rules.templates import render
 from app.pipeline.textlog import is_json_content_type, parse_line, parse_text
 
 S3 = (
-    '2026-11-20T14:05:09.120Z WARN pricing-engine-3 [quote-cache] instrument=EURUSD latency_ms=1840 '
+    "2026-11-20T14:05:09.120Z WARN pricing-engine-3 [quote-cache] instrument=EURUSD latency_ms=1840 "
     'msg="cache miss storm"'
 )
 LEGS = {
@@ -166,7 +166,8 @@ def test_wildcard_numeric_and_missing():
 
 def test_wildcard_template_joins_values():
     ev = EventView(LEGS, {})
-    assert render("Pairs: {{legs.*.pair}}; tags {{tags}}", ev) == 'Pairs: EURUSD, GBPUSD, USDJPY; tags ["prod","eu"]'
+    rendered = render("Pairs: {{legs.*.pair}}; tags {{tags}}", ev)
+    assert rendered == 'Pairs: EURUSD, GBPUSD, USDJPY; tags ["prod","eu"]'
 
 
 def test_alertmanager_body_is_split_without_a_preset():

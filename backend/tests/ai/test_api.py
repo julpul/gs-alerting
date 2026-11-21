@@ -80,7 +80,8 @@ async def test_knowledge_title_from_front_matter_heading_or_filename(client, aut
     front = b'---\ntitle: "FX cache storms"\nowner: pricing\n---\n# Other heading\nRestart the cache.'
     assert await upload("x.md", front) == "FX cache storms"
     assert await upload("x.md", b"Intro line\n## Sub\n# Main heading\ntext") == "Main heading"
-    assert await upload("x.md", b"---\nowner: pricing\n---\n## Only a sub heading\ntext") == "Only a sub heading"
+    sub_only = b"---\nowner: pricing\n---\n## Only a sub heading\ntext"
+    assert await upload("x.md", sub_only) == "Only a sub heading"
     assert await upload("disk-full_runbook.md", b"no heading at all") == "disk full runbook"
     assert await upload("x.md", front, title="Given title") == "Given title"
     plain = await upload_json(client, anna, content="just text, no heading", teamId="team-payments")

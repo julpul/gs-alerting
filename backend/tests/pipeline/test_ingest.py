@@ -136,7 +136,7 @@ async def test_top_level_array_is_a_batch(client, make_source, tap):
 
 async def test_text_body_is_one_event_per_line(client, make_source, tap):
     source = await make_source()
-    text = "2026-11-20T14:05:09.120Z ERROR db-07 disk=97\nWARN second line k=\"a b\"\n"
+    text = '2026-11-20T14:05:09.120Z ERROR db-07 disk=97\nWARN second line k="a b"\n'
     resp = await client.post(
         f"/v1/ingest/{source['key']}", content=text, headers={"Content-Type": "text/plain"}
     )

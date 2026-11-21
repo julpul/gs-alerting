@@ -7,8 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from app.api.routers.ingest import body_events
 from app.core.redis import rkey
+from app.pipeline.envelope import build_envelope
 from app.pipeline.normalize import normalize
+from app.pipeline.presets import split_events
 from app.repositories.sources import read_recent
 from tests.pipeline.conftest import eventually
 
@@ -67,18 +70,16 @@ async def test_unseen_sample_is_ingested_and_its_fields_are_discoverable(
     assert paths <= offered, paths - offered
 
 
-async def test_unseen_samples_zero_config_meta(make_source):
+def test_unseen_samples_zero_config_meta():
     """What the built-in guesses find (no mapping): types, timestamps, severities."""
     source = {"id": "00000000-0000-4000-8000-000000000009", "name": "src", "default_severity": "warning"}
-    from app.api.routers.ingest import body_events
-    from app.pipeline.envelope import build_envelope
-    from app.pipeline.presets import split_events
 
     def metas(name: str) -> list[dict]:
         path = next(UNSEEN.glob(f"{name}.*"))
         events, single = body_events(path.read_bytes(), _content_type(path))
         raws = [p for e in (events or [single]) for p in split_events(None, e)]
-        return [normalize(build_envelope(source_id=source["id"], raw=r, priority=3), source).meta for r in raws]
+        envelopes = [build_envelope(source_id=source["id"], raw=r, priority=3) for r in raws]
+        return [normalize(envelope, source).meta for envelope in envelopes]
 
     cloud = metas("s1_cloudevents")[0]
     assert cloud["type"] == "com.example.margin.call.issued"
