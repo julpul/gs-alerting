@@ -1,4 +1,5 @@
-"""Herald UI: `/api/rules` (list, save), `/api/rules/test` (dry-run a condition), `/api/rules/preview`.
+"""Herald UI: `/api/rules` (list, save), `/api/rules/test` (dry-run a condition), `/api/rules/preview`,
+`/api/rules/draft-from-text` (the AI rule copilot, answered in the Herald rule shape the editor fills in).
 
 Saving goes through the same validation, repository (versions + audit) and hot-reload announcement as
 `/v1/rules`. The Herald document is translated by `app.herald.dsl`; what our model cannot hold is kept in
@@ -7,12 +8,13 @@ Saving goes through the same validation, repository (versions + audit) and hot-r
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 from fastapi import Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import Pool, RedisDep
 from app.api.routers.rules import _announce, _prepare
@@ -31,18 +33,22 @@ from app.herald.dsl import (
 )
 from app.herald.explain import attrs, event_view, explain_when, failing_leaves, raw_events
 from app.herald.identity import Actor
+from app.herald.ids import team_for_owner
 from app.herald.platforms import platform_source, visible_sources
 from app.herald.preview import preview
 from app.herald.routing import herald_router
 from app.pipeline.fields import EventView
 from app.pipeline.rules.compiler import compile_rule
+from app.pipeline.rules.dryrun import dry_run
 from app.pipeline.rules.model import RuleDef, RuleValidationError, parse_rule
 from app.repositories import rules as repo
 from app.repositories.sources import read_recent
 from app.schemas.internal import User
 
+log = logging.getLogger(__name__)
 router = herald_router()
 TEST_EVENTS = 50
+AI_UNAVAILABLE = "The AI assistant is not available right now. Build the rule by hand below."
 
 
 def invalid(message: str) -> AppError:
@@ -230,3 +236,45 @@ async def preview_rule(body: PreviewIn, who: Actor, pool: Pool) -> dict[str, Any
         return await preview(
             conn, rule, event_view(raws[0], source), highlight=extras["highlight"], directory=directory
         )
+
+
+class DraftText(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    owner: str | None = None
+
+
+async def _draft_team(conn: asyncpg.Connection, who: Any, owner: str | None) -> UUID:
+    """The draft's team: `owner` (`team:<slug>`), else the team the UI acts for, else the only one."""
+    if owner and owner.startswith("team:"):
+        return await team_for_owner(conn, owner, who.scope)
+    if who.teams:
+        return await team_for_owner(conn, who.teams[0], who.scope)
+    if len(who.scope.team_ids) == 1:
+        return next(iter(who.scope.team_ids))
+    raise AppError(422, "validation_error", "owner: say which team the rule is for")
+
+
+@router.post("/api/rules/draft-from-text")
+async def draft_from_text(body: DraftText, who: Actor, pool: Pool, redis: RedisDep) -> dict[str, Any]:
+    """Plain words -> a validated draft in the Herald `RuleDoc` shape + explanation + dry-run. Never saved."""
+    from app.ai.rule_copilot import draft_rule
+
+    if not body.text.strip():
+        raise AppError(422, "validation_error", "text: describe the rule first")
+    async with pool.acquire() as conn:
+        team_id = await _draft_team(conn, who, body.owner)
+        try:
+            draft, explanation = await draft_rule(body.text, who.scope, conn, team_id=team_id)
+        except AppError:
+            raise
+        except Exception as exc:
+            log.warning("rule copilot failed: %s", exc)
+            raise AppError(503, "ai_unavailable", AI_UNAVAILABLE) from exc
+        try:
+            result = await dry_run(conn, redis, draft)
+        except RuleValidationError as exc:
+            raise invalid(f"{exc.path}: {exc.message}".lstrip(": ")) from exc
+        directory = await load_directory(conn)
+    doc = rule_to_herald(draft, directory)
+    doc["id"] = None
+    return {"doc": doc, "explanation": explanation, "dryRun": result, "source": "ai"}

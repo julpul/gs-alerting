@@ -120,7 +120,9 @@ platforms), `explain.py` (why a rule did / didn't match; event normalization lik
 | `POST /api/rules/preview` | `present.build_alert`, `delivery.render` (SMS/phone/email), `recipients` + `channel_select` + effective policy, runbook steps rendered with `runbooks.lookup.render_step` |
 | `GET /api/platforms`, `GET /api/sources` | `sources` (scoped) + alert counts per `source_id` + last event from the Redis stream |
 | `PUT /api/platforms/{id}` | `repositories.sources.create_source` (webhook); the source key is returned once as `token`; 409 if the id exists |
-| `GET /api/runbooks`, `PUT /api/runbooks/{id}`, `POST /api/runbooks/parse` | `runbooks.store.list_runbooks/create_runbook/update_runbook`, `runbooks.parsers.parse_runbook` (YAML/Markdown/link deterministic, text via AI parser -> heuristic fallback) |
+| `POST /api/rules/draft-from-text` | `{text, owner?}` -> `ai.rule_copilot.draft_rule` + `pipeline.rules.dryrun.dry_run` -> `{doc` (Herald `RuleDoc`, `id: null`), `explanation, dryRun, source: "ai"}`; 503 when the model does not answer. Never saved |
+| `GET /api/runbooks`, `PUT /api/runbooks/{id}`, `POST /api/runbooks/parse` | `runbooks.store.list_runbooks/create_runbook/update_runbook`, `runbooks.parsers.parse_runbook` (YAML/Markdown/link deterministic, text via AI parser -> heuristic fallback). Parse `ai: false` = fixed rules only, `ai: true` = free text through the AI parser (+ `draft_steps`); `PUT` with `steps` + `ai: true` stores exactly those steps as an AI draft (new runbooks; an existing one is re-read from its text) |
+| `GET /api/alerts/{id}/suggestion` | the drawer's AI card: `{state: ready|pending|none, suggestion, model, suspicious}` from `suggestions` (written by the ai worker only); `pending` while an open, eligible alert is younger than 5 min |
 | `GET /api/events/recent` | `recent:<source_id>` streams; `fired`/`closed` recomputed with the caller's current rules |
 | `POST /api/events/explain` | `explain.explain_rule` for every rule in scope (batches and Alertmanager bodies split like ingest) |
 | `GET /api/fields?source=` | field paths (+ `@type`, `@severity`, ... from `_meta`) of the recent events of that source |
