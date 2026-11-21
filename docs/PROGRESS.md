@@ -23,7 +23,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P2-INGEST | in_progress | implementer / task/P2-INGEST | 2026-11-21 | | | |
 | P2-RULES | in_progress | implementer / task/P2-RULES | 2026-11-21 | | | |
 | P2-DELIVERY | in_progress | implementer / task/P2-DELIVERY | 2026-11-21 | | | |
-| P2-ALERTSAPI | in_progress | implementer / task/P2-ALERTSAPI | 2026-11-21 | | | |
+| P2-ALERTSAPI | done | implementer / task/P2-ALERTSAPI | 2026-11-21 | 2026-11-21 | 91–100 % | contract additions (shortId, escalatesAt, MetricsSummary fields); ack/resolve idempotent; informed = read+comment |
 | P3-ESCAL | todo | | | | | |
 | P3-RUNBOOK | todo | | | | | |
 | P3-AI | todo | | | | | |
