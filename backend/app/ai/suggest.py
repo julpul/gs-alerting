@@ -202,6 +202,35 @@ async def build_content(conn: asyncpg.Connection, alert: asyncpg.Record) -> tupl
     return content, result.model
 
 
+STORM_REUSE_SECONDS = 120
+
+
+async def _recent_sibling_suggestion(
+    conn: asyncpg.Connection, alert: asyncpg.Record
+) -> tuple[dict[str, Any], str] | None:
+    """Storm/cost guard: during an incident many new alerts share one rule and knowledge key. The
+    first gets a full suggestion (embeddings + LLM); siblings within STORM_REUSE_SECONDS reuse it
+    instead of paying for another model call. Same rule ⇒ same runbook, so step ids stay valid."""
+    if not alert["knowledge_key"] or alert["rule_id"] is None:
+        return None
+    row = await conn.fetchrow(
+        "SELECT s.content, s.model, a.short_id FROM suggestions s JOIN alerts a ON a.id = s.alert_id "
+        "WHERE a.rule_id = $1 AND a.knowledge_key = $2 AND a.id <> $3 "
+        "AND s.status IN ('ready', 'degraded') "
+        "AND s.created_at > now() - make_interval(secs => $4) "
+        "ORDER BY s.created_at DESC LIMIT 1",
+        alert["rule_id"],
+        alert["knowledge_key"],
+        alert["id"],
+        float(STORM_REUSE_SECONDS),
+    )
+    if row is None:
+        return None
+    content = dict(row["content"])
+    content["reusedFrom"] = f"A-{row['short_id']}"
+    return content, f"{row['model'] or 'none'} (reused)"
+
+
 async def generate_suggestion(conn: asyncpg.Connection, alert_id: UUID) -> dict[str, Any] | None:
     """Create the suggestion of one alert; None when skipped (unknown alert, gate, or one exists already)."""
     alert = await conn.fetchrow("SELECT * FROM alerts WHERE id = $1", alert_id)
@@ -218,7 +247,11 @@ async def generate_suggestion(conn: asyncpg.Connection, alert_id: UUID) -> dict[
         return None
 
     started = time.perf_counter()
-    content, model = await build_content(conn, alert)
+    reused = await _recent_sibling_suggestion(conn, alert)
+    if reused is not None:
+        content, model = reused
+    else:
+        content, model = await build_content(conn, alert)
     latency_ms = int((time.perf_counter() - started) * 1000)
     status = "degraded" if content["aiUnavailable"] else "ready"
     suggestion_id = uuid7()

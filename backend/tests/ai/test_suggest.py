@@ -244,3 +244,22 @@ async def test_worker_dispatches_tasks_and_survives_bad_messages(seeded, llm):
     again = Msg(json.dumps({"kind": "suggest_fix", "alert_id": "not-a-uuid"}).encode(), redelivered=True)
     await worker._on_message(again)
     assert again.outcome == "ack"
+
+
+async def test_storm_siblings_reuse_the_first_suggestion_without_a_model_call(seeded, llm, runbook_for):
+    runbook_for(STEPS)
+    key = f"kk-{uuid4().hex}"
+    first = await make_alert(seeded, knowledge_key=key, title="Counterparty timeout WF-1")
+    sibling = await make_alert(seeded, knowledge_key=key, title="Counterparty timeout WF-2")
+    llm.responses = {"fast": {"diagnosis": "Gateway down.", "nextStepId": "step-retry", "confidence": 0.7}}
+
+    async with seeded.acquire() as conn:
+        await generate_suggestion(conn, first["id"])
+        calls_after_first = len(llm.calls)
+        await generate_suggestion(conn, sibling["id"])
+
+    assert len(llm.calls) == calls_after_first  # no second model call during the storm
+    row = await stored(seeded, sibling["id"])
+    assert row["content"]["diagnosis"] == "Gateway down."
+    assert row["content"]["reusedFrom"].startswith("A-")
+    assert row["model"].endswith("(reused)")
