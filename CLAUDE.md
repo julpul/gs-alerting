@@ -3,7 +3,6 @@
 Flexible Alerting & Notification Service (Goldman Sachs Hackathon 2026).
 
 ## Source of truth (read in this order)
-0. `docs/BRIEF.md` — the original hackathon brief incl. Appendix A (sample events) and B (sample runbooks).
 1. `docs/TECH_SPEC.md` — architecture, behaviour, data model. Wins over everything else.
 2. `docs/openapi.yaml` — REST/SSE wire contract. **Change the contract first, then code.** Never break it silently.
 3. `docs/IMPLEMENTATION_PLAN.md` — phases, tasks, file ownership, interfaces between modules.

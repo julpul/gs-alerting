@@ -1,48 +1,60 @@
-# gs-alerting — Flexible Alerting & Notification Service
+# The Herald: flexible alerting & notification service
 
-Goldman Sachs Hackathon 2026 · Software Engineering track.
+Goldman Sachs Hackathon 2026 · Software Engineering track · repo `gs-alerting`
 
-**One place where people *and* AI agents raise problems, the problem reaches the right person on the right channel, and they fix it together with the team's runbooks — while AI never acts without permissions and evidence.**
+**A problem reaches the right person on the right channel, with an owner, the team's runbook, AI help and the code
+to fix it, while AI never acts without a human.**
 
-Three differentiators:
+## Links
 
-1. **Pyramid for humans and agents.** Permissions flow down (Master → Domain Root → Member), escalation flows up. Agents raise alerts and ask for approvals through the same routing (MCP `raise_alert`, `request_approval`).
-2. **Safe hands.** No AI on the hot path; AI output is always a draft; poisoned-telemetry defenses; risky actions always need a human; actions earn autonomy on a trust ladder.
-3. **Team memory.** Every resolution becomes knowledge. The next similar alert shows "fixed before" instantly (exact key lookup, no model) plus similar incidents (vector + full-text search).
+| | |
+| --- | --- |
+| **Live demo** | https://api-production-d033bedd.up.railway.app: press **Sign in with Vistula ID** (judges' accounts are in our submission) |
+| Vistula ID: our demo SSO (OpenID Connect) | https://sso-production-b4223540.up.railway.app |
+| Email inbox (Mailpit) | https://mailpit-production-69850428.up.railway.app |
+| SMS / phone gateway (mockgw) | https://mockgw-production.up.railway.app |
+| Traffic simulator "Vistula Capital" | https://simulator-production-ae5fd2bb.up.railway.app |
+| Demo codebase linked to alerts | [`demo/payments-api`](demo/payments-api) |
+| API contract / Swagger | [`docs/openapi.yaml`](docs/openapi.yaml) · https://api-production-d033bedd.up.railway.app/docs |
+| Screenshots | [`docs/screenshots`](docs/screenshots) |
 
----
-
-## Quick start
-
-```bash
-cp .env.example .env     # optional: add an LLM key (OpenAI / Anthropic / OpenRouter) for AI features
-make up                  # full stack in Docker: api, workers, postgres, redis, rabbitmq, mailpit, mockgw, simulator, grafana; migrates + seeds
-make demo-events         # sends the brief's Appendix A events plus a prompt-injection sample
-```
-
-Needs Docker and [uv](https://docs.astral.sh/uv/) (for `make demo-events`). Fresh clone to first alert: the three commands above (first build downloads the local embedding model).
-
-| What | URL | Notes |
-| --- | --- | --- |
-| API + Swagger | http://localhost:8080/docs | contract in [`docs/openapi.yaml`](docs/openapi.yaml); `/readyz`, `/metrics` |
-| Mailpit (email inbox) | http://localhost:8025 | every email alert lands here |
-| mockgw (SMS / phone gateway) | http://localhost:8090 | phone-like log page, reply box, "Press 1 to ACK" |
-| Simulator "Vistula Capital" | http://localhost:8095 | control panel: traffic rate, trigger incidents |
-| RabbitMQ management | http://localhost:15672 | guest / guest |
-| Grafana | http://localhost:3001 | provisioned dashboard (anonymous admin) |
-| Prometheus | http://localhost:9090 | |
-
-Demo logins (password `demo` for everyone; full org in [`docs/DEMO_ORG.md`](docs/DEMO_ORG.md)):
-`master@demo` (Master) · `root.payments@demo`, `root.settlements@demo`, `root.security@demo`, `root.markets@demo` (Domain Roots) · `anna@demo` (Payments on-call) · `piotr@demo` (Settlements on-call) · `manager@demo` (Informed, soft notifications only).
+## Run it yourself: 3 commands
 
 ```bash
-TOKEN=$(curl -s localhost:8080/v1/auth/login -H 'content-type: application/json' \
-        -d '{"email":"master@demo","password":"demo"}' | jq -r .accessToken)
-curl -s localhost:8080/v1/alerts -H "authorization: Bearer $TOKEN" | jq '.items[0]'
-curl -s localhost:8080/v1/stream?access_token=$TOKEN        # live SSE feed
+git clone https://github.com/julpul/gs-alerting.git && cd gs-alerting
+cp .env.example .env      # optional: put ANTHROPIC_API_KEY (or OPENAI / OPENROUTER) here to turn on the AI features
+make up                   # whole stack in Docker, migrated and seeded (first build ≈ 5 min)
 ```
 
-Note: the web UI is built by the design team in a separate codebase against `docs/openapi.yaml` (see [`docs/HANDOFF_UI.md`](docs/HANDOFF_UI.md)). This repo is the complete backend: REST + SSE + MCP, plus Swagger, Mailpit and the mockgw page to see every channel working.
+Open **http://localhost:8080**, press **Sign in with Vistula ID** and sign in as `anna` (on-call engineer),
+`root.payments` (team lead) or `master` (admin). The local password for every demo account is `demo`.
+To fire an alert, use the simulator (http://localhost:8095), scenario `payments_error_spike`, or send one event:
+
+```bash
+curl -X POST localhost:8080/v1/ingest/demo-key-prometheus -H 'content-type: application/json' \
+  -d '{"alertname":"CardGatewayTimeouts","labels":{"service":"payments-api","region":"eu-west","severity":"critical"},"annotations":{"summary":"Card authorisations timing out upstream"},"status":"firing"}'
+```
+
+You need Docker (with Compose) and `make`. That's all. AI features need one LLM key; without it Herald still runs
+and labels AI parts "AI unavailable". `make rebuild` restarts the app on new code and keeps the data. `make down`
+stops it.
+
+| Local URL | What |
+| --- | --- |
+| http://localhost:8080 | Herald web UI (+ `/docs` Swagger, `/lab.html` test lab) |
+| http://localhost:8180 | Vistula ID (demo SSO) |
+| http://localhost:8025 | Mailpit: every email alert |
+| http://localhost:8090 | mockgw: SMS, calls, replies ("ACK 12") |
+| http://localhost:8095 | Simulator: traffic and incidents |
+| http://localhost:3001 · :9090 · :15672 | Grafana · Prometheus · RabbitMQ (guest / guest) |
+
+## What makes it different
+
+1. **From alert to code.** Each platform is linked to its repository. An alert opens Claude Code with the incident as context, or opens a draft pull request from the alert. Agents work through MCP.
+2. **AI where you already work.** The alert shows an AI-proposed next step from the runbook, **Fixed before** (how the team fixed it last time), "ask about this alert" and a drafted resolution note. Rules can be written in plain words. All of it is a draft for a human to accept.
+3. **Always an owner.** Every new alert is assigned at once, with the reason: the person named in the rule, else the on-call person, else the least busy teammate.
+4. **Quiet, reliable, fast.** Deduplication (500 identical errors give 1 alert), grouping, digests and channel fallback. Measured on a laptop: p99 52 ms to screen, 1,500–2,500 events/s, 0 lost in the chaos test.
+5. **Safe.** Company SSO, a hash-chained audit trail, a human confirm before risky actions, event content treated as untrusted, and no LLM on the hot path.
 
 ## Web UI
 
@@ -50,21 +62,14 @@ The api serves the web UI itself — same origin as the API, so there is no CORS
 
 | URL | What |
 | --- | --- |
-| `http://localhost:8080/` | Herald web UI: alert board with an inline **AI proposed solution** and automatic owner, platforms, rule editor with an **AI assistant** mode, runbooks with **Write with AI**, **Approvals** (four-eyes), **Agents & MCP** (personal tokens + `claude mcp add` command), teams, on-call, history |
+| `http://localhost:8080/` | Herald web UI: alert board with an inline **AI proposed solution** and automatic owner, platforms, rule editor with an **AI assistant** mode, runbooks with **Write with AI**, **Agents & MCP** (personal tokens + `claude mcp add` command), teams, on-call, history |
 | `http://localhost:8080/lab.html` | Test lab: play a source system and watch what happens |
 
-Demo mode has no sign-in: pick **Viewing as** in the profile menu (anna, piotr, root.settlements, master, manager, …). The UI talks to a thin backend-for-frontend (`/api/*`, `backend/app/herald/`) that maps the design team's Herald UI contract onto our services; `/v1` stays the public API. AI output is always a labelled draft with Accept / Edit / Reject; risky runbook steps need a *different* person's approval (four-eyes). Every new alert is assigned automatically: a person named in the rule, else the team's on-call, else the least busy team member (`backend/app/escalation/auto_assign.py`). The UI is plain static files in `backend/static/herald` (no Node build).
+Sign-in goes through **Vistula ID** (single sign-on). Every new alert pops up as a banner with its owner. The UI talks to a thin backend-for-frontend (`/api/*`, `backend/app/herald/`); `/v1` stays the public API. AI output is always a labelled draft with Accept / Reject. Risky runbook steps run only after an inline human confirm.
 
 ## Live demo on Railway
 
-| Service | URL |
-| --- | --- |
-| API / Swagger (`/docs`) | https://api-production-d033bedd.up.railway.app |
-| Mailpit inbox | https://mailpit-production-69850428.up.railway.app |
-| mockgw (SMS / phone) | https://mockgw-production.up.railway.app |
-| Simulator | https://simulator-production-ae5fd2bb.up.railway.app |
-
-Same code, same seed (the full Vistula Capital org), same logins. Postgres, Redis and RabbitMQ are private services. Layout, variables and the CD flow: [`infra/RAILWAY.md`](infra/RAILWAY.md).
+Same code, same seed (the full Vistula Capital org) as `make up`. The URLs are under [Links](#links). Postgres, Redis and RabbitMQ are private services. Layout and variables: [`infra/RAILWAY.md`](infra/RAILWAY.md); deploy without CI: `make deploy`.
 
 ---
 
@@ -184,11 +189,11 @@ Details, knobs and how `LOST` is computed: [`loadtest/README.md`](loadtest/READM
 | **Throttle + digest** | per recipient and channel per minute (`maxPerRecipientPerMinute`, default 10); overflow is `suppressed_digest` and later sent as one digest email by the scheduler (`digested`). Counted, never lost |
 | **Auto-resolve** | Alertmanager `status: resolved` resolves the matching open alert (outcome `auto_resolved`) |
 
-## Runbooks & approvals
+## Runbooks & human confirm
 
 - **Formats in** (all become one step model): structured YAML/JSON (Appendix B), Markdown pages and checklists, free text, wiki / Confluence links (link stored, short link in SMS). An unseen format falls back to heuristics, and with an LLM configured, `POST /v1/runbooks/parse` drafts steps from it. Steps are filled with event values (`{{workflowId}}`) and rendered per channel (full steps in UI and email, short link in SMS).
 - **Actions** (registry): `http_get`, `retry_workflow`, `restart_service`, `failover_region`, `rollback_deploy`, `open_ticket`, `webhook` (HMAC signed), `escalate`, `notify_text`. Workflow / service / ticket actions call mockgw.
-- **Approvals.** A step needs approval when it is marked `approval: required`, when its risk is `high`, or when its trust level is below `auto`. Approve from the UI, **by SMS reply** (`APPROVE <id>` / `REJECT <id>` to mockgw → `/v1/inbound/sms`), or let an agent wait on it through MCP `request_approval` (long-poll).
+- **Human confirm.** A step needs a person when it is marked `approval: required`, when its risk is `high`, or when its trust level is below `auto`. In the alert it shows **Run**, then an inline "This will run failover_region() … Run it?" with **Confirm**. It runs only after that, and the timeline records "confirmed and ran … by <name>". AI agents (MCP) can only ask; their request waits on the alert for a person to confirm.
 - **Trust ladder** per (domain, action): `suggest → run_after_approval → auto`. Five consecutive approved successes promote one level (never above a cap set by the Domain Root; high-risk actions never reach `auto`); any failure demotes one level.
 - **Audit.** Step runs, approvals, ack/resolve, AI accept/reject land in the alert timeline and `audit_log` with actor (user, agent on behalf of user, system). Resolving an alert stores a resolution note that feeds team memory.
 - **Inbound SMS shared secret.** `POST /v1/inbound/sms` has no bearer token. Set `INBOUND_SMS_SECRET` (default empty = open, for local dev) on the backend and on mockgw: the gateway then sends `X-Inbound-Secret`, and the backend compares it in constant time and answers `401` otherwise. Set it for any deployment that is reachable from the internet.
@@ -251,7 +256,7 @@ The in-app copilot (`POST /v1/agent/chat`, SSE) uses the same tool implementatio
   make loadtest-test             # report/reconcile unit tests, no infra needed
   ```
 - **CI** (`.github/workflows/ci.yml`): lint, full suite with coverage on Postgres + pgvector, Redis, RabbitMQ and Mailpit services.
-- **CD** (`.github/workflows/cd.yml`): push to `prod` → CI → `railway up` for api, workers, mockgw, simulator → smoke `GET /readyz`. Currently the Railway deploy was done from the CLI because GitHub Actions is blocked on the account used for this build (billing), see [`docs/MANUAL_STEPS.md`](docs/MANUAL_STEPS.md).
+- **CD** (`.github/workflows/cd.yml`): push to `prod` → CI → `railway up` for api, workers, mockgw, simulator → smoke `GET /readyz`. Currently the Railway deploy was done from the CLI because GitHub Actions is blocked on the account used for this build (billing),
 
 ## AI usage & security disclosure
 
@@ -271,10 +276,12 @@ backend/        Python 3.12 FastAPI service (one image, many roles)
   app/mcp/        MCP server + in-app copilot                        app/connectors/ RabbitMQ connector, runner
   migrations/     ordered .sql files        seed/  fixtures + loaders (Vistula Capital org)        tests/
 mockgw/         fake SMS / phone / workflow / ticket gateway with chaos toggle
+sso/            Vistula ID: demo single sign-on (OpenID Connect provider)
+demo/payments-api/  demo codebase linked to the payments platform ("Fix it in the code")
 simulator/      "Vistula Capital" traffic generator
 loadtest/       k6 scripts T1–T6, chaos script, report.py, results/
-infra/          docker-compose (deps + full), Prometheus, Grafana, RAILWAY.md
-docs/           spec, contract, plan, progress, architecture, demo org, agents
+infra/          docker-compose (deps + full), Prometheus, Grafana, Terraform (AWS), RAILWAY.md
+docs/           spec, contract, architecture, SSO, demo org, agents, plan + progress log, screenshots
 ```
 
-Docs: [`docs/BRIEF.md`](docs/BRIEF.md) (original brief) · [`docs/TECH_SPEC.md`](docs/TECH_SPEC.md) (source of truth) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/openapi.yaml`](docs/openapi.yaml) · [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) · [`docs/PROGRESS.md`](docs/PROGRESS.md) · [`docs/DEMO_ORG.md`](docs/DEMO_ORG.md) · [`docs/AGENTS.md`](docs/AGENTS.md) · [`docs/HANDOFF_UI.md`](docs/HANDOFF_UI.md) · [`loadtest/README.md`](loadtest/README.md) · [`infra/RAILWAY.md`](infra/RAILWAY.md)
+Docs: [`docs/TECH_SPEC.md`](docs/TECH_SPEC.md) (source of truth) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/openapi.yaml`](docs/openapi.yaml) · [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) · [`docs/PROGRESS.md`](docs/PROGRESS.md) · [`docs/DEMO_ORG.md`](docs/DEMO_ORG.md) · [`docs/AGENTS.md`](docs/AGENTS.md) · [`loadtest/README.md`](loadtest/README.md) · [`infra/RAILWAY.md`](infra/RAILWAY.md)
