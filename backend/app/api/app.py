@@ -6,7 +6,7 @@ import importlib
 import logging
 import pkgutil
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +23,7 @@ from app.core.redis import close_redis, get_redis
 log = logging.getLogger(__name__)
 
 ROUTERS_PACKAGE = "app.api.routers"
+MOUNTS_PACKAGE = "app.api.mounts"
 
 
 def discover_routers(package_name: str = ROUTERS_PACKAGE) -> list[APIRouter]:
@@ -37,6 +38,24 @@ def discover_routers(package_name: str = ROUTERS_PACKAGE) -> list[APIRouter]:
     return routers
 
 
+def discover_mounts(
+    app: FastAPI, package_name: str = MOUNTS_PACKAGE
+) -> list[AbstractAsyncContextManager[None]]:
+    """Call `mount(app)` of every module in the package (sub-applications such as the MCP server).
+
+    A mount may return an async context manager; it is entered in the lifespan after the pool, Redis and
+    RabbitMQ are ready and left before they close.
+    """
+    package = importlib.import_module(package_name)
+    lifespans: list[AbstractAsyncContextManager[None]] = []
+    for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda i: i.name):
+        module = importlib.import_module(f"{package_name}.{info.name}")
+        mount = getattr(module, "mount", None)
+        if callable(mount) and (managed := mount(app)) is not None:
+            lifespans.append(managed)
+    return lifespans
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -49,7 +68,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.rabbit.declare_topology()
     log.info("api started", extra={"environment": settings.environment})
     try:
-        yield
+        async with AsyncExitStack() as stack:
+            for managed in app.state.mount_lifespans:
+                await stack.enter_async_context(managed)
+            yield
     finally:
         await app.state.rabbit.close()
         await close_redis()
@@ -75,6 +97,7 @@ def create_app() -> FastAPI:
     )
     for router in discover_routers():
         app.include_router(router)
+    app.state.mount_lifespans = discover_mounts(app)
 
     @app.get("/metrics", include_in_schema=False)
     async def prometheus_metrics() -> Response:

@@ -166,18 +166,12 @@ async def _raise_source(pool: Pool, x_api_key: str | None = Header(default=None)
     return await _source_for(pool, x_api_key)
 
 
-@router.post("/v1/alerts/raise", status_code=202)
-async def raise_alert(
-    source: dict[str, Any] = Depends(_raise_source),
-    body: RaiseAlertRequest = ...,
-    rabbit: RabbitDep = ...,
-) -> Response:
-    """Typed alert API: same pipeline, the envelope is pre-normalized (`typed: true`)."""
+def typed_envelope(source: dict[str, Any], body: RaiseAlertRequest) -> dict[str, Any]:
+    """Pre-normalized envelope (`typed: true`) for a typed alert raised by a system or an agent."""
     raw = body.model_dump(mode="json", exclude_none=True)
     attributes = body.attributes or {}
     severity = body.severity.value
-    priority = priority_for(severity)
-    envelope = build_envelope(source_id=source["id"], raw=raw, priority=priority, typed=True)
+    envelope = build_envelope(source_id=source["id"], raw=raw, priority=priority_for(severity), typed=True)
     envelope["_meta"] = {
         "source": source["name"],
         "source_name": source["name"],
@@ -190,6 +184,22 @@ async def raise_alert(
         "timestamp": envelope["received_at"],
         "error_code": attributes.get("error_code") or attributes.get("errorCode"),
     }
-    await _publish(rabbit, [envelope], priority)
+    return envelope
+
+
+async def publish_typed(rabbit: Rabbit, source: dict[str, Any], body: RaiseAlertRequest) -> dict[str, Any]:
+    """Build and publish a typed alert event (shared by `POST /v1/alerts/raise` and the MCP `raise_alert`)."""
+    envelope = typed_envelope(source, body)
+    await _publish(rabbit, [envelope], envelope["priority"])
     INGESTED.labels(source=source["name"]).inc()
-    return _accepted(envelope)
+    return envelope
+
+
+@router.post("/v1/alerts/raise", status_code=202)
+async def raise_alert(
+    source: dict[str, Any] = Depends(_raise_source),
+    body: RaiseAlertRequest = ...,
+    rabbit: RabbitDep = ...,
+) -> Response:
+    """Typed alert API: same pipeline, the envelope is pre-normalized (`typed: true`)."""
+    return _accepted(await publish_typed(rabbit, source, body))
