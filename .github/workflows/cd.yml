@@ -1,0 +1,57 @@
+name: cd
+
+# Continuous deployment to Railway (environment "production") on every push to the prod branch.
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            path: backend
+          - service: workers
+            path: backend
+          - service: mockgw
+            path: mockgw
+          - service: simulator
+            path: simulator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy ${{ matrix.service }}
+        run: railway up ${{ matrix.path }} --path-as-root --service ${{ matrix.service }} --environment production --ci
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check
+        env:
+          API_URL: ${{ vars.RAILWAY_API_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then echo "RAILWAY_API_URL repo variable not set; skipping"; exit 0; fi
+          for i in $(seq 1 30); do
+            if curl -fsS "$API_URL/readyz"; then echo; echo "ready"; exit 0; fi
+            sleep 10
+          done
+          exit 1

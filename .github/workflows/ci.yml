@@ -1,0 +1,92 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: alerting
+          POSTGRES_PASSWORD: alerting
+          POSTGRES_DB: alerting
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U alerting" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        ports: ["5672:5672", "15672:15672"]
+        options: --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 10s --health-timeout 10s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ["1025:1025", "8025:8025"]
+    env:
+      DATABASE_URL: postgresql://alerting:alerting@localhost:5432/alerting
+      REDIS_URL: redis://localhost:6379/0
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      JWT_SECRET: ci-jwt-secret
+      APP_SECRET: ${{ secrets.CI_APP_SECRET || 'Zm9yLWNpLW9ubHktMzItYnl0ZXMtcGFkZGluZy1rZXk9' }}
+      ENVIRONMENT: ci
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen --all-extras --dev
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Tests + coverage
+        run: uv run pytest -q --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
+      - name: Coverage summary
+        if: always()
+        run: |
+          uv run python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET, pathlib
+          p = pathlib.Path("coverage.xml")
+          if p.exists():
+              r = ET.parse(p).getroot()
+              print(f"## Coverage: {float(r.get('line-rate'))*100:.1f}% lines")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: |
+            backend/coverage.xml
+            backend/htmlcov
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: |
+          docker build -t gs-alerting-backend backend
+          if [ -f mockgw/Dockerfile ]; then docker build -t gs-alerting-mockgw mockgw; fi
+          if [ -f simulator/Dockerfile ]; then docker build -t gs-alerting-simulator simulator; fi
