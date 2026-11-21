@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>The Herald</title>
@@ -696,6 +697,12 @@ body[data-level="L1"] .tmid .create{visibility:hidden}
 .bown{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--grey);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
 .secret{font:13px var(--font-mono);background:#fff;padding:4px 8px;border-radius:4px;overflow-wrap:anywhere;user-select:all}
 .rsv{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:#fff}
+
+/* Scrollbars: light and thin everywhere, also when the OS is in dark mode with "always show scroll bars". */
+html{scrollbar-color:#c4cad3 transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:#c4cad3;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#9aa3ae;background-clip:padding-box}
 </style>
 <script src="brand/herald-trumpeter.js" defer></script>
 <link rel="stylesheet" href="flow/herald-flow.css">

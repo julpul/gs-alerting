@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="same-origin">
 <title>Sign in · Herald</title>
@@ -116,6 +117,12 @@ h1{font:400 clamp(36px,4vw,44px)/1.05 Dayohe,Georgia,serif;letter-spacing:0;colo
 .pwhint{font-size:14px;line-height:1.5;color:#5B6270}
 .foot{margin-top:28px;gap:12px;font-size:14px;line-height:1.5;color:#5B6270;border-top:1px solid #E4E6EC}
 @media (max-width:759px){ body{align-items:stretch;justify-content:flex-start} .art-wide{display:none} .art-narrow{display:block} .card{width:100%} }
+
+/* Scrollbars: light and thin everywhere, also when the OS is in dark mode with "always show scroll bars". */
+html{scrollbar-color:#c4cad3 transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:#c4cad3;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#9aa3ae;background-clip:padding-box}
 </style>
 <script src="/brand/herald-trumpeter.js" defer></script>
 </head>
