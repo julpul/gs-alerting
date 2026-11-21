@@ -23,6 +23,10 @@ DEFAULT_ENV = {
     "SMTP_PORT": "1025",
     "JWT_SECRET": "test-jwt-secret",
     "APP_SECRET": "test-app-secret",
+    # The shared test database holds the seven original demo identities only (no history, no knowledge,
+    # no embeddings); tests/seed/ seeds the full Vistula Capital profile into its own database.
+    "SEED_PROFILE": "core",
+    "SEED_SKIP_EMBEDDINGS": "1",
 }
 
 
