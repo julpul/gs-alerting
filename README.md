@@ -147,6 +147,7 @@ One image, one codebase, several roles (`python -m app.main --role <role>`; a co
 - **Coordination without leaders.** Scheduler jobs use `FOR UPDATE SKIP LOCKED`, so any number of scheduler replicas is safe.
 - **Idempotency in three layers.** Event level: Redis `SET evt:{id} NX`. Delivery level: unique `idempotency_key` in Postgres. Provider level: `Idempotency-Key` header (honoured by mockgw). Delivery is at-least-once, effectively once.
 - **Little work per event.** No per-event Postgres write, dedup collapses duplicates into one row update, compiled and indexed rules, orjson, uvloop, asyncpg pool, prefetch 200, batch ingest, cached source keys, one Redis round trip per event.
+- **Cloud deployment.** A validated (not applied) AWS Terraform design with queue-depth autoscaling, Multi-AZ data stores, capacity estimate and cost table: [`infra/terraform/`](infra/terraform/README.md).
 - **Honest SPOFs.** The demo runs a single RabbitMQ, Postgres and Redis. Production notes: RabbitMQ quorum queues on 3 nodes, Postgres primary + replica, Redis Sentinel, OIDC instead of JWT demo logins. KEDA / Azure Container Apps autoscaling on queue length is a design, **not built** (no `infra/k8s` manifests in this repo).
 
 ## Measured performance
