@@ -38,13 +38,25 @@ async def require_actor_role(conn: asyncpg.Connection, scope: Scope, alert: asyn
     raise forbidden("you need the member role (or higher) on this team to change alerts")
 
 
-async def ack_alert(conn: asyncpg.Connection, alert: asyncpg.Record, user: User) -> bool:
-    """Returns True if the state changed (False when it was already acknowledged)."""
+def _by(actor: dict[str, Any], user: User) -> str:
+    """ "Anna" for a person, "agent X on behalf of Anna" for an agent acting with the user's permissions."""
+    if actor.get("type") == "agent":
+        return f"agent {actor.get('name')} on behalf of {user.display_name}"
+    return user.display_name
+
+
+async def ack_alert(
+    conn: asyncpg.Connection, alert: asyncpg.Record, user: User, actor: dict[str, Any] | None = None
+) -> bool:
+    """Returns True if the state changed (False when it was already acknowledged).
+
+    `actor` defaults to the user; agents pass their own actor (spec 13.1.3) to audit "agent X on behalf of Y".
+    """
     if alert["status"] == "acknowledged":
         return False
     if alert["status"] not in ACKABLE:
         raise AppError(409, "conflict", f"alert is {alert['status']} and cannot be acknowledged")
-    actor = user_actor(user.id, user.display_name)
+    actor = actor or user_actor(user.id, user.display_name)
     await conn.execute(
         "UPDATE alerts SET status = 'acknowledged', acked_at = now(), acked_by = $2, "
         "ack_deadline = NULL, next_renotify_at = NULL WHERE id = $1",
@@ -56,7 +68,7 @@ async def ack_alert(conn: asyncpg.Connection, alert: asyncpg.Record, user: User)
         "WHERE alert_id = $1 AND kind = 'hard' AND status IN ('sent', 'delivered')",
         alert["id"],
     )
-    await add_timeline(conn, alert["id"], "acked", f"Acknowledged by {user.display_name}", actor=actor)
+    await add_timeline(conn, alert["id"], "acked", f"Acknowledged by {_by(actor, user)}", actor=actor)
     await audit(conn, actor, "alert.ack", "alert", str(alert["id"]))
     return True
 
@@ -167,9 +179,13 @@ async def assign_alert(
 
 
 async def add_comment(
-    conn: asyncpg.Connection, alert: asyncpg.Record, user: User, text: str
+    conn: asyncpg.Connection,
+    alert: asyncpg.Record,
+    user: User,
+    text: str,
+    actor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    actor = user_actor(user.id, user.display_name)
+    actor = actor or user_actor(user.id, user.display_name)
     row = await conn.fetchrow(
         "INSERT INTO timeline (id, alert_id, at, type, actor, text, data) "
         "VALUES ($1, $2, now(), 'comment', $3, $4, '{}') RETURNING id, at, type, actor, text, data",

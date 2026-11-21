@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.165.0",
     "fastembed>=0.9.1",
     "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
     "litellm>=1.110.2",
     "mcp>=2.3.0",
     "orjson>=3.13.0",

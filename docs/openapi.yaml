@@ -25,6 +25,7 @@ tags:
   - name: integrations
   - name: stream
   - name: metrics
+  - name: tokens
 
 paths:
   # ---------------- Ingest (source API key) ----------------
@@ -691,6 +692,38 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  # ---------------- Personal access tokens (MCP / agents) ----------------
+  /v1/tokens:
+    get:
+      tags: [tokens]
+      summary: Personal access tokens of the caller (the secret is never returned again)
+      responses:
+        '200': { description: Active tokens, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PersonalToken' } } } } }
+    post:
+      tags: [tokens]
+      summary: 'Create a personal access token for MCP clients and agents (header Authorization: Bearer <token>)'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120, example: claude-code }
+      responses:
+        '201': { description: Created (the plain token is shown once), content: { application/json: { schema: { $ref: '#/components/schemas/PersonalTokenCreated' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/tokens/{tokenId}:
+    delete:
+      tags: [tokens]
+      summary: Revoke a token (it stops working immediately)
+      parameters:
+        - { name: tokenId, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/Error' }
+
   # ---------------- In-app agent ----------------
   /v1/agent/chat:
     post:
@@ -718,7 +751,7 @@ paths:
                   additionalProperties: true
       responses:
         '200':
-          description: 'text/event-stream; events: token {text}, tool_call {name, args}, tool_result {name, summary}, draft {kind: rule|mapping|runbook|approval, id}, done {}'
+          description: 'text/event-stream; events: token {text}, tool_call {name, args}, tool_result {name, summary}, draft {kind: rule|mapping|runbook|approval, id (null for unsaved drafts; the approval id), data (the draft)}, done {}, error {code, message} (code ai_unavailable when no model answered)'
           content:
             text/event-stream:
               schema: { type: string }
@@ -1094,6 +1127,22 @@ components:
 
     SourceType: { type: string, enum: [webhook, rabbitmq] }
     SourcePreset: { type: [string, 'null'], enum: [alertmanager, sentry, datadog, cloudevents, null] }
+    PersonalToken:
+      type: object
+      required: [id, name, prefix, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        prefix: { type: string, example: pat_AbCdEf }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time }
+    PersonalTokenCreated:
+      allOf:
+        - $ref: '#/components/schemas/PersonalToken'
+        - type: object
+          required: [token]
+          properties:
+            token: { type: string, description: Shown once }
     Source:
       type: object
       properties:
