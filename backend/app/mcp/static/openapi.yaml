@@ -110,7 +110,7 @@ paths:
   /v1/inbound/sms:
     post:
       tags: [ingest]
-      summary: Reply from mock SMS gateway ("ACK 123", "APPROVE 456")
+      summary: Reply from mock SMS gateway ("ACK 123", "RESOLVE 123")
       description: 'No bearer token. When the server sets INBOUND_SMS_SECRET the gateway must send the same value in X-Inbound-Secret, otherwise 401.'
       security: []
       parameters:
@@ -293,12 +293,15 @@ paths:
   /v1/alerts/{alertId}/runbook/steps/{stepId}/run:
     post:
       tags: [runbooks]
-      summary: Run an action step; returns pending approval if required
+      summary: Run a step; a risky action step needs confirmed=true
+      description: 'A risky step (approval required, high risk, or trust below auto) runs only with confirmed=true from a person, who may be the one who clicked Run; the run is recorded as "confirmed and ran X by NAME". Without it the call returns 409 confirmation_required and nothing runs. An agent (MCP) never runs a risky step alone: it leaves a pending request on the alert that a person confirms or cancels via /v1/approvals/{approvalId}/decision.'
       parameters:
         - { $ref: '#/components/parameters/AlertId' }
         - { name: stepId, in: path, required: true, schema: { type: string } }
+        - { name: confirmed, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200': { description: Step state, content: { application/json: { schema: { $ref: '#/components/schemas/RunbookStep' } } } }
+        '409': { $ref: '#/components/responses/Error' }
 
   # ---------------- Approvals ----------------
   /v1/approvals:
@@ -1011,7 +1014,7 @@ components:
       type: object
       properties:
         id: { type: string }
-        shortId: { type: [integer, 'null'], description: 'Number used in SMS replies: APPROVE <shortId>' }
+        shortId: { type: [integer, 'null'], description: 'Short number of the request' }
         status: { type: string, enum: [pending, approved, rejected, expired] }
         origin: { type: string, enum: [runbook_step, agent_request] }
         requestedBy: { $ref: '#/components/schemas/Actor' }
@@ -1020,9 +1023,9 @@ components:
         parameters: { type: object, additionalProperties: true }
         risk: { type: string, enum: [low, medium, high] }
         reason: { type: string }
-        approvers: { type: array, items: { $ref: '#/components/schemas/Actor' }, description: 'Who may decide; never the person who requested it (four-eyes). An agent request keeps the human it acts for' }
+        approvers: { type: array, items: { $ref: '#/components/schemas/Actor' }, description: 'Who may confirm; any person who may act on the alert' }
         requestedByUserId: { type: [string, 'null'], description: 'The human behind the request: the requesting person, or the user an agent acts for' }
-        canDecide: { type: [boolean, 'null'], description: 'In GET /v1/approvals: whether the caller may decide it now (pending, not their own request, an approver / Domain Root / master)' }
+        canDecide: { type: [boolean, 'null'], description: 'In GET /v1/approvals: whether the caller may decide it now (pending, and the caller may act on the alert)' }
         decidedBy: { oneOf: [ { $ref: '#/components/schemas/Actor' }, { type: 'null' } ] }
         comment: { type: [string, 'null'] }
         expiresAt: { type: string, format: date-time }

@@ -26,7 +26,7 @@ approvals service as the calling person, and translate the result (`views.py`). 
 | rule id | rule uuid (string) |
 | runbook id | runbook uuid (string; seeded ones are `stable_id("runbook", key)`) |
 | step `id` | the step's 1-based `order` (int); our step id (`s1`) is `uid`. Run accepts either |
-| approval `id` | `approvals.short_id` (int; the number in `Reply APPROVE <n>`); also accepts the uuid |
+| approval `id` | `approvals.short_id` (int); also accepts the uuid |
 | status `firing` | `open`, `escalated` |
 | status `acked` | `acknowledged` |
 | status `resolved` | `resolved` |

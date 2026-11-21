@@ -26,9 +26,9 @@ spec; the personal access token is the hackathon shortcut.
 | `list_alerts(status?, team?, limit?)`, `get_alert(id)` | Scoped reads; `get_alert` includes runbook state, latest AI suggestion, deliveries, timeline |
 | `ack_alert(id)`, `comment_alert(id, text)` | As the user (ack needs member or higher on the team) |
 | `raise_alert(type, severity, title, description?, attributes?, dedup_key?, source?)` | Same pipeline as `POST /v1/alerts/raise` |
-| `request_approval(action, parameters, reason, risk, alert_id?, timeout_seconds=120)` | Notifies approvers and waits (max 300 s) for `approved` / `rejected` / `expired`, else `{status: pending, approvalId}` |
+| `request_approval(action, parameters, reason, risk, alert_id?, timeout_seconds=120)` | Shows an "agent asked" request with Confirm / Cancel on the alert and waits (max 300 s) for `approved` / `rejected` / `expired`, else `{status: pending, approvalId}` |
 | `get_approval_status(approval_id)` | Poll |
-| `run_runbook_step(alert_id, step_id)` | Runs if low risk and trusted, otherwise creates an approval |
+| `run_runbook_step(alert_id, step_id)` | Runs if low risk and trusted, otherwise creates a request for a human to confirm |
 | `propose_rule(text, team)`, `test_rule(rule)` | Rule copilot draft + dry-run (never saved) |
 | `propose_schema_mapping(source_id, sample)`, `propose_runbook(text)` | Drafts (never saved) |
 | `get_integration_guide()` + resource `docs://api` | Markdown guide with curl/python examples and the OpenAPI contract |

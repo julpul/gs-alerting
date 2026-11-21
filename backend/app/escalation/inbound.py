@@ -1,4 +1,4 @@
-"""Replies by SMS (spec 5.1, 11.4): `ACK <n>`, `RESOLVE <n> [note]`, `APPROVE <n>`, `REJECT <n>`.
+"""Replies by SMS (spec 5.1): `ACK <n>`, `RESOLVE <n> [note]`.
 
 The sender's phone number identifies the user; everything then runs as that user with their normal scope
 and role checks, through the same functions the REST API uses. The return value is the text the gateway
@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
 
 import asyncpg
 
-from app.core.audit import user_actor
 from app.core.errors import AppError, not_found
 from app.core.ids import format_short_id
 from app.core.outbox import publish_outbox_rows
@@ -26,8 +24,8 @@ from app.schemas.internal import User
 
 log = logging.getLogger(__name__)
 
-COMMAND = re.compile(r"^\s*(ack|resolve|approve|reject)\s+(?:a-)?(\d+)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
-HELP = "Unknown command. Reply ACK <n>, RESOLVE <n>, APPROVE <n> or REJECT <n>."
+COMMAND = re.compile(r"^\s*(ack|resolve)\s+(?:a-)?(\d+)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
+HELP = "Unknown command. Reply ACK <n> or RESOLVE <n>."
 NOTE_LIMIT = 500
 
 
@@ -60,8 +58,6 @@ async def handle_sms(pool: asyncpg.Pool, rabbit: Rabbit, sender: str, text: str)
         return HELP
     verb, number, rest = match.group(1).lower(), int(match.group(2)), match.group(3).strip()
     try:
-        if verb in ("approve", "reject"):
-            return await _decide(pool, user, number, verb)
         return await _alert_command(pool, rabbit, user, verb, number, rest[:NOTE_LIMIT] or None)
     except AppError as exc:
         return exc.message
@@ -109,21 +105,3 @@ async def _announce(
         )
     except Exception:
         log.exception("publishing the SMS %s of alert %s failed", verb, row["id"])
-
-
-async def _decide(pool: asyncpg.Pool, user: User, number: int, verb: str) -> str:
-    try:
-        from app.runbooks.approvals import decide
-    except ImportError:
-        return "Approvals are unavailable right now."
-    decision = "approve" if verb == "approve" else "reject"
-    async with pool.acquire() as conn, conn.transaction():
-        result: dict[str, Any] = await decide(
-            conn,
-            str(number),  # the numeric short id of the SMS; the approvals module resolves it
-            decision=decision,
-            actor=user_actor(user.id, user.display_name),
-            comment=None,
-        )
-    status = (result or {}).get("status") or ("approved" if decision == "approve" else "rejected")
-    return f"Approval {number} {status}."

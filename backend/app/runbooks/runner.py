@@ -1,9 +1,11 @@
 """Runs runbook steps (spec 11.3 / 11.4).
 
 A step runs immediately when it is an action with `approval: none`, the risk is not high and the trust level
-of (domain, action) is `auto`. Everything else becomes an approval (`request_approval`); the action runs when
-`approvals.decide` approves it (`finish_approval`). Every outcome is a `step_runs` row, a timeline entry and
-an audit entry; SSE `alert.updated` follows.
+of (domain, action) is `auto`. A risky step needs one explicit confirmation: a person's run with
+`confirmed=True` executes at once ("confirmed and ran X by NAME"); without it the run is refused (409
+`confirmation_required`). An agent never runs a risky step alone: its run becomes a pending request that a
+person confirms (`approvals.decide` -> `finish_approval`). Every outcome is a `step_runs` row, a timeline
+entry and an audit entry; SSE `alert.updated` follows.
 """
 
 from __future__ import annotations
@@ -136,7 +138,9 @@ async def _finish(
     *,
     approved: bool,
     approval_id: UUID | None,
+    verb: str = "ran",
     suffix: str = "",
+    confirmer: dict[str, Any] | None = None,
 ) -> None:
     state = "succeeded" if result.ok else "failed"
     await _record(
@@ -147,8 +151,19 @@ async def _finish(
         actor,
         result.output,
         approval_id=approval_id,
-        text=f"{actor['name']} ran {action}{suffix}: {state}. {result.output[:200]}",
+        text=(f"{verb} {action}{suffix}" if suffix else f"{actor['name']} {verb} {action}")
+        + f": {state}. {result.output[:200]}",
     )
+    if approved:
+        who = confirmer or actor
+        await audit(
+            conn,
+            who,
+            "runbook.step.confirmed",
+            "alert",
+            str(alert["id"]),
+            {"stepId": step_id, "action": action, "text": f"confirmed and ran {action} by {who['name']}"},
+        )
     await record_outcome(conn, alert["domain_id"], action, success=result.ok, approved=approved)
 
 
@@ -165,9 +180,15 @@ async def step_view(conn: asyncpg.Connection, alert: dict[str, Any], step_id: st
 
 
 async def run_step(
-    conn: asyncpg.Connection, alert: dict[str, Any], step_id: str, actor: dict[str, Any]
+    conn: asyncpg.Connection,
+    alert: dict[str, Any],
+    step_id: str,
+    actor: dict[str, Any],
+    *,
+    confirmed: bool = False,
 ) -> RunOutcome:
-    """Run (or request approval for) one step of the alert's runbook. `actor` is the audited actor dict."""
+    """Run one step of the alert's runbook; a risky step needs `confirmed` from a person, an agent's run of
+    one becomes a pending request. `actor` is the audited actor dict."""
     actor = stored_actor(actor)
     ev = await build_event_view(conn, alert)
     row = await find_runbook(conn, alert, ev)
@@ -207,7 +228,8 @@ async def run_step(
         _validate(spec, params)
         risk = stored.get("risk") or spec.default_risk
         trust = await get_trust(conn, alert["domain_id"], action)
-        if stored.get("approval") == "required" or risk == "high" or trust.level != "auto":
+        gated = stored.get("approval") == "required" or risk == "high" or trust.level != "auto"
+        if gated and actor["type"] != "user":
             approval = await request_approval(
                 conn,
                 origin="runbook_step",
@@ -224,13 +246,30 @@ async def run_step(
                 step_id,
                 "pending_approval",
                 actor,
-                f"waiting for approval {approval['id']}",
+                f"waiting for a person to confirm {approval['id']}",
                 approval_id=UUID(approval["id"]),
-                text=f"{actor['name']} requested approval to run {action} ({risk} risk)",
+                text=f"Waiting for a person to confirm {action}",
+            )
+        elif gated and not confirmed:
+            raise AppError(
+                409,
+                "confirmation_required",
+                f"{action} is a risky step: confirm it explicitly (confirmed=true) to run it",
             )
         else:
             result, outbox_ids = await _execute(conn, alert, ev, action, params, step_id, actor)
-            await _finish(conn, alert, step_id, action, result, actor, approved=False, approval_id=None)
+            await _finish(
+                conn,
+                alert,
+                step_id,
+                action,
+                result,
+                actor,
+                approved=gated,
+                approval_id=None,
+                verb="confirmed and ran" if gated else "ran",
+                suffix=" by " + actor["name"] if gated else "",
+            )
     await publish_alert_updated(conn, alert["id"])
     return RunOutcome(await step_view(conn, alert, step_id), approval, outbox_ids)
 
@@ -264,7 +303,7 @@ async def finish_approval(
             actor,
             f"rejected by {decided_by['name']}" + (f": {approval['comment']}" if approval["comment"] else ""),
             approval_id=approval["id"],
-            text=f"{decided_by['name']} rejected {action}; step skipped",
+            text=f"{decided_by['name']} cancelled {action}; step skipped",
         )
     else:
         ev = await build_event_view(conn, alert)
@@ -280,7 +319,9 @@ async def finish_approval(
             actor,
             approved=True,
             approval_id=approval["id"],
-            suffix=f" (approved by {decided_by['name']})",
+            verb="confirmed and ran",
+            suffix=f" by {decided_by['name']}",
+            confirmer=decided_by,
         )
     await publish_alert_updated(conn, alert["id"])
     return outbox_ids
