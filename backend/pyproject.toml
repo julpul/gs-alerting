@@ -1,0 +1,67 @@
+[project]
+name = "gs-alerting-backend"
+version = "0.1.0"
+description = "Flexible Alerting & Notification Service backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aio-pika>=10.2.3",
+    "aiosmtplib>=5.1.3",
+    "asyncpg>=0.32.0",
+    "bcrypt>=5.0.0",
+    "cryptography>=50.0.2",
+    "fastapi>=0.165.0",
+    "fastembed>=0.9.1",
+    "httpx>=0.28.1",
+    "litellm>=1.110.2",
+    "mcp>=2.3.0",
+    "orjson>=3.13.0",
+    "pgvector>=0.5.1",
+    "prometheus-client>=0.26.0",
+    "pydantic>=2.14.4",
+    "pydantic-settings>=2.16.3",
+    "pyjwt>=2.15.1",
+    "pyyaml>=6.0.4",
+    "redis>=8.1.0",
+    "uuid6>=2025.0.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "datamodel-code-generator>=0.99.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["app/schemas/api.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF"]
+ignore = ["B008", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::jwt.warnings.InsecureKeyLengthWarning"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/schemas/api.py"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = false
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:", "raise NotImplementedError"]
