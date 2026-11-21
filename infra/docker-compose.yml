@@ -1,0 +1,89 @@
+# Full stack: dependencies + all backend roles. Start with `make up`.
+name: gsalert
+include:
+  - docker-compose.deps.yml
+
+x-backend: &backend
+  build:
+    context: ../backend
+    args:
+      PRELOAD_EMBEDDINGS: ${PRELOAD_EMBEDDINGS:-1}
+  image: gs-alerting-backend
+  env_file:
+    - path: ../.env
+      required: false
+  environment: &backend-env
+    DATABASE_URL: postgresql://alerting:alerting@postgres:5432/alerting
+    REDIS_URL: redis://redis:6379/0
+    RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    SMTP_HOST: mailpit
+    SMTP_PORT: "1025"
+    MOCKGW_URL: http://mockgw:8090
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+    APP_SECRET: ${APP_SECRET:-ZGV2LWFwcC1zZWNyZXQtMzItYnl0ZXMtbG9uZy1rZXkh}
+    DEMO_FAST_ESCALATION: ${DEMO_FAST_ESCALATION:-false}
+    ENVIRONMENT: local
+  depends_on: &backend-deps
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      APP_ROLE: api
+      PORT: "8080"
+    ports: ["8080:8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/readyz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  seed:
+    <<: *backend
+    command: ["python", "-m", "seed.seed"]
+    restart: "no"
+    depends_on:
+      <<: *backend-deps
+      api: { condition: service_healthy }
+
+  worker:
+    <<: *backend
+    environment: { <<: *backend-env, APP_ROLE: worker }
+    depends_on:
+      <<: *backend-deps
+      api: { condition: service_healthy }
+
+  delivery:
+    <<: *backend
+    environment: { <<: *backend-env, APP_ROLE: delivery }
+    depends_on:
+      <<: *backend-deps
+      api: { condition: service_healthy }
+
+  scheduler:
+    <<: *backend
+    environment: { <<: *backend-env, APP_ROLE: scheduler }
+    depends_on:
+      <<: *backend-deps
+      api: { condition: service_healthy }
+
+  ai:
+    <<: *backend
+    environment: { <<: *backend-env, APP_ROLE: ai }
+    depends_on:
+      <<: *backend-deps
+      api: { condition: service_healthy }
+
+  connector:
+    <<: *backend
+    environment: { <<: *backend-env, APP_ROLE: connector }
+    depends_on:
+      <<: *backend-deps
+      api: { condition: service_healthy }

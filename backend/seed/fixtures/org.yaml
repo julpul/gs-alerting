@@ -1,0 +1,39 @@
+# Demo organization (TECH_SPEC section 21). Ids are derived with uuid5 from the slugs / emails.
+password: demo
+
+domains:
+  - { slug: payments, name: Payments }
+  - { slug: settlements, name: Settlements }
+  - { slug: security, name: Security }
+  - { slug: markets, name: Markets }
+
+teams:
+  - { slug: team-payments, name: Team Payments, domains: [payments] }
+  - { slug: team-settlements, name: Team Settlements, domains: [settlements] }
+  - { slug: team-pricing, name: Team Pricing, domains: [markets] }
+  - { slug: team-rates, name: Team Rates, domains: [markets] }
+  - { slug: team-security, name: Team Security, domains: [security] }
+  - { slug: checkout-project, name: Checkout Project, domains: [payments, security] }
+
+users:
+  - { email: master@demo, name: Mira Master, phone: "+48500100100" }
+  - { email: root.payments@demo, name: Paulina Payments, phone: "+48500100110" }
+  - { email: root.settlements@demo, name: Stefan Settlements, phone: "+48500100120" }
+  - { email: root.security@demo, name: Sylwia Security, phone: "+48500100130" }
+  - { email: anna@demo, name: Anna Kowalska, phone: "+48500100200", manager: manager@demo }
+  - { email: piotr@demo, name: Piotr Wisniewski, phone: "+48500100201", manager: manager@demo }
+  - { email: manager@demo, name: Marta Manager, phone: "+48500100300" }
+
+# role: master (org) | domain_root (domain slug) | member / informed (team slug)
+roles:
+  - { user: master@demo, role: master }
+  - { user: root.payments@demo, role: domain_root, domain: payments }
+  - { user: root.settlements@demo, role: domain_root, domain: settlements }
+  - { user: root.security@demo, role: domain_root, domain: security }
+  - { user: anna@demo, role: member, team: team-payments }
+  - { user: piotr@demo, role: member, team: team-settlements }
+  - { user: manager@demo, role: informed, team: team-payments }
+  - { user: manager@demo, role: informed, team: team-settlements }
+  - { user: manager@demo, role: informed, team: team-pricing }
+  - { user: manager@demo, role: informed, team: team-rates }
+  - { user: manager@demo, role: informed, team: team-security }
