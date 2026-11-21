@@ -330,7 +330,12 @@ async def postmortem(alert_id: str, who: Actor, pool: Pool, names: bool = False)
             )
         ]
         summary = await _ai_summary(conn, row) if detail["status"] == "resolved" else None
-        people = await _names(conn, {t["actor"] for t in detail["timeline"]}) if names else None
+        actors = {t["actor"] for t in detail["timeline"]} | {detail["incident_manager"]}
+        known = await _names(conn, actors)
+        people = known if names else None
+        if summary and not names:
+            for ref, display in sorted(known.items(), key=lambda kv: -len(kv[1])):
+                summary = summary.replace(display, reports.role_of(ref, detail, lead))
     markdown = reports.postmortem(detail, lead=lead, names=people, resolution_notes=notes, ai_summary=summary)
     guide = reports.SEVERITY_GUIDE.get(detail["severity"], {})
     source = "ai" if summary else "heuristic"

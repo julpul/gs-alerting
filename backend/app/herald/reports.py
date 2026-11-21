@@ -96,7 +96,7 @@ def status_update(alert: dict[str, Any], now: datetime, names: dict[str, str]) -
     return "\n".join(lines)
 
 
-def _role(actor: str, alert: dict[str, Any], lead: str | None) -> str:
+def role_of(actor: str, alert: dict[str, Any], lead: str | None) -> str:
     if actor.startswith("system:"):
         return "Herald (automatic)"
     if actor.startswith("agent:"):
@@ -127,7 +127,7 @@ def postmortem(
     done, _ = _steps(alert)
     rows = []
     for entry in timeline:
-        who = names.get(entry["actor"], entry["actor"]) if names else _role(entry["actor"], alert, lead)
+        who = names.get(entry["actor"], entry["actor"]) if names else role_of(entry["actor"], alert, lead)
         what = _ACTION_WORDS.get(entry["action"], entry["action"].replace("_", " "))
         detail = entry.get("detail") or {}
         extra = detail.get("text") if entry["action"] in ("note",) else detail.get("action") or ""

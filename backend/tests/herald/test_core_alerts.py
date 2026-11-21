@@ -205,3 +205,23 @@ async def test_unassign_with_null(client, seeded):
     released = await client.post(f"{url}/assign", headers=anna, json={"to": None})
     assert released.status_code == 200 and released.json() == {"assignee": None}
     assert (await client.get(url, headers=anna)).json()["incident_manager"] is None
+
+
+async def test_postmortem_ai_summary_is_blameless_unless_names_are_asked(client, seeded):
+    from app.ai.llm import set_llm
+    from tests.fakes.llm import FakeLLM
+
+    row = await alert(seeded, title="Herald blameless", severity="critical")
+    url = f"/api/alerts/{row['short_id']}"
+    anna = as_person("anna")
+    await client.post(f"{url}/assign", headers=anna, json={"to": "person:anna"})
+    await client.post(f"{url}/resolve", headers=anna, json={"note": "Rolled back"})
+    set_llm(FakeLLM(lambda prompt, tier: {"note": "Anna Kowalska rolled back the release."}))
+    try:
+        pm = (await client.get(f"{url}/postmortem", headers=anna)).json()
+        named = (await client.get(f"{url}/postmortem", params={"names": "true"}, headers=anna)).json()
+    finally:
+        set_llm(None)
+    assert pm["source"] == "ai" and "Anna Kowalska" not in pm["markdown"]
+    assert "the incident manager rolled back the release." in pm["markdown"]
+    assert "Anna Kowalska rolled back the release." in named["markdown"]
