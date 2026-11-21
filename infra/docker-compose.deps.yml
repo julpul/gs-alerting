@@ -46,6 +46,7 @@ services:
     build: ../mockgw
     environment:
       BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8080}
+      INBOUND_SMS_SECRET: ${INBOUND_SMS_SECRET:-}
     ports: ["8090:8090"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz')"]
