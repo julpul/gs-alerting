@@ -41,7 +41,7 @@ Lokalnie `.env.example` ma wartości dev; na Railway orkiestrator ustawia losowe
 
 - [x] Repo `julpul/gs-alerting` (prywatne) **(zrobione przez Claude)**
 - [ ] **Przed oddaniem:** zdecyduj czy repo ma być publiczne dla jury: `gh repo edit julpul/gs-alerting --visibility public --accept-visibility-change-consequences` (albo dodaj jurorów jako collaborators).
-- [ ] **Secret `RAILWAY_TOKEN` dla CD — WYMAGANE.** Claude próbował utworzyć token przez API Railway, ale token CLI nie ma do tego uprawnień (`Not Authorized`). Zrób to ręcznie wg §4 (1 minuta).
+- [x] **Secret `RAILWAY_TOKEN` dla CD** — ustawiony przez dewelopera (2026-11-21 01:05).
 - [x] Repo variable `RAILWAY_API_URL` (dla smoke testu po deployu) **(zrobione przez Claude)**
 - [ ] (opcjonalnie) Branch protection na `prod`: Settings → Branches → require status check `ci`.
 
