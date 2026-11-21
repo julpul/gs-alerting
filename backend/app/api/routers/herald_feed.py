@@ -8,7 +8,6 @@ from typing import Annotated, Any
 from fastapi import Query
 
 from app.api.deps import Pool, RedisDep
-from app.core.errors import forbidden
 from app.herald import queries
 from app.herald.identity import Actor
 from app.herald.ids import team_for_owner
@@ -33,10 +32,10 @@ async def deliveries(
 
 @router.get("/audit")
 async def audit(who: Actor, pool: Pool, limit: Annotated[int, Query(ge=1, le=1000)] = 200) -> dict[str, Any]:
-    """Approvers (Domain Roots) and admins (masters) only, like Herald. `intact` is always true: our audit
-    log is append-only but not hash-chained; each entry's `hash` is a sha256 of the stored row."""
-    if who.herald_role not in ("approver", "admin"):
-        raise forbidden("the audit trail needs the approver role")
+    """The audit entries the caller may see (masters: all; others: their teams' alerts / approvals / rules /
+    sources and their own actions); never 403 for a signed-in person, an empty list when nothing is
+    visible. `intact` is always true: our audit log is append-only but not hash-chained; each entry's
+    `hash` is a sha256 of the stored row."""
     async with pool.acquire() as conn:
         entries = await queries.audit_entries(conn, who.scope, limit)
     return {"intact": True, "chained": False, "entries": entries}
