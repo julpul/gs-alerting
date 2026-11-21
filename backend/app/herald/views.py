@@ -104,11 +104,17 @@ def delivery_out(row: Any, refs: dict[UUID, str], *, short_id: int | None = None
     keys = row.keys()
     recipient = refs.get(row["recipient_user_id"]) if row["recipient_user_id"] else None
     latency = row["latency_ms"] if "latency_ms" in keys else None
+    team = {k: row[k] for k in ("team_slug", "team_name") if k in keys}
+    feed = recipient is None and not row["recipient_address"] and team.get("team_slug")
+    if feed:
+        recipient = f"team:{team['team_slug']}"
     return {
         "id": str(row["id"]),
         "alert_id": short_id,
         "title": row["title"] if "title" in keys else None,
         "recipient": recipient or row["recipient_address"] or "unknown",
+        "recipient_kind": "team" if feed else ("person" if recipient else "address"),
+        "recipient_name": f"{team.get('team_name') or team['team_slug']} feed" if feed else None,
         "channel": row["channel"],
         "status": delivery_status(row["status"]),
         "attempts": row["attempts"],

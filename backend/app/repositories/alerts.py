@@ -205,11 +205,33 @@ def _field_pairs(fields: Any) -> list[dict[str, str]]:
     return []
 
 
+def delivery_recipient(r: asyncpg.Record) -> dict[str, Any]:
+    """The person, else the address; a delivery with neither (UI channel) went to the team's feed."""
+    if r["recipient_user_id"]:
+        return {
+            "kind": "user",
+            "id": str(r["recipient_user_id"]),
+            "displayName": r["display_name"] or str(r["recipient_user_id"]),
+            "onBehalfOf": None,
+        }
+    if r["recipient_address"]:
+        address = r["recipient_address"]
+        return {"kind": "system", "id": address, "displayName": address, "onBehalfOf": None}
+    return {
+        "kind": "team",
+        "id": r["team_slug"],
+        "displayName": f"{r['team_name'] or r['team_slug']} feed",
+        "onBehalfOf": None,
+    }
+
+
 async def _deliveries(conn: asyncpg.Connection, alert_id: UUID) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         "SELECT d.id, d.alert_id, d.recipient_user_id, d.recipient_address, d.channel, d.kind, d.status, "
         "d.attempts, COALESCE(d.delivered_at, d.sent_at, d.created_at) AS updated_at, "
-        "u.display_name FROM deliveries d LEFT JOIN users u ON u.id = d.recipient_user_id "
+        "u.display_name, t.slug AS team_slug, t.name AS team_name "
+        "FROM deliveries d LEFT JOIN users u ON u.id = d.recipient_user_id "
+        "JOIN alerts a ON a.id = d.alert_id JOIN teams t ON t.id = a.team_id "
         "WHERE d.alert_id = $1 ORDER BY d.created_at, d.id",
         alert_id,
     )
@@ -217,12 +239,7 @@ async def _deliveries(conn: asyncpg.Connection, alert_id: UUID) -> list[dict[str
         {
             "id": str(r["id"]),
             "alertId": str(r["alert_id"]),
-            "recipient": {
-                "kind": "user" if r["recipient_user_id"] else "system",
-                "id": str(r["recipient_user_id"] or r["recipient_address"] or "unknown"),
-                "displayName": r["display_name"] or r["recipient_address"] or "unknown",
-                "onBehalfOf": None,
-            },
+            "recipient": delivery_recipient(r),
             "channel": r["channel"],
             "kind": r["kind"],
             "status": r["status"],

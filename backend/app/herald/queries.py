@@ -25,7 +25,9 @@ ALERT_COLUMNS = (
 DELIVERY_COLUMNS = (
     "d.id, d.alert_id, d.recipient_user_id, d.recipient_address, d.channel, d.kind, d.status, d.attempts, "
     "d.last_error, d.created_at, "
-    "extract(epoch FROM d.delivered_at - d.event_received_at) * 1000 AS latency_ms"
+    "extract(epoch FROM d.delivered_at - d.event_received_at) * 1000 AS latency_ms, "
+    "(SELECT t.slug FROM alerts ta JOIN teams t ON t.id = ta.team_id WHERE ta.id = d.alert_id) AS team_slug, "
+    "(SELECT t.name FROM alerts ta JOIN teams t ON t.id = ta.team_id WHERE ta.id = d.alert_id) AS team_name"
 )
 
 

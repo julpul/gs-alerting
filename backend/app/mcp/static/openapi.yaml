@@ -845,7 +845,7 @@ components:
       type: object
       required: [kind, id, displayName]
       properties:
-        kind: { type: string, enum: [user, agent, system] }
+        kind: { type: string, enum: [user, agent, system, team], description: 'team: a delivery to the team feed (UI channel), id = team slug, displayName "<Team> feed"' }
         id: { type: string }
         displayName: { type: string }
         onBehalfOf: { type: [string, 'null'], description: 'For agents: user display name' }
