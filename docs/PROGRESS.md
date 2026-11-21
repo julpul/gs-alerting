@@ -10,7 +10,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P0 repo/docs/agents/CI | done | — | repo julpul/gs-alerting (private), CI+CD workflows |
 | P1 foundation | done | PASS (69 tests, 97 % cov, compose up, login ok) | merged 29655d7 |
 | P2 core pipeline | review | 485 tests green locally; QA gate running | all 4 merged |
-| P3 video features + measurement | todo | — | |
+| P3 video features + measurement | in_progress | — | ESCAL, RUNBOOK, AI, ORG-B in parallel; LOAD + sim A merged |
 | P4 agents + sources | todo | — | |
 | P5 ship | todo | — | |
 
@@ -24,9 +24,9 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P2-RULES | done | implementer / task/P2-RULES | 2026-11-21 | 2026-11-21 | ≥ 90 % | 5 seeded rules + custody source; regex guard = pattern cap + nested-quantifier reject + input truncation |
 | P2-DELIVERY | done | implementer / task/P2-DELIVERY | 2026-11-21 | 2026-11-21 | ≥ 90 % | DLQ after 3 attempts (5 s, 30 s); empty hard list → domain roots; digest sender not built yet |
 | P2-ALERTSAPI | done | implementer / task/P2-ALERTSAPI | 2026-11-21 | 2026-11-21 | 91–100 % | contract additions (shortId, escalatesAt, MetricsSummary fields); ack/resolve idempotent; informed = read+comment |
-| P3-ESCAL | todo | | | | | |
-| P3-RUNBOOK | todo | | | | | |
-| P3-AI | todo | | | | | |
+| P3-ESCAL | in_progress | implementer / task/P3-ESCAL | 2026-11-21 | | | |
+| P3-RUNBOOK | in_progress | implementer / task/P3-RUNBOOK | 2026-11-21 | | | |
+| P3-AI | in_progress | implementer / task/P3-AI | 2026-11-21 | | | |
 | P3-LOAD | review | implementer / task/P3-LOAD | 2026-11-21 | merged | 25 tests | merged; not yet run against real backend (after P2) |
 | P3-ORG | in_progress | implementer / task/P3-ORG-sim | 2026-11-21 | | sim 99.6 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
 | P4-MCP | todo | | | | | |
