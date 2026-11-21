@@ -45,3 +45,11 @@ async def load(conn: asyncpg.Connection, fixtures: dict[str, Any]) -> None:
             mapping["status"] if mapping else None,
             src.get("default_severity", "warning"),
         )
+        if "codebase" in src or "observability" in src:
+            # Unlike keys and mappings these are plain demo data: keep them in sync with the fixture.
+            await conn.execute(
+                "UPDATE sources SET codebase = $2, observability = $3 WHERE id = $1",
+                stable_id("source", src["name"]),
+                src.get("codebase"),
+                src.get("observability"),
+            )

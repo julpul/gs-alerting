@@ -9,6 +9,7 @@ from uuid import UUID
 import asyncpg
 
 from app.herald import views
+from app.herald.codebase import codebase_bundle
 from app.herald.ids import actor_user_ids, people_refs
 from app.herald.queries import herald_alerts
 from app.repositories import alerts as repo
@@ -64,6 +65,7 @@ async def alert_detail(conn: asyncpg.Connection, row: asyncpg.Record) -> dict[st
 
     timeline = [views.timeline_out(t, refs, steps, by_uuid) for t in ours["timeline"]]
     out.update(
+        await codebase_bundle(conn, row, ours),
         sample_event=row["raw_event"],
         runbook=views.runbook_out(runbook) if runbook else None,
         step_state=views.step_state_out(runbook, refs, by_uuid) if runbook else {},

@@ -11,6 +11,7 @@ from __future__ import annotations
 import html as html_lib
 import re
 from typing import Any
+from urllib.parse import quote
 
 import orjson
 
@@ -34,8 +35,9 @@ def stringify(value: Any) -> str:
     return str(value)
 
 
-def render(template: str, ev: EventView, *, html: bool = False, max_len: int = 500) -> str:
-    """Render `template` against the event; the result is at most `max_len` characters."""
+def render(template: str, ev: EventView, *, html: bool = False, url: bool = False, max_len: int = 500) -> str:
+    """Render `template` against the event; the result is at most `max_len` characters.
+    `url=True` percent-encodes substituted values (never the template itself)."""
     if max_len <= 0:
         return ""
     pieces: list[tuple[str, bool]] = []
@@ -56,6 +58,8 @@ def render(template: str, ev: EventView, *, html: bool = False, max_len: int = 5
             break
         text = text[:budget]
         budget -= len(text)
+        if is_value and url:
+            text = quote(text, safe="")
         out.append(html_lib.escape(text, quote=True) if html and is_value else text)
     if total > max_len:
         out.append(ELLIPSIS)

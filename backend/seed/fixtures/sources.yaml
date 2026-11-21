@@ -27,6 +27,17 @@ sources:
     key: demo-key-prometheus
     default_severity: warning
     # mapping comes from the alertmanager preset (app/pipeline/mapping_presets.py)
+    codebase:
+      repo: https://github.com/julpul/gs-alerting
+      branch: main
+      path: demo/payments-api
+      language: python
+    observability:
+      links:
+        - label: Logs in Datadog
+          url: "https://app.datadoghq.eu/logs?query=service:{{labels.service}}%20env:prod&from_ts={{from_ms}}&to_ts={{to_ms}}"
+        - label: Service dashboard
+          url: "https://app.datadoghq.eu/dashboard/payments-api?tpl_var_region={{labels.region}}"
 
   - name: pricing-logs
     team: team-pricing

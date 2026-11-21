@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     public_mockgw_url: str = "http://localhost:8090"
     # Mailpit's HTTP API for the Herald demo tools (empty = http://<SMTP_HOST>:8025).
     mailpit_api_url: str = ""
+    # GitHub: lets Herald open a draft pull request for an alert (token needs contents + pull_requests write).
+    github_token: str = ""
+    github_api_url: str = "https://api.github.com"
 
     # secrets (dev defaults; override in .env / Railway)
     jwt_secret: str = "dev-jwt-secret-change-me"
