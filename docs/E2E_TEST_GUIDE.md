@@ -32,6 +32,33 @@ Pozostałe osoby: `LOGINS.local.md` / `docs/DEMO_ORG.md`. Stary tryb bez logowan
 
 Ukryte strony (bez linku w menu): `/#settings` (też zębatka w górnym pasku), `/#report`, `/#deliveries` (skrzynka demo), `/lab.html`.
 
+## 0. Obsada pokazu (zespół Payments, platforma `prometheus` = serwis payments-api)
+
+| Osoba | Login | Dostęp | Co pokazuje |
+| --- | --- | --- | --- |
+| Anna Kowalska | `anna` | inżynier na dyżurze (responder) | dostaje alert (auto-przypisany), propozycję AI, **Fix it in the code**: Claude Code albo roboczy PR, potem Ack i Resolve |
+| Paulina Payments | `root.payments` | liderka zespołu (approver) | reguła z AI, Escalation flows, runbook z pliku, **platforma → Code & logs** (podpięcie repo i Datadoga) |
+| Mira Master | `master` | administrator | wszystko, Agents & MCP (token i `claude mcp add`), podgląd poziomów |
+| Marta Manager (opcjonalnie) | `manager` | tylko informowana | widzi alerty, nie może działać |
+
+Codebase pokazu: `demo/payments-api` w tym repo (https://github.com/julpul/gs-alerting/tree/main/demo/payments-api). To nasz serwis płatności z prawdziwym błędem z historii incydentów: klient fraud-score bez timeoutu, wprowadzony w wersji 3.8.0. Test `test_slow_fraud_score_does_not_block_authorisation` pada, dopóki błąd nie zostanie naprawiony. Poprawka (timeout 0,3 s, a bez odpowiedzi „review”) sprawia, że test przechodzi.
+
+Zdarzenie do pokazu (wysyła je terminal albo Test lab):
+```
+curl -X POST <origin>/v1/ingest/demo-key-prometheus -H 'content-type: application/json' \
+  -d '{"alertname":"CardGatewayTimeouts","labels":{"service":"payments-api","region":"eu-west","severity":"critical"},"annotations":{"summary":"Card authorisations timing out upstream: 18% of requests over 2 s"},"status":"firing"}'
+```
+
+### Scenariusz z kodem (Anna)
+1. Alert pojawia się sam na tablicy, właścicielka: Anna (powód: named in rule).
+2. Karta **AI proposed solution**: diagnoza, krok runbooka, „Fixed before”.
+3. Karta **Fix it in the code**:
+   - **Open the code** otwiera folder na GitHubie;
+   - **Open in Claude Code** daje dwie komendy: `git clone …` i `claude "…"` z kontekstem alertu. W Claude Code: znajdź przyczynę, popraw, `pytest`;
+   - **Open a draft PR** otwiera roboczy PR z briefem incydentu (wymaga `GITHUB_TOKEN` na serwerze);
+   - **Logs in Datadog** i **Service dashboard** otwierają linki z wypełnionym serwisem, regionem i oknem czasu.
+4. Ack, potem Resolve z notatką od AI. Następny podobny alert pokaże ją w „Fixed before”.
+
 ## A. Główny scenariusz: jedna osoba, od zdarzenia do maila (≈ 5 min)
 
 | # | Krok | Co powinieneś zobaczyć |
