@@ -27,8 +27,8 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P3-ESCAL | todo | | | | | |
 | P3-RUNBOOK | todo | | | | | |
 | P3-AI | todo | | | | | |
-| P3-LOAD | in_progress | implementer / task/P3-LOAD | 2026-11-21 | | | started early (no backend dependency) |
-| P3-ORG | in_progress | implementer / task/P3-ORG-sim | 2026-11-21 | | | part A (simulator + org data drafts) started early; part B = seed loaders after P2 |
+| P3-LOAD | review | implementer / task/P3-LOAD | 2026-11-21 | merged | 25 tests | merged; not yet run against real backend (after P2) |
+| P3-ORG | in_progress | implementer / task/P3-ORG-sim | 2026-11-21 | | sim 99.6 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
 | P4-MCP | todo | | | | | |
 | P4-CONNECT | todo | | | | | |
 | P5-DEPLOY | todo | orchestrator | | | | |
@@ -59,4 +59,6 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 ## Open issues / requests between owners
 
 - Metrics HTTP server (port 9101) for non-api roles must be started once in `app/main.py` (orchestrator wiring after P2).
-- Load-test Makefile include + monitoring compose (after P3-LOAD lands).
+- ~~Load-test Makefile include + monitoring compose~~ done.
+- **GitHub Actions does not start on this account (even a minimal workflow → startup_failure).** Account-level (billing/minutes for private repos). Needs user: check billing or make repo public.
+- P3-ORG part B: org loader from `simulator/org_data/org_full.yaml`, `90_history`, knowledge docs, 5th rule security-typed-alerts, `demo-key-custody` source.
