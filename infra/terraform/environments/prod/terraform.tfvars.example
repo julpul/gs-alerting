@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars and edit. Example values only; there are no secrets in this file
+# (database, Redis, broker, JWT and APP secrets are generated; the LLM key is set in Secrets Manager).
+
+region    = "eu-central-1"
+name      = "gs-alerting-prod"
+image_tag = "2026-11-21-abcdef1" # immutable tag you pushed to ECR
+
+certificate_arn = "arn:aws:acm:eu-central-1:111111111111:certificate/00000000-0000-0000-0000-000000000000"
+domain_name     = "alerts.example.com"
+route53_zone_id = "Z0000000000EXAMPLE"
+enable_waf      = false
+
+sms_gateway_url = "https://gateway.example.com"
+enable_ses      = true
+ses_domain      = "example.com"
+smtp_from       = "alerts@example.com"
+
+db_instance_class     = "db.r6g.large"
+redis_node_type       = "cache.r6g.large"
+mq_instance_type      = "mq.m5.large"
+db_read_replica_count = 0
+
+# Baseline from the README capacity estimate: 2 api, 4 worker, 2 delivery, 1 ai, 2 scheduler, 1 connector.
+service_sizing = {
+  api       = { cpu = 1024, memory = 2048, min = 2, max = 20 }
+  worker    = { cpu = 1024, memory = 2048, min = 4, max = 40 }
+  delivery  = { cpu = 512, memory = 1024, min = 2, max = 20 }
+  ai        = { cpu = 2048, memory = 4096, min = 1, max = 4 }
+  scheduler = { cpu = 512, memory = 1024, min = 2, max = 2 }
+  connector = { cpu = 512, memory = 1024, min = 1, max = 1 }
+}
