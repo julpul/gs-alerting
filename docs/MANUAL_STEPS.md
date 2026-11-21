@@ -41,12 +41,13 @@ Lokalnie `.env.example` ma wartości dev; na Railway orkiestrator ustawia losowe
 
 - [x] Repo `julpul/gs-alerting` (prywatne) **(zrobione przez Claude)**
 - [ ] **Przed oddaniem:** zdecyduj czy repo ma być publiczne dla jury: `gh repo edit julpul/gs-alerting --visibility public --accept-visibility-change-consequences` (albo dodaj jurorów jako collaborators).
-- [ ] Secret `RAILWAY_TOKEN` dla CD (jeśli Claude nie zdołał go utworzyć sam — patrz §4).
+- [ ] **Secret `RAILWAY_TOKEN` dla CD — WYMAGANE.** Claude próbował utworzyć token przez API Railway, ale token CLI nie ma do tego uprawnień (`Not Authorized`). Zrób to ręcznie wg §4 (1 minuta).
+- [x] Repo variable `RAILWAY_API_URL` (dla smoke testu po deployu) **(zrobione przez Claude)**
 - [ ] (opcjonalnie) Branch protection na `prod`: Settings → Branches → require status check `ci`.
 
 ## 4. Railway
 
-- [x] Projekt `gs-alerting`, środowisko `production`, serwisy **(robi orkiestrator w fazie P5)**
+- [x] Projekt `gs-alerting`, środowisko `production`, 8 serwisów, wolumeny, zmienne i domeny publiczne **(zrobione przez Claude — szczegóły w `infra/RAILWAY.md`)**
 - [ ] **Project token dla GitHub Actions** (jeśli nie ma go jeszcze w secrets): Railway → projekt `gs-alerting` → Settings → Tokens → *Create token* (environment: `production`) → potem:
   ```bash
   gh secret set RAILWAY_TOKEN --repo julpul/gs-alerting   # wklej token w prompt
