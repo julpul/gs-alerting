@@ -1,0 +1,16 @@
+{
+  "specversion": "1.0",
+  "id": "b7f1c2de-4a10-4f6e-9d1b-0001",
+  "source": "/risk/margin-engine",
+  "type": "com.example.margin.call.issued",
+  "time": "2026-11-20T14:02:11Z",
+  "subject": "account/ACC-7731",
+  "datacontenttype": "application/json",
+  "data": {
+    "accountId": "ACC-7731",
+    "shortfall": 1850000,
+    "currency": "USD",
+    "dueBy": "2026-11-20T17:00:00Z",
+    "level": "high"
+  }
+}

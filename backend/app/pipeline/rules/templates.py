@@ -2,7 +2,8 @@
 
 Event content is untrusted, so there is no Jinja, no attribute access, no filters. A path is looked up with
 `EventView.lookup` (raw JSON or `_meta`); dunder-style paths are plain dict keys and simply resolve to
-nothing. Missing -> empty string. `html=True` escapes substituted values (never the template itself).
+nothing. Missing -> empty string; a wildcard path (`legs.*.pair`) renders its values joined with ", ".
+`html=True` escapes substituted values (never the template itself).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from typing import Any
 
 import orjson
 
-from app.pipeline.fields import MISSING, EventView
+from app.pipeline.fields import MISSING, AnyOf, EventView
 
 ELLIPSIS = "…"
 _PLACEHOLDER = re.compile(r"\{\{\s*([^{}]{1,200}?)\s*\}\}")
@@ -26,6 +27,8 @@ def stringify(value: Any) -> str:
         return "true" if value else "false"
     if isinstance(value, float) and value.is_integer() and abs(value) < 1e15:
         return str(int(value))
+    if isinstance(value, AnyOf):
+        return ", ".join(stringify(item) for item in value)
     if isinstance(value, dict | list):
         return orjson.dumps(value).decode()
     return str(value)

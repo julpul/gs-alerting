@@ -56,13 +56,34 @@ is who can approve in our system.
 | `POST .../notes` | done | informed people may comment |
 | `POST .../steps/{step}/run` | done | `{state: done}`, `{state: done|failed, result}`, `{state: awaiting_approval, approval, approver}` |
 | `GET .../status-update`, `.../postmortem` | done | deterministic text; the postmortem adds resolution notes and, for resolved alerts with an LLM configured, an AI summary of the timeline (8 s cap, never fails) |
-| `POST /api/approvals/{id}/decide` | done | `{approve: bool}` or `{decision, comment}`; returns `{status, result}`. Four-eyes is ours: listed approvers / Domain Roots / masters |
+| `POST /api/approvals/{id}/decide` | done | `{approve: bool}` or `{decision, comment}`; returns `{status, result}`. Four-eyes is ours: listed approvers / Domain Roots / masters; a person never approves (and is never listed as approver of) their own request, but may reject = withdraw it. Detail `approvals[]` carry `requested_by` and `requested_by_user` (the human behind it, also for an agent) so the UI can hide the button |
 | `GET /api/stream` | done | Herald frames (see below) |
-| `GET /api/deliveries` | done | `latency_ms` = delivered - event received |
-| `GET /api/audit` | done | approver/admin only; scoped; `intact` is always true and `chained: false` (our log is append-only, not hash-chained); `hash` = sha256 of the row |
-| `GET /api/stats` | done | Herald counters over our deliveries + `summary` = `/v1/metrics/summary` |
+| `GET /api/deliveries` | done | `latency_ms` = delivered - event received; a UI-channel delivery without a person goes to the team feed: `recipient: team:<slug>`, `recipient_kind: team`, `recipient_name: "<Team> feed"` (else `person` / `address`) |
+| `GET /api/audit` | done | every signed-in person, scoped (masters: all; others: their teams' alerts / approvals / rules / sources + their own actions; empty list, never 403); `intact` is always true and `chained: false` (our log is append-only, not hash-chained); `hash` = sha256 of the row |
+| `GET /api/stats` | done | Herald counters over our deliveries + `summary` = `/v1/metrics/summary`; `outstanding` ("Waiting to be sent") = deliveries `pending`/`retrying` created in the last hour, not a cumulative count |
 | `/auth/*`, `/login` (SSO) | not supported | demo identity only (headers or our Bearer token) |
 | `PUT` preferences | not needed | both UIs write `/v1/preferences/me` directly |
+
+## Drafts: AI or heuristic
+
+Every endpoint that returns a draft says who wrote it, so the UI can label it ("AI draft" vs "Generated
+from rules, no AI"). Values: `ai` (a language model answered) or `heuristic` (our deterministic fallback;
+it always answers, so nothing is ever empty because the LLM is off).
+
+| Endpoint | Field |
+|---|---|
+| `POST /v1/sources/{id}/mapping/suggest` | `source`, `aiUnavailable` (key-name heuristic when no model) |
+| `POST /v1/runbooks/parse` | `parsedBy`: `ai` / `heuristic` / `deterministic` (`source` is the runbook text in the `Runbook` schema) |
+| `POST /api/runbooks/parse` | `source`: `ai` / `heuristic`, and Herald's `parsed_by`: `llm` / `parser` |
+| `POST /v1/rules/from-text` | `source: ai` (no heuristic: without a model it answers 503 `ai_unavailable`) |
+| `GET /v1/alerts/{id}/suggestion`, alert detail `suggestion` | `source`, `aiUnavailable` (history only: fixed-before, similar incidents, knowledge) |
+| `GET /v1/alerts/{id}/resolution-note-draft` | `source`, `aiUnavailable`, `model`; heuristic = opened / ack / resolve times, steps run, approvals, escalations, comments |
+| `GET /api/alerts/{id}/status-update` | `source: heuristic` (always deterministic) |
+| `GET /api/alerts/{id}/postmortem` | `source: ai` when the AI timeline summary was added, else `heuristic` |
+
+Fixed-before / similar incidents entries always carry `title` (the past alert's title, never a bare id),
+`shortId` (`A-123`), `resolvedAt` and `resolutionNote`, with or without a model (older stored suggestions
+are completed when read).
 
 ## Live stream
 
@@ -108,7 +129,7 @@ platforms), `explain.py` (why a rule did / didn't match; event normalization lik
 | `GET /api/sim/mail` | Mailpit `GET {MAILPIT_API_URL}/api/v1/messages` (default `http://<SMTP_HOST>:8025`) |
 | `GET /api/sim/phone`, `POST /api/sim/gateway` | mockgw `GET /admin/state`, `POST /admin/fail` (sms + phone, 24 h or 0 = back) |
 | `POST /api/sim/reply` | `escalation.inbound.handle_sms` in-process (no `X-Inbound-Secret` needed) |
-| `POST /ingest/{platform}` | `X-Herald-Token` = our source key (or the key in the path); JSON object, array or a text line |
+| `POST /ingest/{platform}` | `X-Herald-Token` = our source key (or the key in the path); JSON object, array or text (`app.pipeline.textlog`: one event per line with `key=value` pairs, timestamp, level) |
 
 ### Ids and shapes
 

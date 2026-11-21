@@ -1,0 +1,1 @@
+Si la latencia supera 1 s, reinicie la instancia `{{instance}}` y espere 2 minutos.

@@ -69,6 +69,7 @@ def parsed_wire(parsed: Any, source: str, runbook_id: str = "draft") -> dict[str
         "matches": parsed.attached.get("matches"),
         "steps": steps_wire(steps),
         "parsed_by": PARSED_BY.get(parsed.parsed_by, "parser"),
+        "source": "ai" if parsed.parsed_by == "ai" else "heuristic",
         "reviewed": False,
         "link": link if parsed.format == "link" else None,
         "used_by": [],

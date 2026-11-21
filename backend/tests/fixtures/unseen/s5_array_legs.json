@@ -1,0 +1,12 @@
+{
+  "eventType": "ORDER_BATCH_PARTIALLY_FILLED",
+  "batchId": "OB-55120",
+  "book": "FX-SPOT-LDN",
+  "tags": ["prod", "eu", "client-facing"],
+  "legs": [
+    {"legId": 1, "pair": "EURUSD", "status": "FILLED",   "qty": 5000000},
+    {"legId": 2, "pair": "GBPUSD", "status": "REJECTED", "qty": 12000000, "rejectCode": "CREDIT_LIMIT"},
+    {"legId": 3, "pair": "USDJPY", "status": "FILLED",   "qty": 3000000}
+  ],
+  "occurredAt": "2026-11-20T14:20:05.004+01:00"
+}

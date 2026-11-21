@@ -1,0 +1,1 @@
+2026-11-20T14:05:09.120Z WARN pricing-engine-3 [quote-cache] instrument=EURUSD latency_ms=1840 msg="cache miss storm"

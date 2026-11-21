@@ -6,6 +6,10 @@ included, else string compare), in/not_in, contains (substring or list membershi
 Missing paths: `eq/gt/gte/lt/lte/in/contains/regex/glob/exists(true)` are False, `neq/not_in` are True,
 `exists(false)` is True. A present `null` is not "missing".
 
+Wildcard paths (`legs.*.status`, see `fields.lookup`) mean "any element": a positive operator holds when it
+holds for one element; `neq` / `not_in` are their negation, i.e. "no element equals". Two wildcard
+conditions in one rule may be satisfied by two different elements.
+
 Regex "50 ms guard": Python's `re` cannot be interrupted, so the guard is preventive: patterns are capped
 at 500 chars, patterns with nested quantifiers (`(a+)+`, the classic catastrophic shape) are rejected at
 save time, and the input is truncated to 10 000 chars so even a quadratic pattern stays far below 50 ms.
@@ -19,7 +23,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from app.pipeline.fields import MISSING, EventView
+from app.pipeline.fields import MISSING, AnyOf, EventView
 from app.pipeline.rules.model import (
     MAX_CONDITIONS,
     MAX_DEPTH,
@@ -142,6 +146,25 @@ def _exists_flag(value: Any, path: str) -> bool:
     raise RuleValidationError(path, "exists expects true or false")
 
 
+def _present(name: str, test: Callable[[Any], bool]) -> Predicate:
+    """True when the field is present and `test` holds; on a wildcard path, when it holds for any element."""
+
+    def _check(ev: EventView) -> bool:
+        value = ev.lookup(name)
+        if value is MISSING:
+            return False
+        if isinstance(value, AnyOf):
+            return any(test(item) for item in value)
+        return test(value)
+
+    return _check
+
+
+def _negated(positive: Predicate) -> Predicate:
+    """`neq` / `not_in`: missing is True; on a wildcard path, no element may match (De Morgan of eq / in)."""
+    return lambda ev: not positive(ev)
+
+
 def _compile_condition(cond: Condition, path: str) -> Predicate:
     op, name, expected = cond.operator, cond.field, cond.value
     vpath = f"{path}.value"
@@ -156,9 +179,8 @@ def _compile_condition(cond: Condition, path: str) -> Predicate:
         if len(expected) > MAX_LIST_VALUES:
             raise RuleValidationError(vpath, f"{op} list longer than {MAX_LIST_VALUES}")
         values = list(expected)
-        if op == "in":
-            return lambda ev: (v := ev.lookup(name)) is not MISSING and _in(v, values)
-        return lambda ev: (v := ev.lookup(name)) is MISSING or not _in(v, values)
+        member = _present(name, lambda v: _in(v, values))
+        return member if op == "in" else _negated(member)
 
     if op in ("regex", "glob"):
         if not isinstance(expected, str) or not expected:
@@ -170,32 +192,26 @@ def _compile_condition(cond: Condition, path: str) -> Predicate:
                 raise RuleValidationError(vpath, f"glob longer than {MAX_REGEX_LEN} characters")
             pattern = re.compile(fnmatch.translate(expected))
 
-        def _match(ev: EventView) -> bool:
-            text = _scalar_text(ev.lookup(name))
+        def _match(value: Any) -> bool:
+            text = _scalar_text(value)
             if text is None:
                 return False
             return (pattern.search(text) if op == "regex" else pattern.match(text)) is not None
 
-        return _match
+        return _present(name, _match)
 
     if op in ("gt", "gte", "lt", "lte"):
         if expected is None or isinstance(expected, dict | list):
             raise RuleValidationError(vpath, f"{op} expects a number or a string")
         accept = {"gt": (1,), "gte": (0, 1), "lt": (-1,), "lte": (-1, 0)}[op]
-
-        def _order(ev: EventView) -> bool:
-            v = ev.lookup(name)
-            return v is not MISSING and _ordered(v, expected) in accept
-
-        return _order
+        return _present(name, lambda v: _ordered(v, expected) in accept)
 
     if op == "contains":
         if expected is None or isinstance(expected, dict | list):
             raise RuleValidationError(vpath, "contains expects a scalar value")
-        return lambda ev: (v := ev.lookup(name)) is not MISSING and _contains(v, expected)
-    if op == "eq":
-        return lambda ev: (v := ev.lookup(name)) is not MISSING and _equals(v, expected)
-    return lambda ev: (v := ev.lookup(name)) is MISSING or not _equals(v, expected)  # neq
+        return _present(name, lambda v: _contains(v, expected))
+    equal = _present(name, lambda v: _equals(v, expected))
+    return equal if op == "eq" else _negated(equal)
 
 
 def _compile_group(group: ConditionGroup, path: str, depth: int, budget: list[int]) -> Predicate:

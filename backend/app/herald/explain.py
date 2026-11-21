@@ -19,6 +19,7 @@ from app.pipeline.fields import EventView
 from app.pipeline.normalize import normalize
 from app.pipeline.presets import split_events
 from app.pipeline.rules.model import RuleDef
+from app.pipeline.textlog import parse_text
 
 ATTRS = ("type", "severity", "timestamp", "service")
 NO_SOURCE = {
@@ -36,7 +37,7 @@ def raw_events(event: Any, source: dict[str, Any] | None) -> list[dict[str, Any]
         try:
             event = orjson.loads(event)
         except orjson.JSONDecodeError:
-            event = {"message": event.strip()}
+            event = parse_text(event) or [{"message": event.strip()}]
     items = event if isinstance(event, list) else [event]
     out: list[dict[str, Any]] = []
     for item in items:

@@ -22,7 +22,11 @@ VERBS: list[tuple[re.Pattern[str], str, dict[str, Any]]] = [
     (re.compile(r"\bopen\s+(?:a\s+|an\s+)?(?:ticket|jira)\b", _I), "open_ticket", {"summary": "{{_title}}"}),
     (re.compile(r"\bescalate\b|\b(?:call|page|phone|ring)\b[^.;]*\bon-?call\b", _I), "escalate", {}),
 ]
-APPROVAL = re.compile(r"\b(?:needs?|requires?)\s+(?:\w+\s+)?approval\b|\bapproval\s+required\b", _I)
+APPROVAL = re.compile(
+    r"\b(?:needs?|requires?)\s+(?:\w+\s+)?(?:approval|sign-?\s?off)\b|\bapproval\s+required\b"
+    r"|\bsign-?\s?off\s+(?:from|by)\b|\bonly\s+with\s+(?:\w+\s+)?approval\b",
+    _I,
+)
 _CONDITIONAL = re.compile(r"^\s*(?:and\s+)?if\b", _I)
 _FAILS = re.compile(
     r"\b(?:retry|it|that|this|the previous step)\s+(?:fails|failed)(?:\s+(twice|once|(\d+)\s+times))?", _I

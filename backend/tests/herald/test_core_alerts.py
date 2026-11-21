@@ -170,6 +170,9 @@ async def test_status_update_and_postmortem(client, seeded):
 
     pm = (await client.get(f"{url}/postmortem", headers=anna)).json()
     assert pm["required"] is True
+    assert pm["source"] in ("ai", "heuristic")
+    status = (await client.get(f"{url}/status-update", headers=anna)).json()
+    assert status["source"] == "heuristic"
     md = pm["markdown"]
     assert md.startswith(f"# Postmortem draft: A-{row['short_id']} Herald drafts")
     assert "the incident manager" in md and "Anna Kowalska" not in md

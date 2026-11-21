@@ -98,9 +98,27 @@ async def _target(
     return domain_id, None
 
 
-def _title_from(text: str, fallback: str) -> str:
-    match = re.search(r"^\s*#{1,3}\s+(.+)$", text, re.MULTILINE)
-    return (match.group(1).strip() if match else fallback)[:300]
+_FRONT_MATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)", re.DOTALL)
+_FRONT_TITLE = re.compile(r"^title[ \t]*:[ \t]*(.+?)[ \t]*$", re.MULTILINE | re.IGNORECASE)
+_H1 = re.compile(r"^[ \t]{0,3}#[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
+_HEADING = re.compile(r"^[ \t]{0,3}#{1,3}[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
+
+
+def title_from(text: str) -> str | None:
+    """Front-matter `title:`, else the first `# heading` (else the first `##`/`###`), else None."""
+    front = _FRONT_MATTER.match(text)
+    if front:
+        found = _FRONT_TITLE.search(front.group(1))
+        if found and found.group(1).strip("'\" "):
+            return found.group(1).strip().strip("'\"").strip()[:300]
+        text = text[front.end() :]
+    match = _H1.search(text) or _HEADING.search(text)
+    return match.group(1).strip()[:300] if match else None
+
+
+def _file_title(filename: str | None) -> str | None:
+    stem = (filename or "").rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ").replace("-", " ").strip()
+    return stem or None
 
 
 @router.get("")
@@ -126,7 +144,7 @@ async def add_knowledge(request: Request, pool: Pool, scope: CurrentScope) -> Re
         raise AppError(422, "invalid_body", "give a file, a text body or a URL")
     async with pool.acquire() as conn:
         domain_id, team_id = await _target(conn, scope, data.get("teamId"), data.get("domainId"))
-        title = data.get("title") or data.get("filename")
+        title = (data.get("title") or "").strip() or None
         kind = "upload"
         if not content and url:
             fetched_title, content = await fetch_url(url)
@@ -139,7 +157,7 @@ async def add_knowledge(request: Request, pool: Pool, scope: CurrentScope) -> Re
             domain_id=domain_id,
             team_id=team_id,
             kind=kind,
-            title=title or _title_from(content, "Untitled document"),
+            title=title or title_from(content) or _file_title(data.get("filename")) or "Untitled document",
             text=content,
             url=url,
         )

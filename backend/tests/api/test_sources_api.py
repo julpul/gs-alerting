@@ -235,6 +235,7 @@ async def test_suggest_mapping_falls_back_to_the_heuristic(client, auth_headers,
         and out["fields"]["timestamp"] == "ts"
     )
     assert out["explanation"].startswith("AI unavailable, heuristic draft.")
+    assert out["source"] == "heuristic" and out["aiUnavailable"] is True
     assert (
         await client.post(f"/v1/sources/{PROMETHEUS}/mapping/suggest", json={}, headers=anna)
     ).status_code == 422
@@ -269,6 +270,8 @@ async def test_suggest_mapping_prefers_the_ai_module_when_present(client, auth_h
         "detectedSchema": "x",
         "fields": {"severity": "a.b"},
         "explanation": "from the model",
+        "source": "ai",
+        "aiUnavailable": False,
     }
     assert seen["sample"] == {"a": {"b": 1}} and seen["source"]["name"] == "prometheus"
 
@@ -288,7 +291,12 @@ async def test_suggest_mapping_prefers_the_ai_module_when_present(client, auth_h
     resp = await client.post(
         f"/v1/sources/{PROMETHEUS}/mapping/suggest", json={"sample": {"level": "WARN"}}, headers=anna
     )
-    assert resp.json() == {"status": "draft", "fields": {"severity": "level"}}
+    assert resp.json() == {
+        "status": "draft",
+        "fields": {"severity": "level"},
+        "source": "ai",
+        "aiUnavailable": False,
+    }
 
 
 async def test_put_mapping_saves_and_updates_status(client, auth_headers, made, seeded):

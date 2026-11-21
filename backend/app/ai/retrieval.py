@@ -81,10 +81,80 @@ async def exact_memory(
         exclude_alert,
         limit,
     )
+    refs = await incident_refs(conn, [r["alert_id"] for r in rows if r["alert_id"]])
     return [
-        {"alertId": str(r["alert_id"]), "resolvedAt": r["created_at"], "resolutionNote": r["note"]}
+        {
+            "alertId": str(r["alert_id"]),
+            **incident_ref(refs, r["alert_id"]),
+            "resolvedAt": r["created_at"],
+            "resolutionNote": r["note"],
+        }
         for r in rows
     ]
+
+
+_UUIDISH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
+
+
+async def incident_refs(conn: asyncpg.Connection, alert_ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
+    """Title, `A-123` short id and resolution time of past alerts (one query)."""
+    if not alert_ids:
+        return {}
+    rows = await conn.fetch(
+        "SELECT id, short_id, title, resolved_at FROM alerts WHERE id = ANY($1)", list(set(alert_ids))
+    )
+    return {
+        r["id"]: {"title": r["title"], "shortId": f"A-{r['short_id']}", "resolvedAt": r["resolved_at"]}
+        for r in rows
+    }
+
+
+def incident_ref(
+    refs: dict[UUID, dict[str, Any]], alert_id: UUID | None, fallback: str = ""
+) -> dict[str, Any]:
+    """What a fixed-before / similar entry shows: never a bare uuid as its title."""
+    found = refs.get(alert_id) if alert_id else None
+    if found:
+        return {"title": found["title"] or f"Incident {found['shortId']}", "shortId": found["shortId"]}
+    title = fallback if fallback and not _UUIDISH.search(fallback) else "Past incident"
+    return {"title": title, "shortId": None}
+
+
+def _as_uuid(value: Any) -> UUID | None:
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+async def enrich_history(conn: asyncpg.Connection, content: dict[str, Any]) -> dict[str, Any]:
+    """Stored suggestion content (also older rows) -> `fixedBefore` / `similarIncidents` entries that carry
+    `title`, `shortId`, `resolvedAt` and `resolutionNote`. Works without any LLM."""
+    entries = [e for key in ("fixedBefore", "similarIncidents") for e in content.get(key) or []]
+    ids = [u for e in entries if isinstance(e, dict) and (u := _as_uuid(e.get("alertId")))]
+    if not ids:
+        return content
+    refs = await incident_refs(conn, ids)
+    out = dict(content)
+    for key in ("fixedBefore", "similarIncidents"):
+        items = []
+        for entry in content.get(key) or []:
+            if not isinstance(entry, dict):
+                continue
+            alert_id = _as_uuid(entry.get("alertId"))
+            ref = incident_ref(refs, alert_id, str(entry.get("title") or ""))
+            known = refs.get(alert_id) if alert_id else None
+            items.append(
+                {
+                    **entry,
+                    "title": ref["title"],
+                    "shortId": entry.get("shortId") or ref["shortId"],
+                    "resolvedAt": entry.get("resolvedAt") or (known or {}).get("resolvedAt"),
+                    "resolutionNote": entry.get("resolutionNote") or "",
+                }
+            )
+        out[key] = items
+    return out
 
 
 def fts_query(text: str) -> str:

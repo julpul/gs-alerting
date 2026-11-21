@@ -7,6 +7,7 @@ Callers pass ids that already went through a scope-filtered repository call (`re
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -24,7 +25,9 @@ ALERT_COLUMNS = (
 DELIVERY_COLUMNS = (
     "d.id, d.alert_id, d.recipient_user_id, d.recipient_address, d.channel, d.kind, d.status, d.attempts, "
     "d.last_error, d.created_at, "
-    "extract(epoch FROM d.delivered_at - d.event_received_at) * 1000 AS latency_ms"
+    "extract(epoch FROM d.delivered_at - d.event_received_at) * 1000 AS latency_ms, "
+    "(SELECT t.slug FROM alerts ta JOIN teams t ON t.id = ta.team_id WHERE ta.id = d.alert_id) AS team_slug, "
+    "(SELECT t.name FROM alerts ta JOIN teams t ON t.id = ta.team_id WHERE ta.id = d.alert_id) AS team_name"
 )
 
 
@@ -136,15 +139,22 @@ async def audit_entries(conn: asyncpg.Connection, scope: Scope, limit: int) -> l
     return [views.audit_out(r, refs, shorts) for r in rows]
 
 
+OUTSTANDING_WINDOW = timedelta(hours=1)
+
+
 async def delivery_stats(
     conn: asyncpg.Connection, scope: Scope, since: float, run: str | None
 ) -> dict[str, Any]:
-    """Herald `/api/stats` numbers over our deliveries/alerts (event received -> delivered latency)."""
+    """Herald `/api/stats` numbers over our deliveries/alerts (event received -> delivered latency).
+
+    `outstanding` ("Waiting to be sent") is what is queued right now: deliveries still `pending` or
+    `retrying` that were created in the last hour (older ones are stuck, not waiting; they show up as
+    retrying / dead-lettered in the delivery log)."""
     row = await conn.fetchrow(
         "SELECT count(*) FILTER (WHERE d.delivered_at IS NOT NULL OR d.status IN ('delivered', 'acked')) "
         "         AS delivered, "
-        "       count(*) FILTER (WHERE d.delivered_at IS NULL "
-        "         AND d.status NOT IN ('delivered', 'acked', 'sent', 'dead_lettered')) AS outstanding, "
+        "       count(*) FILTER (WHERE d.delivered_at IS NULL AND d.status IN ('pending', 'retrying') "
+        "         AND d.created_at >= now() - $5::interval) AS outstanding, "
         "       percentile_cont(0.5) WITHIN GROUP (ORDER BY x.ms) AS p50_ms, "
         "       percentile_cont(0.99) WITHIN GROUP (ORDER BY x.ms) AS p99_ms, "
         "       max(x.ms) AS max_ms, extract(epoch FROM max(d.delivered_at)) AS last_delivered "
@@ -156,6 +166,7 @@ async def delivery_stats(
         scope.is_master,
         list(scope.team_ids),
         run,
+        OUTSTANDING_WINDOW,
     )
     events = await conn.fetchval(
         "SELECT coalesce(sum(count), 0) FROM alerts a WHERE a.first_seen_at >= to_timestamp($1) "

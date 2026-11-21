@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from pydantic import ValidationError
 
 from app.ai.resolution_note import draft_note
+from app.ai.retrieval import enrich_history
 from app.api.deps import CurrentScope, CurrentUser, Pool
 from app.core.audit import audit, user_actor
 from app.core.errors import AppError, ORJSONResponse, forbidden, not_found
@@ -41,11 +42,13 @@ class SuggestionOut(wire.Suggestion):
     aiUnavailable: bool | None = None
 
 
-def suggestion_out(row: asyncpg.Record) -> dict[str, Any]:
-    content = row["content"] or {}
+def suggestion_out(row: asyncpg.Record, content: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`content` = the stored content after `enrich_history` (titles / short ids of past incidents)."""
+    content = content if content is not None else (row["content"] or {})
     status = row["status"] if row["status"] in ("accepted", "rejected") else "draft"
     data = {k: content[k] for k in CONTENT_KEYS if k in content}
     data.update(id=str(row["id"]), alertId=str(row["alert_id"]), status=status)
+    data["source"] = "heuristic" if content.get("aiUnavailable") else "ai"
     try:
         return SuggestionOut.model_validate(data).model_dump(mode="json", exclude_none=True)
     except ValidationError as exc:
@@ -69,9 +72,10 @@ async def get_suggestion(alert_id: str, pool: Pool, scope: CurrentScope) -> ORJS
             alert["id"],
             list(VISIBLE),
         )
-    if row is None:
-        raise not_found("suggestion")
-    return ORJSONResponse(suggestion_out(row))
+        if row is None:
+            raise not_found("suggestion")
+        content = await enrich_history(conn, row["content"] or {})
+    return ORJSONResponse(suggestion_out(row, content))
 
 
 @router.post("/{alert_id}/suggestion/{suggestion_id}/decision")

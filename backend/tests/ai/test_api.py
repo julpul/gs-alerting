@@ -66,6 +66,37 @@ async def test_knowledge_multipart_file_and_url(client, auth_headers, monkeypatc
     ).status_code == 422
 
 
+async def test_knowledge_title_from_front_matter_heading_or_filename(client, auth_headers):
+    anna = await auth_headers("anna@demo")
+
+    async def upload(name: str, body: bytes, title: str | None = None) -> str:
+        data = {"teamId": "team-payments", **({"title": title} if title else {})}
+        resp = await client.post(
+            "/v1/knowledge", data=data, files={"file": (name, body, "text/markdown")}, headers=anna
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["title"]
+
+    front = b'---\ntitle: "FX cache storms"\nowner: pricing\n---\n# Other heading\nRestart the cache.'
+    assert await upload("x.md", front) == "FX cache storms"
+    assert await upload("x.md", b"Intro line\n## Sub\n# Main heading\ntext") == "Main heading"
+    sub_only = b"---\nowner: pricing\n---\n## Only a sub heading\ntext"
+    assert await upload("x.md", sub_only) == "Only a sub heading"
+    assert await upload("disk-full_runbook.md", b"no heading at all") == "disk full runbook"
+    assert await upload("x.md", front, title="Given title") == "Given title"
+    plain = await upload_json(client, anna, content="just text, no heading", teamId="team-payments")
+    assert plain.json()["title"] == "Untitled document"
+
+
+def test_title_from_unit():
+    from app.api.routers.knowledge import title_from
+
+    assert title_from("---\ntitle: 'Quoted'\n---\nbody") == "Quoted"
+    assert title_from("---\ntitle:\n---\n# H1 after empty title") == "H1 after empty title"
+    assert title_from("# Title #\n") == "Title"
+    assert title_from("plain") is None
+
+
 async def test_knowledge_validation_and_permissions(client, auth_headers):
     anna = await auth_headers("anna@demo")
     assert (await upload_json(client, anna, teamId="team-payments")).status_code == 422  # nothing to index
@@ -291,14 +322,17 @@ async def test_resolution_note_draft_from_the_timeline(client, auth_headers, see
         "note": "The gateway returned 503; retrying the workflow fixed it.",
         "aiUnavailable": False,
         "model": "fake-model",
+        "source": "ai",
     }
     assert llm.calls[0]["tier"] == "smart" and "Gateway returned 503" in llm.calls[0]["user"]
     llm.fail = True
     resp = await client.get(url, headers=anna)
-    assert resp.json()["aiUnavailable"] is True and "Gateway returned 503" in resp.json()["note"]
+    body = resp.json()
+    assert body["aiUnavailable"] is True and body["source"] == "heuristic" and body["model"] is None
+    assert "Comments: Gateway returned 503 (Anna)." in body["note"]
+    assert "Actions taken: Ran retry_workflow: succeeded (Anna)." in body["note"]
     piotr = await auth_headers("piotr@demo")
     assert (await client.get(url, headers=piotr)).status_code == 404
-    quiet = await make_alert(seeded)
-    assert (await client.get(f"/v1/alerts/{quiet['id']}/resolution-note-draft", headers=anna)).json()[
-        "note"
-    ] == ""
+    quiet = await make_alert(seeded, title="Quiet one")
+    note = (await client.get(f"/v1/alerts/{quiet['id']}/resolution-note-draft", headers=anna)).json()["note"]
+    assert note.startswith("Quiet one (error), opened ") and "No actions were recorded" in note

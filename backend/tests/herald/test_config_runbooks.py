@@ -58,6 +58,7 @@ async def test_parse_appendix_b_formats(client):
         await client.post("/api/runbooks/parse", json={"text": _text("HighErrorRate.md")}, headers=MASTER)
     ).json()
     assert md["source_format"] == "markdown" and len(md["steps"]) == 4
+    assert md["source"] == "heuristic" and md["parsed_by"] == "parser"
     assert md["steps"][1]["suggest"] == "failover_region"
     assert md["steps"][0]["kind"] == "manual"
 

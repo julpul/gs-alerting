@@ -8,6 +8,7 @@ as soon as its first event is in.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import Query
@@ -125,6 +126,9 @@ async def explain_event(body: EventIn, who: Actor, pool: Pool) -> dict[str, Any]
     return {"attrs": items[0]["attrs"], "rules": items[0]["rules"], "items": items}
 
 
+_INDEX = re.compile(r"\.\d+(?=\.|$)")
+
+
 def _flatten(value: Any, prefix: str, out: dict[str, Any]) -> None:
     if len(out) >= MAX_PATHS:
         return
@@ -148,6 +152,8 @@ async def fields(who: Actor, pool: Pool, redis: RedisDep, source: str | None = N
         for ev in reversed(await read_recent(redis, row["id"], limit=FIELD_EVENTS)):
             paths: dict[str, Any] = {}
             _flatten(ev.raw, "", paths)
+            for path, value in list(paths.items()):
+                paths.setdefault(_INDEX.sub(".*", path), value)  # `legs.*.status`: any element
             for alias in ALIASES:
                 if ev.meta.get(alias) is not None:
                     paths[f"@{alias}"] = ev.meta[alias]

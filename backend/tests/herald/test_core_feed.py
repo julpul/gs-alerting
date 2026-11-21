@@ -46,7 +46,7 @@ async def test_deliveries_shape_latency_and_scope(client, seeded):
     assert r.status_code == 403
 
 
-async def test_audit_needs_approver_and_is_scoped(client, seeded):
+async def test_audit_is_scoped_for_every_persona(client, seeded):
     pay = await alert(seeded, title="Herald audit pay")
     sett = await alert(
         seeded, team_slug="team-settlements", domain_slug="settlements", title="Herald audit s"
@@ -54,8 +54,10 @@ async def test_audit_needs_approver_and_is_scoped(client, seeded):
     await client.post(f"/api/alerts/{pay['short_id']}/ack", headers=as_person("anna"))
     await client.post(f"/api/alerts/{sett['short_id']}/ack", headers=as_person("piotr"))
 
-    r = await client.get("/api/audit", headers=as_person("anna"))
-    assert r.status_code == 403 and "approver" in r.json()["detail"]
+    r = await client.get("/api/audit", params={"limit": 1000}, headers=as_person("anna"))
+    assert r.status_code == 200  # a responder sees their teams' entries, never a 403
+    anna_targets = {e["target"] for e in r.json()["entries"]}
+    assert f"alert:{pay['short_id']}" in anna_targets and f"alert:{sett['short_id']}" not in anna_targets
 
     d = (await client.get("/api/audit", params={"limit": 1000}, headers=as_person("root.payments"))).json()
     assert d["intact"] is True
@@ -91,3 +93,29 @@ async def test_stats_counts_and_latency(client, seeded):
     assert s["summary"] is None or "eventsPerSecond" in s["summary"]
     none = (await client.get("/api/stats", params={"since": since, "run": "no-such-run"})).json()
     assert none["delivered"] == 0 and none["matched_events"] == 0 and none["p50_ms"] is None
+
+
+async def test_audit_never_403s_for_a_signed_in_persona(client, seeded):
+    users = await seeded.fetch("SELECT email FROM users WHERE email LIKE '%@demo' ORDER BY email LIMIT 40")
+    for local in [u["email"].split("@")[0] for u in users]:
+        r = await client.get("/api/audit", params={"limit": 5}, headers=as_person(local))
+        assert r.status_code != 403, (local, r.text)
+        if r.status_code == 200:
+            assert isinstance(r.json()["entries"], list)
+
+
+async def test_outstanding_is_only_what_is_queued_now(client, seeded):
+    row = await alert(seeded, title="Herald outstanding")
+    await h.make_delivery(seeded, row["id"], channel="email", status="pending")
+    await h.make_delivery(seeded, row["id"], channel="slack", status="retrying")
+    await h.make_delivery(seeded, row["id"], channel="ui", status="suppressed_digest")
+    old = await h.make_delivery(seeded, row["id"], channel="phone", status="pending")
+    await seeded.execute("UPDATE deliveries SET created_at = now() - interval '3 hours' WHERE id = $1", old)
+    counted = await seeded.fetchval(
+        "SELECT count(*) FROM deliveries WHERE status IN ('pending', 'retrying') "
+        "AND delivered_at IS NULL AND created_at >= now() - interval '1 hour'"
+    )
+    s = (await client.get("/api/stats")).json()
+    assert s["outstanding"] == counted >= 2
+    stale = await seeded.fetchval("SELECT count(*) FROM deliveries WHERE delivered_at IS NULL")
+    assert s["outstanding"] < stale

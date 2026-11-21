@@ -33,6 +33,14 @@ paths:
     post:
       tags: [ingest]
       summary: Ingest one event in any JSON schema (webhook)
+      description: >-
+        A JSON object is one event (a preset, or a recognised Alertmanager body, may split it). A top-level
+        JSON array is a batch (each object is one event; other elements become `{"value": x}`), answered
+        like the batch endpoint. A body that is not JSON and is not sent as `application/json` (for example
+        `text/plain`) is a log: one event per non-empty line, `{"message": line}` plus `key=value` /
+        `key="quoted"` pairs, a leading ISO / syslog timestamp (`timestamp`) and level word (`level`);
+        indented / stack-trace lines attach to the previous line as `stack`. Invalid JSON sent as
+        `application/json` and JSON scalars / null are 422.
       security: []
       parameters:
         - $ref: '#/components/parameters/SourceKey'
@@ -40,13 +48,21 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: true }
+            schema:
+              oneOf:
+                - { type: object, additionalProperties: true }
+                - { type: array, maxItems: 1000, items: {} }
+          text/plain:
+            schema: { type: string, description: 'Log lines, one event per line (max 1000)' }
       responses:
         '202':
           description: Accepted after durable write
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/IngestAccepted' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/IngestAccepted'
+                  - $ref: '#/components/schemas/IngestBatchAccepted'
         '401': { $ref: '#/components/responses/Error' }
   /v1/ingest/{sourceKey}/batch:
     post:
@@ -248,9 +264,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  note: { type: string }
+                  note: { type: string, description: 'Never empty: without a model it summarises the timeline (opened/ack/resolve times, steps run, approvals, comments)' }
                   aiUnavailable: { type: boolean }
                   model: { type: [string, 'null'] }
+                  source: { $ref: '#/components/schemas/DraftSource' }
         '404': { $ref: '#/components/responses/Error' }
   /v1/alerts/{alertId}/suggestion:
     get:
@@ -393,6 +410,7 @@ paths:
                   draft: { $ref: '#/components/schemas/Rule' }
                   explanation: { type: string }
                   dryRun: { $ref: '#/components/schemas/DryRunResult' }
+                  source: { $ref: '#/components/schemas/DraftSource' }
         '503': { description: 'AI unavailable (code ai_unavailable)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /v1/rules/{ruleId}/yaml:
     get:
@@ -827,7 +845,7 @@ components:
       type: object
       required: [kind, id, displayName]
       properties:
-        kind: { type: string, enum: [user, agent, system] }
+        kind: { type: string, enum: [user, agent, system, team], description: 'team: a delivery to the team feed (UI channel), id = team slug, displayName "<Team> feed"' }
         id: { type: string }
         displayName: { type: string }
         onBehalfOf: { type: [string, 'null'], description: 'For agents: user display name' }
@@ -837,6 +855,15 @@ components:
       properties:
         eventId: { type: string }
         receivedAt: { type: string, format: date-time }
+
+    IngestBatchAccepted:
+      type: object
+      description: 'Array or text body on /v1/ingest/{sourceKey} (also carries eventId/receivedAt of the first event)'
+      properties:
+        accepted: { type: integer }
+        eventIds: { type: array, items: { type: string } }
+        eventId: { type: [string, 'null'] }
+        receivedAt: { type: [string, 'null'], format: date-time }
 
     RaiseAlertRequest:
       type: object
@@ -942,7 +969,9 @@ components:
             type: object
             properties:
               alertId: { type: string }
-              resolvedAt: { type: string, format: date-time }
+              title: { type: string, description: 'Title of the past alert (never a bare id)' }
+              shortId: { type: [string, 'null'], example: A-123 }
+              resolvedAt: { type: [string, 'null'], format: date-time }
               resolutionNote: { type: string }
         similarIncidents:
           type: array
@@ -950,7 +979,9 @@ components:
             type: object
             properties:
               alertId: { type: string }
-              title: { type: string }
+              title: { type: string, description: 'Title of the past alert (never a bare id)' }
+              shortId: { type: [string, 'null'], example: A-123 }
+              resolvedAt: { type: [string, 'null'], format: date-time }
               similarity: { type: number }
               resolutionNote: { type: string }
         sources:
@@ -962,6 +993,12 @@ components:
               title: { type: string }
               url: { type: string }
         draftPullRequestUrl: { type: [string, 'null'] }
+        source: { $ref: '#/components/schemas/DraftSource' }
+
+    DraftSource:
+      type: string
+      enum: [ai, heuristic]
+      description: 'Who wrote a draft: a language model (ai) or the deterministic fallback (heuristic). Runbook parses say the same in Runbook.parsedBy (ai | heuristic | deterministic)'
 
     Decision:
       type: object
@@ -983,7 +1020,9 @@ components:
         parameters: { type: object, additionalProperties: true }
         risk: { type: string, enum: [low, medium, high] }
         reason: { type: string }
-        approvers: { type: array, items: { $ref: '#/components/schemas/Actor' } }
+        approvers: { type: array, items: { $ref: '#/components/schemas/Actor' }, description: 'Who may decide; never the person who requested it (four-eyes). An agent request keeps the human it acts for' }
+        requestedByUserId: { type: [string, 'null'], description: 'The human behind the request: the requesting person, or the user an agent acts for' }
+        canDecide: { type: [boolean, 'null'], description: 'In GET /v1/approvals: whether the caller may decide it now (pending, not their own request, an approver / Domain Root / master)' }
         decidedBy: { oneOf: [ { $ref: '#/components/schemas/Actor' }, { type: 'null' } ] }
         comment: { type: [string, 'null'] }
         expiresAt: { type: string, format: date-time }
@@ -1198,6 +1237,8 @@ components:
           additionalProperties: { $ref: '#/components/schemas/Severity' }
           example: { ERROR: error, critical: critical }
         explanation: { type: string }
+        source: { $ref: '#/components/schemas/DraftSource' }
+        aiUnavailable: { type: boolean, description: 'Suggest only: true when the key-name heuristic answered instead of a model' }
 
     Me:
       type: object

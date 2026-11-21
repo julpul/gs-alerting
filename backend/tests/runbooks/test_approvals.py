@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from uuid import UUID
 
 import orjson
 import pytest
@@ -271,3 +272,63 @@ async def test_four_eyes_requester_cannot_approve_own_request(seeded):
             raise AssertionError("self-approval must be refused")
         rejected = await decide(conn, approval_id, decision="reject", actor=actor, comment="withdrawn")
         assert rejected["status"] == "rejected"  # withdrawing your own request is fine
+
+
+async def person_request(pool, email: str, alert_id=None):
+    async with pool.acquire() as conn:
+        return await request_approval(
+            conn,
+            origin="runbook_step",
+            action="restart_service",
+            parameters={"service": "payments-api"},
+            reason="restart",
+            risk="high",
+            alert_id=alert_id,
+            requested_by={"type": "user", "id": str(user(email)), "name": email},
+        )
+
+
+async def test_four_eyes_a_person_is_never_listed_as_approver_of_their_own_request(
+    client, auth_headers, seeded, gw
+):
+    root = user("root.payments@demo")
+    approval = await person_request(seeded, "root.payments@demo")  # the only Domain Root of payments
+    assert approval["approvers"] and str(root) not in {a["id"] for a in approval["approvers"]}
+    assert approval["requestedByUserId"] == str(root)
+    stored = await seeded.fetchval(
+        "SELECT approver_user_ids FROM approvals WHERE id = $1", UUID(approval["id"])
+    )
+    assert root not in stored  # fell back to the masters
+
+    inbox = (await client.get("/v1/approvals", headers=await auth_headers("root.payments@demo"))).json()
+    mine = next(a for a in inbox if a["id"] == approval["id"])
+    assert mine["canDecide"] is False and mine["requestedByUserId"] == str(root)
+    master = (await client.get("/v1/approvals", headers=await auth_headers("master@demo"))).json()
+    assert next(a for a in master if a["id"] == approval["id"])["canDecide"] is True
+
+
+async def test_agent_request_keeps_the_human_it_acts_for(client, auth_headers, seeded, gw):
+    approval = await agent_request(seeded)
+    assert approval["requestedByUserId"] == str(user("anna@demo"))
+    inbox = (await client.get("/v1/approvals", headers=await auth_headers("root.payments@demo"))).json()
+    assert next(a for a in inbox if a["id"] == approval["id"])["canDecide"] is True
+
+
+async def test_legacy_row_listing_the_requester_hides_them(seeded):
+    from app.runbooks.approvals import approvals_wire
+
+    root = user("root.payments@demo")
+    async with seeded.acquire() as conn:
+        row = await conn.fetchrow(
+            "INSERT INTO approvals (id, status, origin, requested_by, action, parameters, risk, reason, "
+            "approver_user_ids, expires_at, created_at) VALUES ($1, 'pending', 'runbook_step', $2, "
+            "'restart_service', '{}', 'high', 'test', ARRAY[$3::uuid, $4::uuid], "
+            "now() + interval '15 minutes', now()) RETURNING *",
+            uuid7(),
+            {"type": "user", "id": str(root), "name": "Root"},
+            root,
+            user("master@demo"),
+        )
+        (wire,) = await approvals_wire(conn, [row], viewer=root)
+    assert [a["id"] for a in wire["approvers"]] == [str(user("master@demo"))]
+    assert wire["canDecide"] is False

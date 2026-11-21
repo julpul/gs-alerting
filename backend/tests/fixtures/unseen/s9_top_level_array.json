@@ -1,0 +1,5 @@
+[
+  {"evt": "LIMIT_UTILISATION", "desk": "credit", "pct": 96.5, "at": "2026-11-20T14:40:00Z"},
+  {"evt": "LIMIT_UTILISATION", "desk": "rates",  "pct": "101", "at": "2026-11-20T14:40:00Z"},
+  {"evt": "LIMIT_UTILISATION", "desk": null,      "pct": 88,    "at": "20/11/2026 14:40"}
+]

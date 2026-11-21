@@ -30,5 +30,16 @@ def split(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return events
 
 
+def looks_like(raw: dict[str, Any]) -> bool:
+    """An Alertmanager webhook (grouped body, or one alert of it after `split`) without a configured preset:
+    `groupKey` / `receiver` plus `alerts[]` of objects, or `labels` + `startsAt`."""
+    if not any(k in raw for k in ("groupKey", "receiver")):
+        return False
+    alerts = raw.get("alerts")
+    if isinstance(alerts, list) and alerts and all(isinstance(a, dict) for a in alerts):
+        return True
+    return isinstance(raw.get("labels"), dict) and "startsAt" in raw
+
+
 def is_resolved(raw: dict[str, Any]) -> bool:
     return str(raw.get("status", "")).strip().lower() == "resolved"

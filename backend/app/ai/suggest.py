@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from app.ai import prompts
 from app.ai.llm import AIUnavailable, complete_for_domain
 from app.ai.redact import redact
-from app.ai.retrieval import Hit, KnowledgeScope, exact_memory, hybrid_search
+from app.ai.retrieval import Hit, KnowledgeScope, exact_memory, hybrid_search, incident_ref, incident_refs
 from app.core.ids import uuid7
 from app.core.sse import publish_sse
 from app.core.timeline import add_timeline
@@ -81,10 +81,12 @@ async def _similar(conn: asyncpg.Connection, hits: list[Hit]) -> tuple[list[dict
             [h.alert_id for h in incident_hits],
         )
     }
+    refs = await incident_refs(conn, [h.alert_id for h in incident_hits if h.alert_id])
     incidents = [
         {
             "alertId": str(h.alert_id),
-            "title": h.title,
+            **incident_ref(refs, h.alert_id, h.title),
+            "resolvedAt": (refs.get(h.alert_id) or {}).get("resolvedAt"),
             "similarity": round(h.similarity, 3),
             "resolutionNote": notes.get(h.alert_id) or _note_of(h.text),
         }
@@ -123,7 +125,9 @@ def validate_answer(
 
 def _degraded_diagnosis(fixed_before: list[dict[str, Any]]) -> str:
     if fixed_before:
-        return f"AI unavailable. Fixed before: {fixed_before[0]['resolutionNote']}"
+        first = fixed_before[0]
+        where = f" ({first['shortId']} {first['title']})" if first.get("shortId") else ""
+        return f"AI unavailable. Fixed before{where}: {first['resolutionNote']}"
     return "AI unavailable. Showing matching history and knowledge only."
 
 

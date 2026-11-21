@@ -167,6 +167,71 @@ async def test_ai_unavailable_saves_the_deterministic_part_as_degraded(seeded, l
     assert "AI unavailable" in timeline
 
 
+async def test_degraded_history_entries_carry_title_short_id_and_resolution(
+    seeded, llm, runbook_for, client, auth_headers
+):
+    """No LLM: fixed-before and similar incidents still name the past alert (never a bare uuid)."""
+    runbook_for(STEPS)
+    key = f"kk-{uuid4().hex}"
+    first = await make_alert(seeded, knowledge_key=key, status="resolved", title="Margin call feed stalled")
+    await seeded.execute("UPDATE alerts SET resolved_at = now() WHERE id = $1", first["id"])
+    resolution = await add_resolution(seeded, first, "Restarted the margin feed consumer.")
+    async with seeded.acquire() as conn:
+        await index_resolution(conn, resolution)
+    alert = await make_alert(seeded, knowledge_key=key, title="Margin call feed stalled again")
+    llm.fail = True
+    async with seeded.acquire() as conn:
+        await generate_suggestion(conn, alert["id"])
+    content = (await stored(seeded, alert["id"]))["content"]
+    (fixed,) = content["fixedBefore"]
+    assert fixed["title"] == "Margin call feed stalled" and fixed["shortId"] == f"A-{first['short_id']}"
+    assert fixed["resolvedAt"] and fixed["resolutionNote"] == "Restarted the margin feed consumer."
+    assert f"A-{first['short_id']}" in content["diagnosis"]
+    similar = next(s for s in content["similarIncidents"] if s["alertId"] == str(first["id"]))
+    assert similar["title"] == "Margin call feed stalled" and similar["shortId"] == f"A-{first['short_id']}"
+
+    headers = await auth_headers("anna@demo")
+    api = (await client.get(f"/v1/alerts/{alert['id']}/suggestion", headers=headers)).json()
+    assert api["fixedBefore"][0]["shortId"] == f"A-{first['short_id']}"
+    assert api["source"] == "heuristic" and api["aiUnavailable"] is True
+    assert api["fixedBefore"][0]["title"] == "Margin call feed stalled"
+    detail = (await client.get(f"/v1/alerts/{alert['id']}", headers=headers)).json()
+    assert detail["suggestion"]["similarIncidents"][0]["title"] == "Margin call feed stalled"
+    assert detail["suggestion"]["source"] == "heuristic"
+    herald = (
+        await client.get(f"/api/alerts/{alert['short_id']}", headers={"X-Herald-User": "person:anna"})
+    ).json()
+    assert herald["suggestion"]["fixedBefore"][0]["shortId"] == f"A-{first['short_id']}"
+
+
+async def test_old_stored_content_is_enriched_on_read(seeded):
+    from app.ai.retrieval import enrich_history
+
+    past = await make_alert(seeded, title="Old incident", status="resolved")
+    content = {
+        "fixedBefore": [{"alertId": str(past["id"]), "resolutionNote": "x"}],
+        "similarIncidents": [
+            {"alertId": str(uuid4()), "title": str(uuid4()), "similarity": 0.5},
+            "garbage",
+        ],
+    }
+    async with seeded.acquire() as conn:
+        out = await enrich_history(conn, content)
+        assert await enrich_history(conn, {"diagnosis": "d"}) == {"diagnosis": "d"}
+    assert out["fixedBefore"][0]["title"] == "Old incident"
+    assert out["fixedBefore"][0]["shortId"] == f"A-{past['short_id']}"
+    assert out["similarIncidents"] == [
+        {
+            "alertId": content["similarIncidents"][0]["alertId"],
+            "title": "Past incident",  # unknown alert and a uuid-looking title
+            "shortId": None,
+            "resolvedAt": None,
+            "similarity": 0.5,
+            "resolutionNote": "",
+        }
+    ]
+
+
 async def test_one_suggestion_per_alert_and_the_severity_gate(seeded, llm):
     llm.responses = {"fast": {"diagnosis": "d", "confidence": 0.5}}
     alert = await make_alert(seeded, knowledge_key=None)
