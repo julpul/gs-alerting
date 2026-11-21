@@ -53,6 +53,36 @@ ON CONFLICT (rule_id, fingerprint) WHERE status <> 'resolved' DO UPDATE SET
 RETURNING *, (xmax = 0) AS inserted, (SELECT severity FROM prev) AS prev_severity
 """
 
+# Fast path for duplicates: a plain UPDATE of the open alert. Besides being cheaper than the upsert, it
+# avoids consuming `short_id` sequence values (the upsert evaluates column defaults before detecting
+# the conflict, which made A-6 jump to A-507 after a 500-event storm).
+_BUMP = (
+    """
+WITH prev AS (
+    SELECT id, severity FROM alerts
+    WHERE rule_id = $1 AND fingerprint = $2 AND status <> 'resolved'
+    FOR UPDATE
+)
+UPDATE alerts AS a SET
+    count = a.count + 1,
+    last_seen_at = now(),
+    severity = CASE
+        WHEN array_position(ARRAY['info', 'warning', 'error', 'critical'], $3::text)
+           > array_position(ARRAY['info', 'warning', 'error', 'critical'], a.severity)
+        THEN $3::text ELSE a.severity END,
+    flags = ARRAY(SELECT DISTINCT f FROM unnest(a.flags || $4::text[]) AS f ORDER BY f),
+    grouped_items = CASE
+        WHEN jsonb_array_length($5::jsonb) = 0
+          OR jsonb_array_length(a.grouped_items) >= """
+    + str(GROUPED_ITEMS_CAP)
+    + """ THEN a.grouped_items
+        ELSE a.grouped_items || $5::jsonb END
+FROM prev
+WHERE a.id = prev.id
+RETURNING a.*, false AS inserted, prev.severity AS prev_severity
+"""
+)
+
 
 @dataclass
 class RenderedAlert:
@@ -153,26 +183,11 @@ async def upsert_alert(
     flags = sorted(set(rendered.flags))
 
     async with conn.transaction():
-        row = await conn.fetchrow(
-            _UPSERT,
-            uuid7(),
-            team_uuid,
-            rendered.domain_id,
-            rule_uuid,
-            UUID(envelope["source_id"]),
-            fingerprint,
-            key,
-            rendered.title,
-            rendered.body,
-            rendered.severity,
-            rendered.color,
-            parse_received_at(envelope["received_at"]),
-            flags,
-            rendered.fields,
-            envelope["raw"],
-            grouped,
-            UUID(str(runbook_id)) if runbook_id else None,
-        )
+        row = await conn.fetchrow(_BUMP, rule_uuid, fingerprint, rendered.severity, flags, grouped)
+        if row is None:  # no open alert yet (or a race with another worker: the upsert handles it)
+            row = await _insert(
+                conn, envelope, rendered, team_uuid, rule_uuid, fingerprint, key, flags, grouped, runbook_id
+            )
         alert = dict(row)
         inserted = alert.pop("inserted")
         prev_severity = alert.pop("prev_severity")
@@ -192,6 +207,40 @@ async def upsert_alert(
         outbox_ids=outbox_ids,
         alert=alert,
         severity_increased=increased,
+    )
+
+
+async def _insert(
+    conn: asyncpg.Connection,
+    envelope: dict[str, Any],
+    rendered: RenderedAlert,
+    team_uuid: UUID,
+    rule_uuid: UUID,
+    fingerprint: str,
+    key: str,
+    flags: list[str],
+    grouped: list[dict[str, Any]],
+    runbook_id: Any,
+) -> asyncpg.Record:
+    return await conn.fetchrow(
+        _UPSERT,
+        uuid7(),
+        team_uuid,
+        rendered.domain_id,
+        rule_uuid,
+        UUID(envelope["source_id"]),
+        fingerprint,
+        key,
+        rendered.title,
+        rendered.body,
+        rendered.severity,
+        rendered.color,
+        parse_received_at(envelope["received_at"]),
+        flags,
+        rendered.fields,
+        envelope["raw"],
+        grouped,
+        UUID(str(runbook_id)) if runbook_id else None,
     )
 
 
