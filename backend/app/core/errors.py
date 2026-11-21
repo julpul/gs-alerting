@@ -68,7 +68,10 @@ async def _http_error(_: Request, exc: StarletteHTTPException) -> ORJSONResponse
     return response
 
 
-async def _validation_error(_: Request, exc: RequestValidationError) -> ORJSONResponse:
+async def _validation_error(request: Request, exc: RequestValidationError) -> ORJSONResponse:
+    if request.url.path.startswith("/api/"):  # Herald UI BFF: FastAPI's own `{detail: [...]}` shape
+        detail = [{"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
+        return ORJSONResponse({"detail": detail}, status_code=422)
     errors = [{"path": _field_path(e["loc"]), "message": e["msg"], "type": e["type"]} for e in exc.errors()]
     first = errors[0] if errors else {"path": "", "message": "invalid request"}
     return ORJSONResponse(

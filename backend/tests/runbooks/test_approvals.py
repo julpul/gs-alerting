@@ -243,3 +243,31 @@ async def test_all_channels_failing_is_recorded_not_raised(seeded, gw):
         and {r["status"] for r in statuses} == {"dead_lettered"}
         and "down" in statuses[0]["last_error"]
     )
+
+
+async def test_four_eyes_requester_cannot_approve_own_request(seeded):
+    from uuid import uuid4
+
+    from app.core.errors import AppError
+    from app.runbooks.approvals import decide
+
+    user_id = await seeded.fetchval("SELECT id FROM users WHERE email = 'root.settlements@demo'")
+    async with seeded.acquire() as conn:
+        approval_id = await conn.fetchval(
+            "INSERT INTO approvals (id, status, origin, requested_by, action, parameters, risk, reason, "
+            "approver_user_ids, expires_at, created_at) VALUES ($1, 'pending', 'runbook_step', $2, "
+            "'restart_service', '{}', 'high', 'test', ARRAY[$3::uuid], now() + interval '15 minutes', now()) "
+            "RETURNING id",
+            uuid4(),
+            {"type": "user", "id": str(user_id), "name": "Root"},
+            user_id,
+        )
+        actor = {"type": "user", "id": str(user_id), "name": "Root"}
+        try:
+            await decide(conn, approval_id, decision="approve", actor=actor, comment=None)
+        except AppError as exc:
+            assert exc.status_code == 403 and "four-eyes" in exc.message
+        else:
+            raise AssertionError("self-approval must be refused")
+        rejected = await decide(conn, approval_id, decision="reject", actor=actor, comment="withdrawn")
+        assert rejected["status"] == "rejected"  # withdrawing your own request is fine

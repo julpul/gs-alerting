@@ -255,6 +255,15 @@ async def _safe_sse(event: str, data: dict[str, Any], team_ids: list[UUID], user
         log.exception("SSE publish of %s failed", event)
 
 
+def _is_own_request(row: asyncpg.Record, user_id: UUID) -> bool:
+    """Four-eyes: a person cannot approve a risky action they requested themselves. An agent's request
+    (MCP `request_approval`) is meant to be approved by the human it acts for, so it is allowed."""
+    requested = row["requested_by"] or {}
+    if requested.get("type") != "user":
+        return False
+    return parse_uuid(str(requested.get("id") or requested.get("userId") or "")) == user_id
+
+
 async def can_decide(conn: asyncpg.Connection, row: asyncpg.Record, user_id: UUID) -> bool:
     """Listed approvers, the Domain Root of the alert's domains, and masters."""
     if user_id in row["approver_user_ids"]:
@@ -345,6 +354,8 @@ async def decide_with_effects(
             expired = True
         elif row["status"] != "pending":
             raise AppError(409, "conflict", f"approval is already {row['status']}")
+        elif decision == "approve" and _is_own_request(row, user_id):
+            raise forbidden("four-eyes rule: someone other than the requester must approve this")
         elif not await can_decide(conn, row, user_id):
             raise forbidden("you are not an approver of this request")
         else:

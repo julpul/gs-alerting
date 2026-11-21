@@ -178,6 +178,16 @@ async def assign_alert(
     return True
 
 
+async def unassign_alert(conn: asyncpg.Connection, alert: asyncpg.Record, user: User) -> bool:
+    if alert["assignee_id"] is None:
+        return False
+    actor = user_actor(user.id, user.display_name)
+    await conn.execute("UPDATE alerts SET assignee_id = NULL WHERE id = $1", alert["id"])
+    await add_timeline(conn, alert["id"], "assigned", f"Unassigned by {user.display_name}", actor=actor)
+    await audit(conn, actor, "alert.unassign", "alert", str(alert["id"]), {})
+    return True
+
+
 async def add_comment(
     conn: asyncpg.Connection,
     alert: asyncpg.Record,

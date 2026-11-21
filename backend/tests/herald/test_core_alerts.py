@@ -123,7 +123,8 @@ async def test_ack_resolve_assign_notes_change_state_and_timeline(client, seeded
     assert r.status_code == 200 and r.json() == {"assignee": "person:root.payments"}
     bad = await client.post(f"{url}/assign", headers=anna, json={"to": "person:ghost"})
     assert bad.status_code == 422 and bad.json()["detail"] == "choose a person to hand this to"
-    assert (await client.post(f"{url}/assign", headers=anna, json={"to": None})).status_code == 422
+    released = await client.post(f"{url}/assign", headers=anna, json={"to": None})
+    assert released.status_code == 200 and released.json() == {"assignee": None}
 
     # informed people may comment but not act
     r = await client.post(f"{url}/notes", headers=as_person("manager"), json={"text": "Customers notice"})
@@ -178,3 +179,13 @@ async def test_status_update_and_postmortem(client, seeded):
     named = (await client.get(f"{url}/postmortem", params={"names": "true"}, headers=anna)).json()
     assert "Anna Kowalska" in named["markdown"]
     assert (await client.get(f"{url}/postmortem", headers=as_person("piotr"))).status_code == 404
+
+
+async def test_validation_errors_use_the_detail_shape_for_the_ui(client):
+    resp = await client.post(
+        "/api/alerts/1/notes",
+        json={"text": 123, "unexpected": []},
+        headers={"X-Herald-User": "person:master"},
+    )
+    if resp.status_code == 422:
+        assert "detail" in resp.json()

@@ -85,6 +85,7 @@ async def test_lowering_the_cap_clamps_the_level(seeded):
 
 async def test_five_approved_runs_through_the_api_promote_retry_workflow(client, auth_headers, seeded, gw):
     root = await auth_headers("root.settlements@demo")
+    approver = await auth_headers("master@demo")  # four-eyes: the requester cannot approve their own run
     put = await client.put(
         "/v1/action-trust/settlements/retry_workflow", headers=root, json={"level": "run_after_approval"}
     )
@@ -94,7 +95,7 @@ async def test_five_approved_runs_through_the_api_promote_retry_workflow(client,
         step = (await client.post(f"/v1/alerts/{alert['id']}/runbook/steps/s2/run", headers=root)).json()
         assert step["state"] == "pending_approval", i
         done = await client.post(
-            f"/v1/approvals/{step['approvalId']}/decision", headers=root, json={"decision": "approve"}
+            f"/v1/approvals/{step['approvalId']}/decision", headers=approver, json={"decision": "approve"}
         )
         assert done.json()["status"] == "approved"
     listed = (await client.get("/v1/action-trust?domainId=settlements", headers=root)).json()

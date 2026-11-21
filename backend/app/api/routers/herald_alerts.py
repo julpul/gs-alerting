@@ -201,9 +201,16 @@ async def resolve(
 
 @router.post("/{alert_id}/assign")
 async def assign(alert_id: str, body: AssignBody, who: Actor, pool: Pool) -> dict[str, Any]:
-    """Hand the alert to a person (`person:<id>`). Unassigning (`to: null`) is not supported by our API."""
+    """Hand the alert to a person (`person:<id>`); `to: null` takes it back (unassigned)."""
     if not body.to:
-        raise AppError(422, "validation_error", "unassigning is not supported; hand it to a person")
+
+        async def release(conn: asyncpg.Connection, row: asyncpg.Record) -> bool:
+            return await actions.unassign_alert(conn, row, who.model)
+
+        changed, summary, row = await _mutate(pool, alert_id, who, release)
+        if changed:
+            await _publish("alert.updated", summary, row["team_id"])
+        return {"assignee": None}
     async with pool.acquire() as conn:
         person = await user_for_person(conn, body.to) if body.to.startswith("person:") else None
     if person is None:
