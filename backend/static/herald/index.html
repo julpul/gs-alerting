@@ -341,10 +341,9 @@ a{color:var(--accent)}
 .navb{align-items:center;height:36px;padding:0 8px;border-radius:3px;font-weight:500;color:var(--grey);white-space:nowrap}
 .navb:hover{background:var(--neutral)} .navb .ic{margin:0;color:var(--grey)}
 .navb[aria-current="page"]{background:var(--accent-soft);color:var(--accent)} .navb[aria-current="page"] .ic{color:var(--accent)}
-.navfoot{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--line)}
 .nb{background:var(--crit);border:0;color:#fff;border-radius:8px;padding:0 6px;font:600 12px/16px var(--font-body);margin-left:auto}
 @media (max-width:860px){ .shell,.shell.gut{grid-template-columns:minmax(0,1fr)} #nav{position:static;height:auto;flex-direction:row;border-right:0;border-bottom:1px solid var(--line);padding:8px 12px}
-  .navfoot{display:contents} .navsep{display:none} #main{padding:16px 16px 96px} .tagline{display:none} }
+ .navsep{display:none} #main{padding:16px 16px 96px} .tagline{display:none} }
 /* Button */
 .btn{height:32px;padding:0 12px;border:0;border-radius:3px;background:var(--neutral);color:var(--ink);font-weight:500;font-size:14px;gap:6px}
 .btn:hover{background:var(--neutral-h)}
@@ -667,7 +666,6 @@ body.nav-hidden .top-in{padding-left:32px} body.nav-hidden .brand{margin-left:0}
 #drawerHead h1{font:600 24px/28px var(--font-body);color:var(--ink)}
 body[data-level="L0"] .tmid>*,body[data-level="L0"] .tright .iconbtn{visibility:hidden}
 body[data-level="L1"] .tmid .create{visibility:hidden}
-body[data-level="L0"] .navfoot,body[data-level="L1"] .navfoot{display:none}
 .hochg{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px} .hochg h3{margin:0}
 .hodiff{margin:0;font:12px/1.6 var(--font-mono);background:var(--sunk);border-radius:6px;padding:10px 12px;overflow-x:auto}
 .hodiff span{display:block} .hodiff .add{background:#dcfff1;color:#164b35} .hodiff .del{background:#ffeceb;color:#8c2217}
@@ -1574,10 +1572,7 @@ function navHtml(){const mine=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef=
     +`<div class="navsub" ${S.platOpen?'':'hidden'}>${S.platforms.map(x=>{const n=x.firing+x.acked;return `<button class="navb" data-act="openPlatform" data-id="${esc(x.id)}" ${S.view==='platforms'&&S.platform===x.id?'aria-current="page"':''} title="${esc(x.name)}${n?': '+n+' open problem'+(n>1?'s':''):': no open problems'}">${ptile(x.id)}<span class="nl">${esc(x.name)}</span>${n?`<span class="cnt ${x.firing?'red':''}">${n}</span>`:''}</button>`;}).join('')}</div>`
     +item('rules','Rules','flow','',S.view==='rules')+item('flows','Escalation flows','branch','',S.view==='flows')+item('runbooks','Runbooks','clipboard_task_list_ltr','',S.view==='runbooks')+sep
     +item('preferences','Teams','people_team','',S.view==='preferences')+item('oncall','On-call','clock','',S.view==='oncall')+sep
-    +item('metrics','Metrics','pulse','',S.view==='metrics')+item('knowledge','History','book_open','',S.view==='knowledge')+item('audit','Activity log','history','',S.view==='audit')+item('agents','Agents & MCP','code','',S.view==='agents')
-    +`<div class="navfoot">`+item('settings','Settings','settings','',S.view==='settings')+item('report','Report a problem','megaphone','',S.view==='report')
-    +`<a class="navb" href="/lab.html" target="_blank" rel="noopener" title="Pages that play the connected platforms and send test cases">${ic('beaker')}<span class="nl">Test lab</span>${ic('open','sm')}</a>`
-    +`<button class="navb sub" data-act="nav" data-view="deliveries" ${S.view==='deliveries'?'aria-current="page"':''} title="The demo inbox: the messages the fake phone and mailbox received">${ic('send','sm')}<span class="nl">Sent messages (demo inbox)</span></button></div>`;}
+    +item('metrics','Metrics','pulse','',S.view==='metrics')+item('knowledge','History','book_open','',S.view==='knowledge')+item('audit','Activity log','history','',S.view==='audit')+item('agents','Agents & MCP','code','',S.view==='agents');}
 /* Everyone in the directory, grouped by team (lead first, then the on-call person, then the members). People in no team with
    rules (Master, management, informed people) are listed under "Organisation". */
 function personas(){const groups=[],seen={};
