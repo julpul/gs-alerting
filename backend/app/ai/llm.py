@@ -149,11 +149,38 @@ def extract_json(text: str) -> Any:
         return json.loads(cleaned[start : end + 1])
 
 
-def response_format(schema: type[BaseModel]) -> dict[str, Any]:
-    return {
-        "type": "json_schema",
-        "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema(), "strict": False},
-    }
+def _has_free_form_object(node: Any) -> bool:
+    """True when the schema has an object with open keys (e.g. `dict[str, Any]`).
+
+    Providers' structured-output modes (Anthropic) force such objects to `{}`, so the model
+    cannot return their content; those schemas go into the prompt instead.
+    """
+    if isinstance(node, dict):
+        if (
+            node.get("type") == "object"
+            and "properties" not in node
+            and node.get("additionalProperties", True)
+        ):
+            return True
+        return any(_has_free_form_object(v) for v in node.values())
+    if isinstance(node, list):
+        return any(_has_free_form_object(v) for v in node)
+    return False
+
+
+def response_format(schema: type[BaseModel]) -> dict[str, Any] | None:
+    """The provider-enforced JSON schema, or None when the schema has open objects (see above)."""
+    js = schema.model_json_schema()
+    if _has_free_form_object(js):
+        return None
+    return {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": js, "strict": False}}
+
+
+def schema_instruction(schema: type[BaseModel]) -> str:
+    return (
+        "\n\nReply with only one JSON object (no prose, no code fences) that matches this JSON schema:\n"
+        + json.dumps(schema.model_json_schema(), separators=(",", ":"))
+    )
 
 
 class LiteLLMClient:
@@ -193,6 +220,7 @@ class LiteLLMClient:
         override: LLMOverride | None,
     ) -> tuple[str, str]:
         fmt = response_format(schema)
+        extra: dict[str, Any] = {"response_format": fmt} if fmt is not None else {}
         try:
             if override is not None:
                 import litellm
@@ -202,7 +230,7 @@ class LiteLLMClient:
                     litellm.acompletion(
                         model=override.litellm_model(),
                         messages=messages,
-                        response_format=fmt,
+                        **extra,
                         api_key=override.api_key,
                         api_base=override.base_url,
                         timeout=CALL_TIMEOUT_S,
@@ -215,7 +243,7 @@ class LiteLLMClient:
             else:
                 resp = await asyncio.wait_for(
                     self._get_router().acompletion(
-                        model=tier, messages=messages, response_format=fmt, max_tokens=MAX_OUTPUT_TOKENS
+                        model=tier, messages=messages, max_tokens=MAX_OUTPUT_TOKENS, **extra
                     ),
                     OVERALL_TIMEOUT_S,
                 )
@@ -239,6 +267,8 @@ class LiteLLMClient:
         override: LLMOverride | None = None,
     ) -> LLMResult:
         started = time.perf_counter()
+        if response_format(schema) is None:
+            system += schema_instruction(schema)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         for attempt in (1, 2):
             content, used = await self._call(messages, schema, tier, override)

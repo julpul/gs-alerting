@@ -230,3 +230,18 @@ async def test_live_provider_returns_structured_output():
         system="Answer with JSON only.", user='Return {"value": 42, "label": "ok"}.', schema=Answer
     )
     assert result.parsed.value == 42 and result.model
+
+
+class OpenAnswer(BaseModel):
+    rule: dict[str, Any]
+
+
+async def test_open_dict_schemas_go_into_the_prompt_not_the_provider_schema():
+    """Anthropic structured output turns `dict[str, Any]` into `{}`, so the model could not fill it."""
+    router = ScriptedRouter('{"rule": {"name": "r", "match": {"field": "a"}}}')
+    client = LiteLLMClient(settings(anthropic_api_key="k"), router=router)
+    result = await client.complete(system="sys", user="usr", schema=OpenAnswer, tier="smart")
+    assert result.parsed.rule == {"name": "r", "match": {"field": "a"}}
+    call = router.calls[0]
+    assert "response_format" not in call
+    assert call["messages"][0]["content"].startswith("sys") and '"rule"' in call["messages"][0]["content"]
