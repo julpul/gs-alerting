@@ -7,6 +7,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.config import get_settings
 from app.core.ids import ORG_ID, stable_id
 from app.core.security import hash_password
 from seed.loaders._support import profile
@@ -32,6 +33,7 @@ def _scope(role: dict[str, Any], domains: dict[str, UUID], teams: dict[str, UUID
 
 async def _upsert_users(conn: asyncpg.Connection, org: dict[str, Any], user_id: dict[str, UUID]) -> None:
     existing = {r["id"] for r in await conn.fetch("SELECT id FROM users")}
+    password = get_settings().demo_password  # set on a shared server: every demo user gets it (never logged)
     password_hash: str | None = None
     for u in org["users"]:
         uid = user_id[u["email"]]
@@ -44,8 +46,11 @@ async def _upsert_users(conn: asyncpg.Connection, org: dict[str, Any], user_id: 
                 u.get("phone"),
                 timezone,
             )
+            if password:
+                password_hash = password_hash or hash_password(password)
+                await conn.execute("UPDATE users SET password_hash = $2 WHERE id = $1", uid, password_hash)
             continue
-        password_hash = password_hash or hash_password(org["password"])
+        password_hash = password_hash or hash_password(password or org["password"])
         await conn.execute(
             "INSERT INTO users (id, email, display_name, password_hash, phone, timezone) "
             "VALUES ($1, $2, $3, $4, $5, $6)",

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -33,13 +34,15 @@ async def me(who: Actor, pool: Pool) -> dict[str, Any]:
             "SELECT slug FROM teams WHERE id = ANY($1) ORDER BY slug", list(who.scope.team_ids)
         )
     return {
-        "mode": "demo",
+        "mode": get_settings().auth_mode,
         "user": who.ref,
         "name": who.user["display_name"],
         "role": who.herald_role,
         "teams": [r["slug"] for r in rows],
-        "provider": None,
-        "auth_time": None,
+        "provider": who.session["provider"] if who.session else None,
+        "auth_time": datetime.fromtimestamp(who.session["authTime"], tz=UTC).isoformat()
+        if who.session
+        else None,
         "email": who.user["email"],
         "userId": str(who.user_id),
     }
@@ -58,7 +61,7 @@ async def meta() -> dict[str, Any]:
         ],
         "roles": ["viewer", *HERALD_ROLES],
         "version": VERSION,
-        "auth": {"mode": "demo", "sso": False},
+        "auth": {"mode": settings.auth_mode, "sso": settings.auth_mode == "oidc"},
         "links": {
             "mailpit": settings.public_mailpit_url,
             "mockgw": settings.public_mockgw_url,

@@ -19,6 +19,7 @@ from app.core.errors import ORJSONResponse, install_error_handlers
 from app.core.logging import setup_logging
 from app.core.rabbit import Rabbit
 from app.core.redis import close_redis, get_redis
+from app.herald.oidc import config_problems
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging(settings.log_level)
+    if problems := config_problems(settings):
+        raise RuntimeError("refusing to start: " + "; ".join(problems))
     app = FastAPI(
         title="Flexible Alerting & Notification Service",
         version="0.1.0",

@@ -34,6 +34,26 @@ class Settings(BaseSettings):
     # Shared secret the SMS gateway sends as `X-Inbound-Secret` on /v1/inbound/sms. Empty = check off.
     inbound_sms_secret: str = ""
 
+    # sign-in: demo ("Viewing as" switcher, no login), password (users table), oidc (SSO + password form)
+    auth_mode: str = "demo"
+    session_ttl_seconds: int = 8 * 3600
+    login_max_failures: int = 5
+    login_failure_window_seconds: int = 60
+    # Behind a reverse proxy that sets X-Forwarded-For (Railway, nginx): use it as the client address.
+    trust_forwarded_for: bool = False
+    # Seed only: password of every demo user (empty = `demo`).
+    demo_password: str = ""
+    # OpenID Connect provider (Keycloak, Entra ID, ...). The discovery URL is separate when the api reaches
+    # the provider by another name than browsers do (Keycloak in Docker).
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_label: str = "Continue with SSO"
+    oidc_discovery_url: str = ""
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: str = ""
+
     # LLM (LiteLLM; keys optional)
     llm_model_fast: str = ""
     llm_model_smart: str = ""

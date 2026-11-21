@@ -5,6 +5,7 @@ Demo mode (the UI's "Viewing as" switcher) sends `X-Herald-User: person:<id>`, `
 Authorization always uses OUR scope/roles of that user (the role header is only a UI hint).
 A Bearer JWT / PAT (our /v1 auth) is accepted too and wins over the headers.
 Without any identity the caller is `master@demo` (demo default, like Herald's `person:demo` admin).
+With AUTH_MODE=password|oidc none of that applies: only the sign-in session cookie identifies the caller.
 """
 
 from __future__ import annotations
@@ -16,8 +17,10 @@ from uuid import UUID
 import asyncpg
 from fastapi import Depends, Request
 
+from app.config import get_settings
 from app.core.errors import AppError
 from app.core.scope import Scope, current_user, load_scope
+from app.herald.session import SESSION_COOKIE, load_session
 from app.schemas.internal import User
 
 HERALD_ROLES = ("responder", "approver", "editor", "admin")
@@ -31,6 +34,7 @@ class HeraldActor:
     ref: str  # "person:<id>"
     role: str  # UI hint from X-Herald-Role (responder|approver|editor|admin)
     teams: list[str]  # team slugs from X-Herald-Teams (UI "acting for" hint)
+    session: dict[str, Any] | None = None  # sign-in session (password / oidc modes), None in demo mode
 
     @property
     def user_id(self) -> UUID:
@@ -82,7 +86,31 @@ async def user_by_person(conn: asyncpg.Connection, ref: str) -> asyncpg.Record |
     )
 
 
+async def _session_actor(request: Request) -> HeraldActor:
+    """password / oidc modes: the server-side session is the only identity; headers and tokens are ignored."""
+    session = await load_session(request.app.state.redis, request.cookies.get(SESSION_COOKIE))
+    if session is None:
+        raise AppError(401, "unauthorized", "sign in required")
+    async with request.app.state.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, email, display_name, phone, timezone FROM users WHERE id = $1", UUID(session["uid"])
+        )
+        if row is None:
+            raise AppError(401, "unauthorized", "sign in required")
+        scope = await load_scope(conn, row["id"])
+    return HeraldActor(
+        user=dict(row),
+        scope=scope,
+        ref=person_ref(row["email"]),
+        role=herald_role(scope),
+        teams=[],
+        session=session,
+    )
+
+
 async def herald_actor(request: Request) -> HeraldActor:
+    if get_settings().auth_mode != "demo":
+        return await _session_actor(request)
     pool: asyncpg.Pool = request.app.state.pool
     role = request.headers.get("x-herald-role", "admin")
     if role not in HERALD_ROLES:

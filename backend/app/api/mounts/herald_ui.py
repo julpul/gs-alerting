@@ -7,6 +7,8 @@ never reach the files and keep the normal JSON 404.
 
 `/ads` and everything under it (the retired second UI) redirect to `/`: there is one web app, the classic one.
 
+With AUTH_MODE=password|oidc the app pages (`/`, `/lab`) redirect to `/login?next=...` until signed in.
+
 Cache: HTML is `no-store` (a new build shows up on reload), hashed build assets (`name-<hash>.js`) are
 immutable for a year, everything else revalidates (`no-cache` + ETag).
 """
@@ -16,11 +18,16 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI
+from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from app.config import get_settings
+from app.herald.session import SESSION_COOKIE, load_session
 
 STATIC_DIR = Path(__file__).resolve().parents[3] / "static" / "herald"
 
@@ -40,6 +47,7 @@ API_PREFIXES = (
 )
 ALIASES = {"/login": "/login.html", "/lab": "/lab.html"}
 RETIRED = "/ads"
+PROTECTED_PAGES = ("/", "/index.html", "/lab", "/lab.html")
 HASHED = re.compile(r"-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|ttf|svg|png|jpg|webp|gif|ico|map)$")
 
 NO_STORE = "no-store"
@@ -53,6 +61,14 @@ def is_api_path(path: str) -> bool:
 
 def is_retired(path: str) -> bool:
     return path == RETIRED or path.startswith(f"{RETIRED}/")
+
+
+async def needs_sign_in(scope: Scope, receive: Receive) -> bool:
+    """True for the app pages when sign-in is on (AUTH_MODE=password|oidc) and this browser has no session."""
+    if get_settings().auth_mode == "demo" or scope.get("path") not in PROTECTED_PAGES:
+        return False
+    request = Request(scope, receive)
+    return await load_session(request.app.state.redis, request.cookies.get(SESSION_COOKIE)) is None
 
 
 def cache_control(file_path: str) -> str:
@@ -93,6 +109,13 @@ class UiFallback:
             return
         if is_retired(path):
             await RedirectResponse("/", status_code=302)(scope, receive, send)
+            return
+        if await needs_sign_in(scope, receive):
+            query = scope.get("query_string", b"").decode()
+            target = path + (f"?{query}" if query else "")
+            await RedirectResponse(f"/login?next={quote(target, safe='')}", status_code=302)(
+                scope, receive, send
+            )
             return
         if path in ALIASES:
             scope = {**scope, "path": ALIASES[path], "raw_path": ALIASES[path].encode()}

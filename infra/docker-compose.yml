@@ -24,6 +24,17 @@ x-backend: &backend
     APP_SECRET: ${APP_SECRET:-ZGV2LWFwcC1zZWNyZXQtMzItYnl0ZXMtbG9uZy1rZXkh}
     DEMO_FAST_ESCALATION: ${DEMO_FAST_ESCALATION:-false}
     ENVIRONMENT: local
+    # Sign-in (docs/SSO.md): demo | password | oidc. The OIDC defaults point at the demo Keycloak (profile `sso`).
+    AUTH_MODE: ${AUTH_MODE:-demo}
+    DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+    OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8180/realms/vistula}
+    OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/vistula/.well-known/openid-configuration}
+    OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-herald}
+    OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-herald-demo-client-secret-not-for-prod}
+    OIDC_LABEL: ${OIDC_LABEL:-Continue with SSO}
+    ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+    ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+    ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
   depends_on: &backend-deps
     postgres: { condition: service_healthy }
     redis: { condition: service_healthy }
@@ -31,6 +42,28 @@ x-backend: &backend
   restart: unless-stopped
 
 services:
+  # Demo identity provider, only with `--profile sso`. Browsers reach it at localhost:8180, the api as keycloak:8080;
+  # KC_HOSTNAME keeps one issuer for both. Realm "vistula" = our demo people (infra/keycloak/vistula-realm.json).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    profiles: [sso]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin-vistula-demo}
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports: ["127.0.0.1:8180:8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
   api:
     <<: *backend
     environment:

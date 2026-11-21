@@ -775,7 +775,7 @@ let seq=0;
 /* Who the service says is signed in (GET /api/me). Demo mode: you pick who you are under "Viewing as" and the browser sends it as headers.
    Single sign-on (mode "oidc"): the session cookie decides, the browser sends no identity headers, and you can switch only between your own teams. */
 let ME={mode:'demo'},leaving=false;
-const OIDC=()=>ME.mode==='oidc';
+const OIDC=()=>ME.mode!=='demo';   /* any signed-in mode (password or oidc) */
 const UI_ROLE={viewer:'responder',responder:'responder',editor:'editor',approver:'lead',admin:'lead'};
 const ROLE_WORD={viewer:'Viewer',responder:'Responder',editor:'Rule editor',approver:'Approver',admin:'Administrator'};
 const sso=(demoText,ssoText)=>OIDC()?ssoText:demoText;
@@ -2308,7 +2308,7 @@ async function loadMe(){let r=null,d=null;try{r=await fetch('/api/me',{credentia
   if(r&&r.status===401){let u;try{u=new URL(d&&typeof d.login_url==='string'?d.login_url:'/login',location.origin);}catch(e){}
     if(!u||u.origin!==location.origin)u=new URL('/login',location.origin);
     u.searchParams.set('next',location.pathname+location.search+location.hash);leaving=true;location.replace(u.pathname+u.search);return false;}
-  ME=r&&r.ok&&d&&d.mode==='oidc'?d:{mode:'demo'};return true;}
+  ME=r&&r.ok&&d&&d.mode&&d.mode!=='demo'?d:{mode:'demo'};return true;}
 async function boot(){
   try{if(!await loadMe())return;
     await loadDirectory();
