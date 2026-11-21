@@ -13,14 +13,18 @@ Stan: 2026-11-21. Jedno UI: klasyczny **The Herald** pod `/`. Stare `/ads/` prze
 | SMS / telefon (mockgw) | http://localhost:8090 | https://mockgw-production.up.railway.app |
 | Symulator Vistula Capital | http://localhost:8095 | https://simulator-production-ae5fd2bb.up.railway.app |
 
-Logowanie: menu profilu (prawy górny róg) → **Viewing as**. Osoby:
+Logowanie: strona **Sign in**, login `anna` albo `anna@demo` i hasło demo. Hasło nie jest w repo: lokalnie jest w `.env` (`DEMO_PASSWORD`), lista kont w `LOGINS.local.md` (plik spoza gita), na Railway w zmiennych serwisu `api`. Wylogowanie: avatar w prawym górnym rogu → **Sign out**. Dla administratora (`master`) jest tam też podgląd poziomów uprawnień (*Preview as level… (testing)*).
+
+Osoby:
 - `anna`: Payments, na dyżurze;
 - `piotr`: Settlements, na dyżurze;
 - `root.payments`, `root.settlements`: liderzy domen;
 - `master`;
 - `manager`: tylko informowany.
 
-Pozostałe osoby: `docs/DEMO_ORG.md`.
+Pozostałe osoby: `LOGINS.local.md` / `docs/DEMO_ORG.md`. Stary tryb bez logowania („Viewing as”): `AUTH_MODE=demo make up`. SSO z Keycloakiem: `docs/SSO.md`.
+
+Ukryte strony (bez linku w menu): `/#settings` (też zębatka w górnym pasku), `/#report`, `/#deliveries` (skrzynka demo), `/lab.html`.
 
 ## A. Główny scenariusz: jedna osoba, od zdarzenia do maila (≈ 5 min)
 
