@@ -82,9 +82,11 @@ export function Status({ value }: { value: keyof typeof STATUS }) {
 }
 const CHANNEL: Record<string, string> = { ui: 'In Herald', email: 'Email', sms: 'Text message', phone: 'Phone call' };
 export const channelName = (c: string) => CHANNEL[c] ?? c;
+/* An in-Herald message goes to the team's feed, not to one person: the service has no recipient for it. */
+export const isTeamFeed = (d: { recipient?: string | null; channel: string }) => d.channel === 'ui' && (!d.recipient || d.recipient === 'unknown');
 export function DeliveryState({ value }: { value: string }) {
-  const map: Record<string, 'success' | 'removed' | 'inprogress' | 'default'> = { sent: 'success', failed: 'removed', dead: 'removed', pending: 'inprogress' };
-  const label: Record<string, string> = { sent: 'Delivered', failed: 'Retrying', dead: 'Gave up', pending: 'Sending' };
+  const map: Record<string, 'success' | 'removed' | 'inprogress' | 'default'> = { sent: 'success', failed: 'removed', dead: 'removed', pending: 'inprogress', retrying: 'inprogress' };
+  const label: Record<string, string> = { sent: 'Delivered', failed: 'Retrying', retrying: 'Retrying', dead: 'Gave up', pending: 'Sending', suppressed: 'Held back' };
   return <Lozenge appearance={map[value] ?? 'default'}>{label[value] ?? value}</Lozenge>;
 }
 
@@ -151,3 +153,16 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 export const pretty = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+
+/* A document's title from its text: front-matter `title:`, else the first Markdown heading, else (when asked) the first line. */
+export function docTitle(text: string, firstLine = true): string | null {
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  const t = fm ? /^title:\s*["']?(.+?)["']?\s*$/m.exec(fm[1]) : null;
+  if (t) return t[1].trim().slice(0, 120);
+  const body = fm ? text.slice(fm[0].length) : text;
+  const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/m.exec(body);
+  if (heading) return heading[1].trim().slice(0, 120);
+  if (!firstLine) return null;
+  const line = body.split('\n').map((l) => l.replace(/^\s*(?:\d+[.)]|[-*])\s*/, '').trim()).find(Boolean);
+  return line ? line.slice(0, 120) : null;
+}

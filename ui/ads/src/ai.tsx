@@ -16,7 +16,9 @@ import { useHerald } from './store';
 import { RECONNECTED, stream, type StreamEvent } from './v1';
 
 /* ---- AI labelling ----------------------------------------------------------------------- */
-export function AiLabel({ text = 'AI suggestion' }: { text?: string }) {
+/* Only real model output is called AI. A draft built by rules of thumb (no model) says "Heuristic draft". */
+export function AiLabel({ text = 'AI suggestion', heuristic = false }: { text?: string; heuristic?: boolean }) {
+  if (heuristic) return <span className="ai-label"><Lozenge appearance="default">{text === 'AI suggestion' ? 'Heuristic draft' : text}</Lozenge></span>;
   return (
     <span className="ai-label">
       <AiIcon label="" size="small" />
@@ -25,19 +27,21 @@ export function AiLabel({ text = 'AI suggestion' }: { text?: string }) {
   );
 }
 
-export function AiDraft({ title, label, children, actions, footnote }: {
-  title: string; label?: string; children: ReactNode; actions?: ReactNode; footnote?: string;
+export function AiDraft({ title, label, children, actions, footnote, heuristic = false }: {
+  title: string; label?: string; children: ReactNode; actions?: ReactNode; footnote?: string; heuristic?: boolean;
 }) {
   return (
     <section className="ai-draft" aria-label={`${label ?? 'AI suggestion'}: ${title}`}>
       <Stack space="space.150">
         <Inline space="space.100" alignBlock="center" shouldWrap>
-          <AiLabel text={label} />
+          <AiLabel text={label} heuristic={heuristic} />
           <Text weight="semibold">{title}</Text>
         </Inline>
         {children}
         {actions && <Inline space="space.100" shouldWrap>{actions}</Inline>}
-        <Text size="small" color="color.text.subtlest">{footnote ?? 'Written by AI. Check it before you use it; nothing is applied until you press a button.'}</Text>
+        <Text size="small" color="color.text.subtlest">{footnote ?? (heuristic
+          ? 'Heuristic draft: built by rules of thumb because the AI model did not answer. Check it before you use it; nothing is applied until you press a button.'
+          : 'Written by AI. Check it before you use it; nothing is applied until you press a button.')}</Text>
       </Stack>
     </section>
   );

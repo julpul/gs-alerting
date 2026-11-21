@@ -46,6 +46,7 @@ import { Copilot } from './views/Copilot';
 import { Knowledge } from './views/Knowledge';
 import { Metrics } from './views/Metrics';
 import { OnCall } from './views/OnCall';
+import { PreferencesPage } from './views/Preferences';
 import { Alerts } from './views/Alerts';
 import { ConnectPlatform, PlatformPage, Platforms } from './views/Platforms';
 import { Activity, Rules, Runbooks, Sent, Teams } from './views/Lists';
@@ -146,6 +147,7 @@ export function App() {
       case 'rules': return <Rules />;
       case 'runbooks': return <Runbooks />;
       case 'teams': return <Teams />;
+      case 'preferences': return <PreferencesPage />;
       case 'sent': return <Sent />;
       case 'activity': return <Activity />;
       case 'copilot': return <Copilot alertId={route.parts[1]} />;
@@ -190,18 +192,32 @@ export function App() {
             <DropdownItemGroup title={`${h.me.name} · ${h.me.role}`}>
               {sso && <DropdownItem description={`Single sign-on${h.me.teams.length ? ` · team ${h.me.teams.join(', ')}` : ''}`} onClick={signOut}>Sign out</DropdownItem>}
             </DropdownItemGroup>
+            <DropdownItemGroup hasSeparator>
+              <DropdownItem href="#/preferences" description="Channels per severity, working hours">My notification preferences</DropdownItem>
+            </DropdownItemGroup>
             {!sso && (
               <>
-                <DropdownItemRadioGroup id="team" title="Viewing as team" hasSeparator>
-                  {h.scopes.map((s) => (
-                    <DropdownItemRadio key={s.id} id={s.id} isSelected={h.viewing.team === s.id} onClick={() => h.setViewing({ ...h.viewing, team: s.id })}>{s.name}</DropdownItemRadio>
-                  ))}
-                </DropdownItemRadioGroup>
-                <DropdownItemRadioGroup id="role" title="In the role of" hasSeparator>
-                  {([['responder', 'On-call person'], ['approver', 'Team lead (approves)'], ['editor', 'Rule editor']] as const).map(([id, label]) => (
-                    <DropdownItemRadio key={id} id={id} isSelected={h.viewing.role === id} onClick={() => h.setViewing({ ...h.viewing, role: id })}>{label}</DropdownItemRadio>
-                  ))}
-                </DropdownItemRadioGroup>
+                {h.viewTeams.length > 1 && (
+                  <DropdownItemRadioGroup id="team" title="Looking at team" hasSeparator>
+                    {h.viewing.person === 'master' && (
+                      <DropdownItemRadio id="all" isSelected={!h.viewing.team} onClick={() => h.setViewing({ ...h.viewing, team: '' })}>Every team</DropdownItemRadio>
+                    )}
+                    {h.viewTeams.map((s) => (
+                      <DropdownItemRadio key={s.id} id={s.id} isSelected={h.viewing.team === s.id} onClick={() => h.setViewing({ ...h.viewing, team: s.id })}>{s.name}</DropdownItemRadio>
+                    ))}
+                  </DropdownItemRadioGroup>
+                )}
+                {h.personas.map((g) => (
+                  <DropdownItemRadioGroup key={g.name} id={`as-${g.name}`} title={g.name === 'Organisation' ? 'Viewing as · Organisation' : g.name} hasSeparator>
+                    {g.items.map((p) => (
+                      <DropdownItemRadio key={`${g.name}-${p.id}`} id={`${g.name}-${p.id}`} description={p.what}
+                        isSelected={h.viewing.person === p.id && (!p.team || h.viewing.team === p.team)}
+                        onClick={() => h.setViewing({ role: 'responder', person: p.id, team: p.team ?? (p.id === 'master' ? '' : h.viewing.team) })}>
+                        {p.name}
+                      </DropdownItemRadio>
+                    ))}
+                  </DropdownItemRadioGroup>
+                ))}
               </>
             )}
           </DropdownMenu>

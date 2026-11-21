@@ -9,6 +9,7 @@ import SectionMessage from '@atlaskit/section-message';
 import TextArea from '@atlaskit/textarea';
 
 import { AiDraft, AiLabel, RawToggle } from '../ai';
+import { runbookName } from './Assistant';
 import { useHerald } from '../store';
 import { go, Page } from '../ui';
 import { chat, v1, V1Error, type ChatEvent, type Rule } from '../v1';
@@ -48,7 +49,8 @@ function DraftCard({ draft, onDone }: { draft: Draft; onDone: (how: 'saved' | 'r
       const { id: _id, version: _v, ...rule } = (data.draft ?? {}) as Rule;
       ok = await h.run(() => v1('/v1/rules', { body: rule }), `Rule “${rule.name}” saved`);
     } else if (draft.kind === 'runbook') {
-      ok = await h.run(() => v1('/v1/runbooks', { body: { name: data.name, format: data.format, steps: data.steps, attached: data.attached } }), 'Runbook saved');
+      const name = runbookName(data.name, String(data.source ?? (data.steps?.[0]?.text ?? '')));
+      ok = await h.run(() => v1('/v1/runbooks', { body: { name, format: data.format, steps: data.steps, attached: data.attached, ...(data.source ? { source: data.source } : {}) } }), `Runbook “${name}” saved`);
     } else if (draft.kind === 'mapping' && draft.args?.source_id) {
       const { status: _s, ...mapping } = data;
       ok = await h.run(() => v1(`/v1/sources/${draft.args?.source_id}/mapping`, { method: 'PUT', body: { ...mapping, status: 'accepted' } }), 'Mapping saved');
@@ -57,7 +59,7 @@ function DraftCard({ draft, onDone }: { draft: Draft; onDone: (how: 'saved' | 'r
     if (ok !== undefined) onDone('saved');
   };
   const title = draft.kind === 'rule' ? `Rule: ${data.draft?.name ?? 'draft'}`
-    : draft.kind === 'runbook' ? `Runbook: ${data.name ?? 'draft'}`
+    : draft.kind === 'runbook' ? `Runbook: ${runbookName(data.name, String(data.source ?? data.steps?.[0]?.text ?? ''))}`
       : draft.kind === 'mapping' ? 'Field mapping for a source' : `Approval request: ${String(data.action ?? '').replace(/_/g, ' ')}`;
   const canSave = draft.kind === 'rule' || draft.kind === 'runbook' || (draft.kind === 'mapping' && !!draft.args?.source_id);
   return (

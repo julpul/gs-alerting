@@ -16,7 +16,7 @@ import TextArea from '@atlaskit/textarea';
 
 import { api, type AlertDetail, type Approval, type Step, type Why } from '../api';
 import { useHerald, useLoad } from '../store';
-import { ago, channelName, clock, DeliveryState, Field, Loading, pretty, Severity, STATUS, Who } from '../ui';
+import { ago, channelName, clock, DeliveryState, Field, isTeamFeed, Loading, pretty, Severity, STATUS, Who } from '../ui';
 import { EscalationLine, isSuspicious, ResolveDialog, SuggestionPanel, SuspiciousBanner, useV1Alert } from './AlertAi';
 import { CopilotChat } from './Copilot';
 
@@ -255,7 +255,7 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
                 {detail.deliveries.map((d, i) => (
                   <Inline key={i} spread="space-between" alignBlock="center" space="space.100">
                     <Stack space="space.0">
-                      <Text>{h.name(d.recipient)}</Text>
+                      <Text>{isTeamFeed(d) ? 'Team feed' : h.name(d.recipient)}</Text>
                       <Text size="small" color="color.text.subtle">{channelName(d.channel)}{d.attempts > 1 ? `, ${d.attempts} tries` : ''}</Text>
                     </Stack>
                     <DeliveryState value={d.status} />
