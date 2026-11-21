@@ -17,6 +17,7 @@ import uvicorn
 
 from app.config import get_settings
 from app.core.logging import setup_logging
+from app.core.stats import run_stats_mirror, start_metrics_server
 from app.roles import API_ROLE, load_runner, parse_roles
 
 log = logging.getLogger("app.main")
@@ -55,6 +56,9 @@ async def serve_roles(roles: list[str], stop: asyncio.Event | None = None) -> No
     for role in roles:
         if role != API_ROLE:
             tasks[asyncio.create_task(load_runner(role)(stop), name=role)] = role
+    if API_ROLE not in roles:
+        start_metrics_server(settings.metrics_port)
+    mirror = asyncio.create_task(run_stats_mirror(stop), name="stats-mirror")
     log.info("started roles: %s", ", ".join(roles))
 
     stopper = asyncio.create_task(stop.wait())
@@ -63,6 +67,7 @@ async def serve_roles(roles: list[str], stop: asyncio.Event | None = None) -> No
     if server is not None:
         server.should_exit = True
     stopper.cancel()
+    mirror.cancel()
     results = await asyncio.gather(*tasks, return_exceptions=True)
     failures = [
         (tasks_role, r)
