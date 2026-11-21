@@ -31,7 +31,11 @@ def _load() -> Any:
             from fastembed import TextEmbedding
 
             log.info("loading embedding model %s", get_settings().embeddings_model)
-            _model = TextEmbedding(get_settings().embeddings_model, cache_dir=_cache_dir())
+            _model = TextEmbedding(
+                get_settings().embeddings_model,
+                cache_dir=_cache_dir(),
+                threads=get_settings().embeddings_threads,
+            )
         return _model
 
 

@@ -91,7 +91,12 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     setup_logging(settings.log_level)
     roles = parse_roles(args.role)
-    asyncio.run(serve_roles(roles))
+    try:  # uvloop: ~2x faster event loop for every role (installed with uvicorn[standard])
+        import uvloop
+    except ImportError:  # pragma: no cover - always present in the image
+        asyncio.run(serve_roles(roles))
+    else:
+        uvloop.run(serve_roles(roles))
 
 
 if __name__ == "__main__":

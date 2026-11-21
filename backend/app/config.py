@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     embeddings_model: str = "BAAI/bge-small-en-v1.5"
+    # ONNX threads for local embeddings. Kept small so the async AI worker never starves the hot path
+    # when it shares a host with ingest/worker processes.
+    embeddings_threads: int = 2
 
     # runtime
     app_role: str = "api"

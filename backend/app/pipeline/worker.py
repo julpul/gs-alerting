@@ -170,8 +170,7 @@ class Worker:
         except Exception:
             await self.redis.delete(key)
             raise
-        await self.redis.set(key, "1", ex=DONE_TTL)
-        return outcome
+        return outcome  # the claim is marked done inside `_finish`'s pipeline (one round trip)
 
     @staticmethod
     def _parse(body: bytes) -> dict[str, Any] | None:
@@ -295,6 +294,7 @@ class Worker:
                     approximate=True,
                 )
             pipe.hincrby(rkey("stats", "source", str(source_id)), outcome, 1)
+            pipe.set(rkey("evt", envelope["event_id"]), "1", ex=DONE_TTL)
             await pipe.execute()
         except Exception:
             log.warning("recording event stats failed", exc_info=True)

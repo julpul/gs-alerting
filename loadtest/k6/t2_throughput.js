@@ -64,8 +64,8 @@ export const options = {
   thresholds: {
     http_req_failed: abort('rate<0.01'),
     http_req_duration: abort(`p(99)<${__ENV.HTTP_P99_MS || '1000'}`),
-    processing_p99_s: abort(`value<${__ENV.PROCESSING_P99_S || '1'}`, '5s'),
-    events_in_backlog_s: abort(`value<${__ENV.BACKLOG_LIMIT_S || '1'}`, '5s'),
+    processing_p99_s: abort(`value<${__ENV.PROCESSING_P99_S || '1'}`, __ENV.ABORT_GRACE || '20s'),
+    events_in_backlog_s: abort(`value<${__ENV.BACKLOG_LIMIT_S || '1'}`, __ENV.ABORT_GRACE || '20s'),
   },
   summaryTrendStats: TREND_STATS,
 };

@@ -18,8 +18,10 @@ async def test_outbox_publishes_to_rabbit_and_marks_published(pool, rabbit):
 
     async def handler(msg):
         async with msg.process():
-            got.append(orjson.loads(msg.body))
-            done.set()
+            body = orjson.loads(msg.body)
+            if body.get("alertId") == "x":  # other test modules may leave their own ai.tasks behind
+                got.append(body)
+                done.set()
 
     consumer = Rabbit()
     await consumer.connect()

@@ -76,7 +76,9 @@ services:
 
   ai:
     <<: *backend
-    environment: { <<: *backend-env, APP_ROLE: ai }
+    environment: { <<: *backend-env, APP_ROLE: ai, EMBEDDINGS_THREADS: "2" }
+    # The AI worker is asynchronous (ai.tasks queue) and must never starve the hot path on a shared host.
+    cpus: 2
     depends_on:
       <<: *backend-deps
       api: { condition: service_healthy }
