@@ -778,7 +778,7 @@ let seq=0;
 /* Who the service says is signed in (GET /api/me). Demo mode: you pick who you are under "Viewing as" and the browser sends it as headers.
    Single sign-on (mode "oidc"): the session cookie decides, the browser sends no identity headers, and you can switch only between your own teams. */
 let ME={mode:'demo'},leaving=false;
-const OIDC=()=>ME.mode==='oidc';
+const OIDC=()=>ME.mode!=='demo';   /* any signed-in mode (password or oidc) */
 const UI_ROLE={viewer:'responder',responder:'responder',editor:'editor',approver:'lead',admin:'lead'};
 const ROLE_WORD={viewer:'Viewer',responder:'Responder',editor:'Rule editor',approver:'Approver',admin:'Administrator'};
 const sso=(demoText,ssoText)=>OIDC()?ssoText:demoText;
@@ -1707,7 +1707,7 @@ const roleLevel=()=>OIDC()?({viewer:'L0',responder:'L2',editor:'L3',approver:'L3
 const level=()=>S.level||roleLevel();
 const lvCan=v=>{const a=LV_VIEWS[level()];return !a||a.includes(v);};
 const lvSees=a=>level()!=='L1'||['warning','info','debug'].includes(a.severity)||a.imRef===me();
-function levelMenu(){const cur=level();return `<div class="msep"></div><div class="mlab">Access level${S.level?' (preview)':''}</div>`
+function levelMenu(){const cur=level();return `<div class="msep"></div><div class="mlab">${OIDC()?'Preview as level… (testing)':'Access level'+(S.level?' (preview)':'')}</div>`
   +Object.keys(LEVELS).map(k=>`<button data-act="level" data-v="${k}" aria-current="${k===cur}"><span class="cnt">${k}</span><span>${LEVELS[k][0]}<small>${LEVELS[k][1]}</small></span></button>`).join('')
   +(S.level?`<button data-act="level" data-v="">${ic('arrow_sync')}<span>Back to my own level (${roleLevel()})</span></button>`:'');}
 function lvPrune(){document.body.dataset.level=level();const nav=$('nav');if(!nav)return;
@@ -1940,7 +1940,9 @@ function render(){
   if(OIDC())accountMenu();else{
   const meName=pname(me())||'?';$('whoBtn').innerHTML=avatar(meName);$('whoBtn').title='Viewing as '+meName+'. Click to switch (demo).';
   $('whoMenu').hidden=S.menu!=='who';$('whoMenu').innerHTML=whoMenuHtml();}
-  $('whoMenu').innerHTML+=levelMenu();
+  if(!OIDC())$('whoMenu').innerHTML+=levelMenu();
+  else if(ME.role==='admin'){const m=$('whoMenu').innerHTML,i=m.lastIndexOf('<div class="msep"></div><button data-act="signOut">');   /* testing aid, admins only; Sign out stays last */
+    $('whoMenu').innerHTML=i<0?m+levelMenu():m.slice(0,i)+levelMenu()+m.slice(i);}
   $('createMenu').hidden=S.menu!=='create';$('createMenu').innerHTML=`<button data-act="createEvent">${ic('send')}<span>Event<small>Write an event to a platform and follow it</small></span></button><button data-act="createRule">${ic('flow')}<span>Rule<small>Decide which events alert whom</small></span></button><button data-act="createPlatform" ${canEdit()?'':'disabled'}>${ic('plug_connected')}<span>Platform<small>Connect a new system to Herald</small></span></button>`;
   const bell=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef===me()).length;$('bellN').hidden=!bell;$('bellN').textContent=bell;
   document.body.classList.toggle('nav-hidden',S.sideHidden);
@@ -2300,7 +2302,7 @@ async function loadMe(){let r=null,d=null;try{r=await fetch('/api/me',{credentia
   if(r&&r.status===401){let u;try{u=new URL(d&&typeof d.login_url==='string'?d.login_url:'/login',location.origin);}catch(e){}
     if(!u||u.origin!==location.origin)u=new URL('/login',location.origin);
     u.searchParams.set('next',location.pathname+location.search+location.hash);leaving=true;location.replace(u.pathname+u.search);return false;}
-  ME=r&&r.ok&&d&&d.mode==='oidc'?d:{mode:'demo'};return true;}
+  ME=r&&r.ok&&d&&d.mode&&d.mode!=='demo'?d:{mode:'demo'};return true;}
 async function boot(){
   try{if(!await loadMe())return;
     await loadDirectory();

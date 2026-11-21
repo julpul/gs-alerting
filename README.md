@@ -235,9 +235,12 @@ The in-app copilot (`POST /v1/agent/chat`, SSE) uses the same tool implementatio
 | | SMS and phone calls (`mockgw`) | one adapter class (e.g. Twilio) + env, see channels README |
 | | Workflow retry, service restart, failover, rollback, tickets (`mockgw`) | new / changed action class calling the real API |
 | LLM calls (OpenAI / Anthropic / OpenRouter), local embeddings | | |
-| JWT + personal access tokens | no SSO / OIDC | OIDC provider |
+| JWT + personal access tokens, server-side sign-in sessions, username + password, OpenID Connect code flow with PKCE | `AUTH_MODE=demo` (default): no login, "Viewing as" picker | `AUTH_MODE=password` / `oidc`, see [docs/SSO.md](docs/SSO.md) |
+| | Keycloak (`--profile sso`) stands in for the corporate IdP | `OIDC_ISSUER` + client id/secret of Entra ID etc. |
 | | Customer systems (`simulator`, fictional "Vistula Capital") | real sources via webhook / RabbitMQ |
 | **Not built** | Jira / Confluence live connectors (links are stored, not fetched live), GitHub / Datadog context in suggestions, KEDA / Kubernetes manifests, Rust hot-path | |
+
+**Sign-in.** Demo mode (`AUTH_MODE=demo`, the default) is the mock: no login, you pick who you are under "Viewing as". Password and SSO modes are real code paths (server-side sessions in Redis, bcrypt passwords with rate limiting, OpenID Connect with PKCE and ID-token verification); the local Keycloak with our demo people is only a stand-in for the corporate identity provider. See [docs/SSO.md](docs/SSO.md).
 
 ## Tests & CI/CD
 

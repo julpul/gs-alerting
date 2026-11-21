@@ -142,18 +142,15 @@ h1{font:400 clamp(36px,4vw,44px)/1.05 Dayohe,Georgia,serif;letter-spacing:0;colo
   <ul id="providers" class="providers" aria-label="Ways to sign in" aria-busy="true">
     <li class="skel" aria-hidden="true"></li>
   </ul>
-  <div id="or" class="or" hidden>or use an emergency account</div>
-  <form id="pwform" class="pwform" hidden novalidate aria-label="Sign in with an emergency account">
+  <div id="or" class="or" hidden>or sign in with a username and password</div>
+  <form id="pwform" class="pwform" hidden novalidate aria-label="Sign in with a username and password">
     <div class="field"><label for="u">Username</label>
       <div class="box"><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="120" required></div></div>
     <div class="field"><label for="p">Password</label>
       <div class="box"><input id="p" name="password" type="password" autocomplete="current-password" maxlength="1024" required style="padding-right:60px">
         <button type="button" class="reveal" id="reveal" aria-controls="p" aria-pressed="false">Show</button></div></div>
-    <div class="field"><label for="c">6-digit code</label>
-      <div class="box"><input id="c" name="code" class="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7" required aria-describedby="chelp"></div>
-      <small id="chelp">From the authenticator app set up for this account.</small></div>
     <button type="submit" class="btn pri" id="pwsubmit">Sign in</button>
-    <p class="pwhint">Emergency accounts are for when single sign-on is down. Every use is recorded and reviewed.</p>
+    <p class="pwhint">Every sign-in is recorded.</p>
   </form>
   <p class="foot"><svg class="ic sm" aria-hidden="true"><use href="#i-lock_closed"/></svg><span>Access is managed by your organisation's directory. Ask your team lead for access.</span></p>
 </main>
@@ -213,18 +210,18 @@ function showPasswordForm(){var f=document.getElementById('pwform');f.hidden=fal
   reveal.addEventListener('click',function(){var show=p.type==='password';p.type=show?'text':'password';
     reveal.textContent=show?'Hide':'Show';reveal.setAttribute('aria-pressed',String(show));});
   f.addEventListener('submit',function(ev){ev.preventDefault();
-    var u=document.getElementById('u'),c=document.getElementById('c');
-    var missing=[u,p,c].filter(function(x){return !x.value.trim();});
-    if(missing.length){showMessage({kind:'error',icon:'error_circle',title:'Fill in all three fields',text:'Username, password and the 6-digit code from the authenticator app.'});missing[0].focus();return;}
+    var u=document.getElementById('u');
+    var missing=[u,p].filter(function(x){return !x.value.trim();});
+    if(missing.length){showMessage({kind:'error',icon:'error_circle',title:'Fill in both fields',text:'Username and password.'});missing[0].focus();return;}
     btn.disabled=true;btn.textContent='Signing in…';
     fetch('/auth/password',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({username:u.value.trim(),password:p.value,code:c.value.replace(/\s/g,''),next:next})})
+      body:JSON.stringify({username:u.value.trim(),password:p.value,next:next})})
     .then(function(r){return r.json().catch(function(){return null;}).then(function(d){return {status:r.status,data:d};});})
     .then(function(res){
       if(res.status===200){location.replace(safeNext(res.data&&res.data.next)||next);return;}
-      p.value='';c.value='';
-      if(res.status===429)showMessage({kind:'error',icon:'error_circle',title:'Too many attempts',text:'Sign-in is paused for this account. Try again in 15 minutes.'});
-      else if(res.status===401)showMessage({kind:'error',icon:'error_circle',title:'Wrong username, password or code',text:'Check all three and try again. Codes change every 30 seconds and work once.'});
+      p.value='';
+      if(res.status===429)showMessage({kind:'error',icon:'error_circle',title:'Too many attempts',text:'Sign-in is paused for this account. Try again in a minute.'});
+      else if(res.status===401)showMessage({kind:'error',icon:'error_circle',title:'Wrong username or password',text:'Check both and try again.'});
       else showMessage(MESSAGES.login_failed);
       (res.status===401?p:u).focus();})
     .catch(function(){showMessage(MESSAGES.login_failed);})
@@ -245,7 +242,7 @@ function renderProviders(list){var ul=document.getElementById('providers');ul.te
 function retryButton(){var b=el('button','btn','Try again');b.type='button';b.addEventListener('click',function(){location.reload();});return b;}
 
 if(error)showMessage(MESSAGES[error]||MESSAGES.login_failed);
-else if(stepUp)showMessage({kind:'info',icon:'info',title:"Confirm it's you",text:'Approving a risky action needs a fresh sign-in. Enter your password and code again.'});
+else if(stepUp)showMessage({kind:'info',icon:'info',title:"Confirm it's you",text:'Approving a risky action needs a fresh sign-in. Enter your password again.'});
 
 function getJson(url){return fetch(url,{credentials:'same-origin',headers:{'Accept':'application/json'}}).then(function(r){
   return r.json().catch(function(){return null;}).then(function(d){return {ok:r.ok,status:r.status,data:d};});});}
@@ -253,7 +250,7 @@ function getJson(url){return fetch(url,{credentials:'same-origin',headers:{'Acce
 Promise.all([getJson('/api/me').catch(function(){return null;}),getJson('/auth/providers').catch(function(){return null;})]).then(function(res){
   var me=res[0],prov=res[1];
   /* Already signed in, or this Herald runs without sign-in: go straight on (unless there is an error to read). */
-  if(me&&me.ok&&me.data&&me.data.mode==='oidc'&&!error&&!stepUp){location.replace(next);return;}
+  if(me&&me.ok&&me.data&&me.data.mode&&me.data.mode!=='demo'&&!error&&!stepUp){location.replace(next);return;}
   /* Demo mode (or a service with no single sign-on set up): nobody signs in here, you pick who you are inside the app. */
   var noSso=(!me||me.status===404)&&(!prov||prov.status===404);
   if((me&&me.ok&&me.data&&me.data.mode==='demo')||noSso){
