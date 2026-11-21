@@ -812,7 +812,7 @@ components:
         recipient: { $ref: '#/components/schemas/Actor' }
         channel: { $ref: '#/components/schemas/Channel' }
         kind: { type: string, enum: [hard, soft] }
-        status: { type: string, enum: [pending, sent, retrying, failed, delivered, acked, dead_lettered] }
+        status: { type: string, enum: [pending, sent, retrying, failed, delivered, acked, dead_lettered, suppressed_digest] }
         attempts: { type: integer }
         updatedAt: { type: string, format: date-time }
 

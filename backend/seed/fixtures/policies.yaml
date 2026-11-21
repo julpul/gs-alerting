@@ -1,0 +1,33 @@
+# Org-default escalation policies (TECH_SPEC section 10.1). Editable at runtime; the loader never overwrites rows.
+# Level `ackTimeoutSeconds` = how long to wait for an ack before moving to the next level (null = last level).
+# `renotifySeconds` repeats the hard notification until ack. With DEMO_FAST_ESCALATION minutes become seconds.
+org:
+  critical:
+    levels:
+      - { level: 1, target: oncall, channels: [phone, sms], ackTimeoutSeconds: 300 }
+      - { level: 2, target: domain_root, channels: [phone, sms], ackTimeoutSeconds: 300 }
+      - { level: 3, target: master, channels: [phone, sms], ackTimeoutSeconds: null }
+    renotifySeconds: 120
+    softChannels: [email, ui]
+    softDigestMinutes: null
+  error:
+    levels:
+      - { level: 1, target: oncall, channels: [sms], ackTimeoutSeconds: 900 }
+      - { level: 2, target: domain_root, channels: [sms], ackTimeoutSeconds: 900 }
+      - { level: 3, target: master, channels: [sms], ackTimeoutSeconds: null }
+    renotifySeconds: 600
+    softChannels: [email, ui]
+    softDigestMinutes: null
+  warning:
+    levels:
+      - { level: 1, target: oncall, channels: [email], ackTimeoutSeconds: 3600 }
+      - { level: 2, target: domain_root, channels: [email], ackTimeoutSeconds: null }
+    renotifySeconds: null
+    softChannels: [email, ui]
+    softDigestMinutes: 60
+  info:
+    levels:
+      - { level: 1, target: oncall, channels: [ui], ackTimeoutSeconds: null }
+    renotifySeconds: null
+    softChannels: [ui]
+    softDigestMinutes: null
