@@ -21,6 +21,9 @@ log = logging.getLogger(__name__)
 
 _SENTENCES = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(#])|\n+|;\s+")
 _VERBS = r"wait|call|page|phone|restart|retry|re-?run|roll|fail|check|open|post|escalate|notify|if|then"
+_COMMAND = re.compile(
+    r"^(?:\$\s+|sudo\s|ssh\s|curl\s|kubectl\s|systemctl\s|docker\s|sleep\s+\d|grep\s|export\s|cd\s)"
+)
 _CLAUSES = re.compile(rf",\s*(?:and\s+|then\s+)?(?=(?:{_VERBS})\b)", re.IGNORECASE)
 
 
@@ -49,8 +52,36 @@ def split_steps(text: str) -> list[str]:
     return [f"{m[0].upper()}{m[1:]}" for m in merged]
 
 
+def looks_like_shell(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return False
+    if lines[0].startswith("#!"):
+        return True
+    commands = sum(1 for line in lines if _COMMAND.match(line))
+    return commands >= 2 and commands * 2 >= len(lines)
+
+
+def shell_steps(text: str) -> list[wire.RunbookStep]:
+    """A shell script, one step per line, for reading only: commands are never executed. A recognised verb
+    (`systemctl restart`) still suggests a registered action; comments become plain instructions."""
+    steps = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#!"):
+            continue
+        if line.startswith("#"):
+            comment = line.lstrip("#").strip()
+            if comment:
+                steps.append(step_from_sentence(comment[0].upper() + comment[1:]))
+            continue
+        steps.append(step_from_sentence(f"Run by hand: `{line.removeprefix('$ ')}`"))
+    return steps
+
+
 def heuristic_parse(text: str) -> ParsedRunbook:
-    steps = [step_from_sentence(s) for s in split_steps(text)]
+    pieces = shell_steps(text) if looks_like_shell(text) else None
+    steps = pieces or [step_from_sentence(s) for s in split_steps(text)]
     if not steps:
         steps = [make_step(text=text.strip()[:2000], parsed_by="heuristic")]
     return ParsedRunbook(name="Runbook", format="text", steps=finalize(steps), parsed_by="heuristic")

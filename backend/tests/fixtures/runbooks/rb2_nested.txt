@@ -1,0 +1,7 @@
+1. Confirm the failure
+   1.1 Open workflow {{workflowId}} in the console
+   1.2 Note the failing step ({{step}}) and error code ({{error.code}})
+2. Decide
+   2a. If the code is TIMEOUT: retry the workflow once
+   2b. If the code is REJECTED: do NOT retry; go to 3
+3. Escalate to counterparty-support with the workflow id

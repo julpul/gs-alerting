@@ -1,0 +1,10 @@
+{
+  "playbook": "fix-session-drop",
+  "applies_to": {"component": "fix-gateway", "state": "DOWN"},
+  "tasks": [
+    {"name": "Check exchange status page", "type": "human"},
+    {"name": "Bounce the session", "run": "restart_service", "args": {"service": "{{component}}"}, "needs_ok": true},
+    {"name": "Wait", "run": "sleep", "args": {"seconds": 60}},
+    {"name": "Tell the duty manager", "run": "page_duty_manager", "needs_ok": false}
+  ]
+}

@@ -1,11 +1,14 @@
 """Runbook parsers: any supported format -> `ParsedRunbook` (steps in the contract `RunbookStep` shape).
 
-Formats: `yaml` (also JSON `{steps: [...]}`), `markdown` (also plain `- [ ]` checklists), `text`, `link`.
-`detect_format` guesses; an explicitly requested format that does not fit the content falls back to
-detection, so an unseen format still yields a draft instead of an error.
+Formats: `yaml` (also JSON `{steps: [...]}` / `{tasks: [...]}` ...), `markdown` (also plain `- [ ]`
+checklists and tables), `text`, `link`. `detect_format` guesses; an explicitly requested format that does
+not fit the content falls back to detection, so an unseen format still yields a draft instead of an error.
+JSON in a shape we do not know becomes one step holding the formatted JSON (never split line by line).
 """
 
 from __future__ import annotations
+
+import re
 
 from app.core.errors import AppError
 from app.runbooks.model import MAX_CONTENT_BYTES, ParsedRunbook
@@ -13,18 +16,21 @@ from app.runbooks.parsers import link, markdown, text
 from app.runbooks.parsers import yaml as structured
 
 FORMATS = ("yaml", "markdown", "text", "link")
+_STRUCTURED_KEY = re.compile(rf"^(?:runbook|{'|'.join(structured.STEP_LIST_KEYS)}):", re.MULTILINE)
 
 
 def detect_format(content: str) -> str:
     stripped = content.strip()
     if link.is_link(stripped):
         return "link"
-    if stripped[:1] in "{[" or "steps:" in stripped or "runbook:" in stripped:
+    if stripped[:1] in "{[" or _STRUCTURED_KEY.search(stripped):
         try:
             if structured.is_structured(structured.load(stripped)):
                 return "yaml"
         except structured.StructuredError:
             pass
+        if structured.json_document(stripped) is not None:
+            return "json"
     if markdown.has_items(stripped) or markdown.title_of(stripped):
         return "markdown"
     return "text"
@@ -40,6 +46,8 @@ async def _parse_as(content: str, fmt: str, use_ai: bool) -> ParsedRunbook | Non
         return markdown.parse(content)
     if fmt == "link":
         return link.parse(content)
+    if fmt == "json":
+        return structured.raw(content)
     return await text.parse(content, use_ai=use_ai)
 
 

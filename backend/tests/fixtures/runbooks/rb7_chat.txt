@@ -1,0 +1,1 @@
+ok so if pricing is slow again (>1s) its prob the cache. restart the instance thats in the alert, give it 2 mins, if its STILL slow ring whoevers on call for pricing. dont restart twice!!
