@@ -33,7 +33,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P4-CONNECT | done | implementer / task/P4-CONNECT | 2026-11-21 | 2026-11-21 | 94–100 % | own reconnect supervisor; Alertmanager split + auto-resolve (outcome `auto_resolved`) |
 | P5-DEPLOY | in_progress | orchestrator | 2026-11-21 | | | Railway prod live + seeded + smoke OK (manual `railway up`); CD waits for GitHub Actions billing |
 | P5-PERF | in_progress | orchestrator | 2026-11-21 | | | uvloop, 1 Redis RTT/event, AI CPU cap + storm reuse, PG group commit → 2500 ev/s @4 workers |
-| P5-DOCS | todo | | | | | |
+| P5-DOCS | done | implementer / task/P5-DOCS | 2026-11-21 | 2026-11-21 | 96.9 % (gate 75 %) | README for judges, ARCHITECTURE.md, contract polish, inbound SMS shared secret |
 
 ## Measured results (filled from loadtest/results)
 
