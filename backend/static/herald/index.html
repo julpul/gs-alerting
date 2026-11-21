@@ -703,6 +703,15 @@ html{scrollbar-color:#c4cad3 transparent;scrollbar-width:thin}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
 ::-webkit-scrollbar-thumb{background:#c4cad3;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:#9aa3ae;background-clip:padding-box}
+
+/* New-alert banner: slides in at the top when the live feed brings an alert this page has not seen. */
+#newAlert{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:80;width:min(720px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--nb-col,#C9372C);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:12px 14px;display:flex;gap:12px;align-items:center;animation:nbIn .25s ease-out}
+#newAlert[hidden]{display:none}
+#newAlert .nbt{flex:1;min-width:0}
+#newAlert .nbt b{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--nb-col,#C9372C)}
+#newAlert .nbt span{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#newAlert .nbt small{color:var(--muted)}
+@keyframes nbIn{from{opacity:0;transform:translate(-50%,-12px)}to{opacity:1;transform:translate(-50%,0)}}
 </style>
 <script src="brand/herald-trumpeter.js" defer></script>
 <link rel="stylesheet" href="flow/herald-flow.css">
@@ -740,6 +749,7 @@ html{scrollbar-color:#c4cad3 transparent;scrollbar-width:thin}
 <aside id="drawer" aria-label="Details" hidden><div id="drawerHead"></div><div id="drawerBody"></div></aside>
 <div id="modal" hidden></div>
 <div id="toasts" aria-live="polite"></div>
+<div id="newAlert" role="alert" hidden></div>
 
 <script>
 (function(){
@@ -908,7 +918,21 @@ function mapEvent(e){return {id:String(e.id),source:e.source,at:Date.parse(e.rec
 
 async function loadRules(){const rs=await api('/api/rules');
   S.rules=rs.map(x=>Object.assign({},x.doc,{version:x.version,hits:x.alerts,lastFired:x.last_fired?Date.parse(x.last_fired):null,origin:x.source,severity:x.doc.severity||'event'}));}
-async function loadAlerts(){S.alerts=(await api('/api/alerts?limit=200&owner='+encodeURIComponent(T().owner))).map(mapAlert);}
+async function loadAlerts(){S.alerts=(await api('/api/alerts?limit=200&owner='+encodeURIComponent(T().owner))).map(mapAlert);noticeNew();}
+/* New-alert banner: compares with the alerts this page already knew (per team view), so the first load and a team switch stay quiet. */
+let seenAlerts=null,seenOwner=null,nbTimer=null,nbCount=0;const baseTitle=document.title;
+function noticeNew(){const owner=T().owner,ids=new Set(S.alerts.map(a=>a.id));
+  if(seenAlerts&&seenOwner===owner){const fresh=S.alerts.filter(a=>!seenAlerts.has(a.id)&&a.status!=='resolved');
+    if(fresh.length){S.newAlert={a:fresh[0],more:fresh.length-1};nbCount+=fresh.length;document.title='('+nbCount+') New alert · '+baseTitle;
+      clearTimeout(nbTimer);nbTimer=setTimeout(()=>{S.newAlert=null;paintNewAlert();},20000);paintNewAlert();}}
+  seenAlerts=ids;seenOwner=owner;}
+function paintNewAlert(){const n=$('newAlert');if(!n)return;const x=S.newAlert;if(!x){n.hidden=true;n.innerHTML='';return;}
+  const a=x.a,sev=SEVS[a.severity]||{},who=a.im?(a.imRef===me()?a.im+' (you)':a.im):'nobody yet';
+  n.style.setProperty('--nb-col',a.colour||sev.col||'#C9372C');
+  n.innerHTML=`${ic('alert')}<div class="nbt"><b>New ${esc(a.severity||'')} alert · ${esc(a.key)}${x.more>0?' · +'+x.more+' more':''}</b><span>${esc(a.title)}</span><small>${esc(a.source||'')} · In charge: ${esc(who)}${a.auto&&a.assignReason?' ('+esc(a.assignReason)+')':''}</small></div>
+    <button class="btn pri sm" data-act="newAlertOpen" data-id="${esc(a.id)}">Open alert</button><button class="iconbtn" data-act="newAlertClose" aria-label="Dismiss">${ic('dismiss','sm')}</button>`;
+  n.hidden=false;}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){nbCount=0;document.title=baseTitle;}});
 async function loadDetail(){if(!S.drawer||S.drawer.kind!=='alert')return;const id=S.drawer.id;
   try{const d=mapDetail(await api('/api/alerts/'+id));if(S.drawer&&S.drawer.id===id)S.detail=d;}catch(e){S.drawer=null;S.detail=null;toast(e.message);return;}
   if(AI.for===id&&AI.state!=='ready')await aiLoad();}
@@ -2205,6 +2229,8 @@ const ACT={
   asTeam(el){S.menu=null;const k=el.dataset.v;if(!TEAMS[k]||k===S.team)return;S.team=k;S.f.assignee='';HO.data={};HO.err={};HO.prefs=null;HO.team=null;asSave();reloadFor();},
   bell(){S.platform=null;go('feed');S.f.assignee=me();},
   myTeam(el){S.menu=null;const k=el.dataset.v;if(!canSwitchTo(k)||k===S.team)return;S.team=k;S.f.assignee='';reloadFor();},
+  newAlertOpen(el){const id=el.dataset.id;S.newAlert=null;paintNewAlert();nbCount=0;document.title=baseTitle;ACT.openAlert({dataset:{id:id}});},
+  newAlertClose(){S.newAlert=null;clearTimeout(nbTimer);paintNewAlert();},
   async signOut(){S.menu=null;leaving=true;if(streamCtl){const c=streamCtl;streamCtl=null;c.abort();}
     try{const r=await fetch('/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Accept':'application/json'}});const d=await r.json().catch(()=>({}));
       let u=null;try{u=new URL(d.logout_url||'/login',location.origin);}catch(e){}
