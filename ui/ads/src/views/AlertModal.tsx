@@ -7,7 +7,7 @@ import { DropdownItem, DropdownItemGroup } from '@atlaskit/dropdown-menu';
 import { DropdownMenu } from '@atlaskit/dropdown-menu/dropdown-menu';
 import Heading from '@atlaskit/heading';
 import Lozenge, { LozengeDropdownTrigger } from '@atlaskit/lozenge';
-import Modal, { ModalBody, ModalFooter, ModalHeader, ModalTitle } from '@atlaskit/modal-dialog';
+import Modal, { ModalBody, ModalFooter, ModalHeader, ModalTitle, ModalTransition } from '@atlaskit/modal-dialog';
 import { FadeIn, StaggeredEntrance } from '@atlaskit/motion';
 import { Box, Inline, Stack, Text } from '@atlaskit/primitives/compiled';
 import SectionMessage from '@atlaskit/section-message';
@@ -17,6 +17,8 @@ import TextArea from '@atlaskit/textarea';
 import { api, type AlertDetail, type Approval, type Step, type Why } from '../api';
 import { useHerald, useLoad } from '../store';
 import { ago, channelName, clock, DeliveryState, Field, Loading, pretty, Severity, STATUS, Who } from '../ui';
+import { EscalationLine, isSuspicious, ResolveDialog, SuggestionPanel, SuspiciousBanner, useV1Alert } from './AlertAi';
+import { CopilotChat } from './Copilot';
 
 type Option = { label: string; value: string };
 
@@ -65,6 +67,10 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
   const { data: detail, error } = useLoad(() => api<AlertDetail>(`/api/alerts/${id}`), [id]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [copilot, setCopilot] = useState(false);
+  const live = useV1Alert(id);
+  const suspicious = isSuspicious(live.data);
 
   const act = async (what: string, work: () => Promise<unknown>, done?: string) => {
     setBusy(what);
@@ -105,6 +111,8 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
       <ModalBody>
         <div className="issue">
           <Stack space="space.300">
+            {suspicious && <SuspiciousBanner />}
+            {live.data && <EscalationLine alert={live.data} />}
             {detail.body && <Text>{detail.body}</Text>}
 
             {pending.map((a) => {
@@ -129,6 +137,8 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
               );
             })}
 
+            {live.data && <SuggestionPanel alert={live.data} disabled={suspicious} />}
+
             <Stack space="space.100">
               <Heading size="small" as="h3">What happened</Heading>
               <dl className="kv">
@@ -139,7 +149,7 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
             </Stack>
 
             {detail.runbook && (
-              <Stack space="space.100">
+              <div id="alert-runbook"><Stack space="space.100">
                 <Inline space="space.100" alignBlock="center">
                   <Heading size="small" as="h3">What to do</Heading>
                   <Text size="small" color="color.text.subtle">Runbook: {detail.runbook.title}</Text>
@@ -158,7 +168,7 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
                     ))}
                   </StaggeredEntrance>
                 ) : <Text>{detail.runbook.text ?? 'This runbook has no steps yet.'}</Text>}
-              </Stack>
+              </Stack></div>
             )}
 
             {conditions.length > 0 && (
@@ -203,6 +213,17 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
             </Stack>
           </Stack>
 
+          {copilot ? (
+            <div className="panel copilot-side">
+              <Stack space="space.100">
+                <Inline spread="space-between" alignBlock="center">
+                  <Heading size="xsmall" as="h3">Copilot</Heading>
+                  <Button appearance="subtle" spacing="compact" onClick={() => setCopilot(false)}>Back to details</Button>
+                </Inline>
+                <CopilotChat alertId={`A-${id}`} compact />
+              </Stack>
+            </div>
+          ) : (
           <div className="panel">
             <Stack space="space.150">
               <Heading size="xsmall" as="h3">Details</Heading>
@@ -215,7 +236,7 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
                   )}>
                   <DropdownItemGroup>
                     <DropdownItem isDisabled={detail.status !== 'firing'} onClick={() => act('status', () => api(`/api/alerts/${id}/ack`, { method: 'POST' }), `${detail.key} is in progress`)} description="Tells the team someone is on it">In progress</DropdownItem>
-                    <DropdownItem isDisabled={detail.status === 'resolved'} onClick={() => act('status', () => api(`/api/alerts/${id}/resolve`, { method: 'POST' }), `${detail.key} resolved`)} description="The problem is fixed">Resolved</DropdownItem>
+                    <DropdownItem isDisabled={detail.status === 'resolved'} onClick={() => setResolving(true)} description="The problem is fixed">Resolved</DropdownItem>
                   </DropdownItemGroup>
                 </DropdownMenu>
               </Field>
@@ -244,13 +265,16 @@ export function AlertModal({ id, onClose }: { id: number; onClose: () => void })
               </Stack>
             </Stack>
           </div>
+          )}
         </div>
       </ModalBody>
       <ModalFooter>
         <Button appearance="subtle" onClick={onClose}>Close</Button>
+        {!suspicious && !copilot && <Button appearance="discovery" onClick={() => setCopilot(true)}>Ask the copilot</Button>}
         {detail.status === 'firing' && <Button isLoading={busy === 'ack'} onClick={() => act('ack', () => api(`/api/alerts/${id}/ack`, { method: 'POST' }), `${detail.key} is in progress`)}>Start work</Button>}
-        {detail.status !== 'resolved' && <Button appearance="primary" isLoading={busy === 'resolve'} onClick={() => act('resolve', () => api(`/api/alerts/${id}/resolve`, { method: 'POST' }), `${detail.key} resolved`)}>Resolve</Button>}
+        {detail.status !== 'resolved' && <Button appearance="primary" onClick={() => setResolving(true)}>Resolve</Button>}
       </ModalFooter>
+      <ModalTransition>{resolving && <ResolveDialog id={id} suspicious={suspicious} onClose={() => { setResolving(false); live.reload(); }} />}</ModalTransition>
     </Modal>
   );
 }

@@ -27,6 +27,8 @@ RUN mkdir -p /opt/fastembed && \
 COPY app ./app
 COPY migrations ./migrations
 COPY seed ./seed
+# The web UI (classic + built React app); served by the api at / (app/api/mounts/herald_ui.py).
+COPY static ./static
 
 RUN useradd --create-home --uid 10001 app && chown -R app:app /opt/fastembed
 USER app
