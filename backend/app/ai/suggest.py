@@ -214,10 +214,11 @@ async def _recent_sibling_suggestion(
     if not alert["knowledge_key"] or alert["rule_id"] is None:
         return None
     row = await conn.fetchrow(
+        # driven by the small recent-suggestions window (index suggestions_created), not by alerts
         "SELECT s.content, s.model, a.short_id FROM suggestions s JOIN alerts a ON a.id = s.alert_id "
-        "WHERE a.rule_id = $1 AND a.knowledge_key = $2 AND a.id <> $3 "
+        "WHERE s.created_at > now() - make_interval(secs => $4) "
         "AND s.status IN ('ready', 'degraded') "
-        "AND s.created_at > now() - make_interval(secs => $4) "
+        "AND a.rule_id = $1 AND a.knowledge_key = $2 AND a.id <> $3 "
         "ORDER BY s.created_at DESC LIMIT 1",
         alert["rule_id"],
         alert["knowledge_key"],
@@ -227,8 +228,9 @@ async def _recent_sibling_suggestion(
     if row is None:
         return None
     content = dict(row["content"])
-    content["reusedFrom"] = f"A-{row['short_id']}"
-    return content, f"{row['model'] or 'none'} (reused)"
+    content.setdefault("reusedFrom", f"A-{row['short_id']}")  # always point at the original
+    model = row["model"] or "none"
+    return content, model if model.endswith("(reused)") else f"{model} (reused)"
 
 
 async def generate_suggestion(conn: asyncpg.Connection, alert_id: UUID) -> dict[str, Any] | None:
