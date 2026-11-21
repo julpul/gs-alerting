@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     smtp_from: str = "alerts@gs-alerting.local"
     mockgw_url: str = "http://localhost:8090"
     public_base_url: str = "http://localhost:8080"
+    # Links the Herald UI shows to the demo's fake outside world (browser-facing URLs).
+    public_mailpit_url: str = "http://localhost:8025"
+    public_mockgw_url: str = "http://localhost:8090"
 
     # secrets (dev defaults; override in .env / Railway)
     jwt_secret: str = "dev-jwt-secret-change-me"

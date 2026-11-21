@@ -18,6 +18,7 @@ from fastapi import Depends, Request
 
 from app.core.errors import AppError
 from app.core.scope import Scope, current_user, load_scope
+from app.schemas.internal import User
 
 HERALD_ROLES = ("responder", "approver", "editor", "admin")
 DEFAULT_PERSON = "master"
@@ -36,6 +37,16 @@ class HeraldActor:
         return self.user["id"]
 
     @property
+    def model(self) -> User:
+        """The user as our repositories take it (`alert_actions.*`)."""
+        return User(**self.user)
+
+    @property
+    def herald_role(self) -> str:
+        """Our roles as a Herald role (a UI hint; authorization stays our scope)."""
+        return herald_role(self.scope)
+
+    @property
     def actor(self) -> dict[str, Any]:
         """Actor dict for timeline/audit (plan §3.1)."""
         return {
@@ -44,6 +55,16 @@ class HeraldActor:
             "name": self.user["display_name"],
             "onBehalfOf": None,
         }
+
+
+def herald_role(scope: Scope) -> str:
+    """master -> admin; domain_root -> approver (Herald ranks approver above editor, so it may edit too);
+    member / informed -> responder."""
+    if scope.is_master:
+        return "admin"
+    if any(r.role == "domain_root" for r in scope.roles):
+        return "approver"
+    return "responder"
 
 
 def person_id(email: str) -> str:
