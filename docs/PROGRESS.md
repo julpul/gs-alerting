@@ -25,10 +25,10 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P2-DELIVERY | done | implementer / task/P2-DELIVERY | 2026-11-21 | 2026-11-21 | ≥ 90 % | DLQ after 3 attempts (5 s, 30 s); empty hard list → domain roots; digest sender not built yet |
 | P2-ALERTSAPI | done | implementer / task/P2-ALERTSAPI | 2026-11-21 | 2026-11-21 | 91–100 % | contract additions (shortId, escalatesAt, MetricsSummary fields); ack/resolve idempotent; informed = read+comment |
 | P3-ESCAL | in_progress | implementer / task/P3-ESCAL | 2026-11-21 | | | |
-| P3-RUNBOOK | in_progress | implementer / task/P3-RUNBOOK | 2026-11-21 | | | |
+| P3-RUNBOOK | done | implementer / task/P3-RUNBOOK | 2026-11-21 | 2026-11-21 | 85–100 % | 6 formats (YAML/MD/text/link/checklist/JSON); guards advisory; approver SMS sent directly via adapters |
 | P3-AI | in_progress | implementer / task/P3-AI | 2026-11-21 | | | |
 | P3-LOAD | review | implementer / task/P3-LOAD | 2026-11-21 | merged | 25 tests | merged; not yet run against real backend (after P2) |
-| P3-ORG | in_progress | implementer / task/P3-ORG-sim | 2026-11-21 | | sim 99.6 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
+| P3-ORG | done | implementer / task/P3-ORG-sim + task/P3-ORG-B | 2026-11-21 | 2026-11-21 | sim 99.6 %, seed 97 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
 | P4-MCP | todo | | | | | |
 | P4-CONNECT | in_progress | implementer / task/P4-CONNECT | 2026-11-21 | | | started early (independent of P3) |
 | P5-DEPLOY | todo | orchestrator | | | | |
@@ -54,6 +54,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P0 | Routers/seed loaders auto-discovered, migrations by number range | No shared registry file ⇒ conflict-free merges |
 | P0 | Role `all` / comma-separated roles in one process | Cheap Railway deploy (2 app services) while compose still scales roles independently |
 | P0 | P3-LOAD and simulator started in parallel with P1 | Independent of backend code (HTTP contract + fixed demo keys) — saves ~1.5 h |
+| P3 | `SEED_PROFILE=core` in tests (7 users), `full` (25 users + history + knowledge) for demo | Older tests assert exact small-org membership; full org seeded in its own test DB |
 | P0 | Tests use per-session DB + MQ/Redis prefix | Parallel agents share one local infra safely |
 
 ## Open issues / requests between owners
