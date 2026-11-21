@@ -9,7 +9,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | --- | --- | --- | --- |
 | P0 repo/docs/agents/CI | done | — | repo julpul/gs-alerting (private), CI+CD workflows |
 | P1 foundation | done | PASS (69 tests, 97 % cov, compose up, login ok) | merged 29655d7 |
-| P2 core pipeline | in_progress | — | 4 agents in parallel |
+| P2 core pipeline | review | 485 tests green locally; QA gate running | all 4 merged |
 | P3 video features + measurement | todo | — | |
 | P4 agents + sources | todo | — | |
 | P5 ship | todo | — | |
@@ -20,9 +20,9 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | done | orchestrator | 2026-11-21 | 2026-11-21 | | |
 | P1-FOUND | done | implementer / task/P1-FOUND | 2026-11-21 | 2026-11-21 | 97 % | deviations: role_assignments.scope_id NOT NULL (ORG_ID), own ORJSONResponse, personal_tokens.revoked_at |
-| P2-INGEST | in_progress | implementer / task/P2-INGEST | 2026-11-21 | | | |
-| P2-RULES | in_progress | implementer / task/P2-RULES | 2026-11-21 | | | |
-| P2-DELIVERY | in_progress | implementer / task/P2-DELIVERY | 2026-11-21 | | | |
+| P2-INGEST | done | implementer / task/P2-INGEST | 2026-11-21 | 2026-11-21 | ≥ 90 % | two-phase idempotency key; infra errors always requeue; `_source` = producer else source name |
+| P2-RULES | done | implementer / task/P2-RULES | 2026-11-21 | 2026-11-21 | ≥ 90 % | 5 seeded rules + custody source; regex guard = pattern cap + nested-quantifier reject + input truncation |
+| P2-DELIVERY | done | implementer / task/P2-DELIVERY | 2026-11-21 | 2026-11-21 | ≥ 90 % | DLQ after 3 attempts (5 s, 30 s); empty hard list → domain roots; digest sender not built yet |
 | P2-ALERTSAPI | done | implementer / task/P2-ALERTSAPI | 2026-11-21 | 2026-11-21 | 91–100 % | contract additions (shortId, escalatesAt, MetricsSummary fields); ack/resolve idempotent; informed = read+comment |
 | P3-ESCAL | todo | | | | | |
 | P3-RUNBOOK | todo | | | | | |

@@ -32,9 +32,15 @@ class Tap:
         async with message.process():
             self.items.append((orjson.loads(message.body), message.priority))
 
-    async def wait_for(self, n: int) -> list[tuple[dict, int]]:
-        await eventually(lambda: _ready(len(self.items) >= n), timeout=30)
-        return self.items
+    async def wait_for(self, n: int, source: dict) -> list[tuple[dict, int]]:
+        """Envelopes of `source` only: other test modules may leave stray messages on `events.in`."""
+        sid = str(source["id"])
+
+        def mine() -> list[tuple[dict, int]]:
+            return [item for item in self.items if item[0].get("source_id") == sid]
+
+        await eventually(lambda: _ready(len(mine()) >= n), timeout=30)
+        return mine()
 
 
 async def _ready(flag: bool) -> bool:
@@ -62,7 +68,7 @@ async def test_ingest_by_path_key_returns_202_and_publishes_envelope(client, mak
     assert ISO_MS_Z.match(body["receivedAt"])
     assert UUID(body["eventId"]).version == 7
 
-    ((envelope, priority),) = await tap.wait_for(1)
+    ((envelope, priority),) = await tap.wait_for(1, source)
     assert envelope == {
         "event_id": body["eventId"],
         "source_id": str(source["id"]),
@@ -80,7 +86,7 @@ async def test_ingest_with_api_key_header(client, make_source, tap):
     source = await make_source()
     resp = await client.post("/v1/ingest/_", json={"a": 1}, headers={"X-Api-Key": source["key"]})
     assert resp.status_code == 202
-    ((envelope, priority),) = await tap.wait_for(1)
+    ((envelope, priority),) = await tap.wait_for(1, source)
     assert envelope["source_id"] == str(source["id"]) and priority == 3
 
 
@@ -105,7 +111,7 @@ async def test_oversized_payload_is_413(client, make_source, tap):
     assert resp.json()["code"] == "payload_too_large"
     ok = {"blob": "x" * (250 * 1024)}
     assert (await client.post(f"/v1/ingest/{source['key']}", json=ok)).status_code == 202
-    assert len(await tap.wait_for(1)) == 1
+    assert len(await tap.wait_for(1, source)) == 1
 
 
 @pytest.mark.parametrize("content", [b"not json", b"[1, 2]", b'"text"', b"123"])
@@ -125,7 +131,7 @@ async def test_batch_of_1000_is_accepted_and_all_consumed(client, make_source, t
     assert resp.status_code == 202
     body = resp.json()
     assert body["accepted"] == 1000 and len(set(body["eventIds"])) == 1000
-    items = await tap.wait_for(1000)
+    items = await tap.wait_for(1000, source)
     assert {e["event_id"] for e, _ in items} == set(body["eventIds"])
     assert sorted(e["raw"]["i"] for e, _ in items) == list(range(1000))
 
@@ -183,7 +189,7 @@ async def test_typed_raise_with_api_key(client, make_source, tap):
     payload = sample("raise_secret_leaked")
     resp = await client.post("/v1/alerts/raise", json=payload, headers={"X-Api-Key": source["key"]})
     assert resp.status_code == 202
-    ((envelope, priority),) = await tap.wait_for(1)
+    ((envelope, priority),) = await tap.wait_for(1, source)
     assert priority == 9
     assert envelope["typed"] is True and envelope["source_id"] == str(source["id"])
     assert envelope["raw"] == payload
