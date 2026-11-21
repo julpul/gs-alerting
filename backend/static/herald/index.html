@@ -673,9 +673,9 @@ body[data-level="L0"] .navfoot,body[data-level="L1"] .navfoot{display:none}
 .hodiff span{display:block} .hodiff .add{background:#dcfff1;color:#164b35} .hodiff .del{background:#ffeceb;color:#8c2217}
 /* Escalation flows */
 .flbar{align-items:flex-end;gap:12px;margin-bottom:12px;flex-wrap:wrap} .flteam{width:240px}
-.flgrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.flgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
 .flside{display:flex;flex-direction:column;gap:12px}
-.flslot{height:68vh;min-height:60vh;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f7f8f9}
+.flslot{height:60vh;min-height:420px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f7f8f9}
 .flpanel{border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:#fff;max-height:68vh;overflow:auto} .flpanel h3{margin:0}
 .flwholist{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px}
 .flwho{display:flex;gap:8px;align-items:flex-start;padding:5px 6px;border-radius:4px;cursor:pointer} .flwho:hover{background:var(--sunk)} .flwho span{display:flex;flex-direction:column}
@@ -1769,9 +1769,9 @@ const flMin=s=>s?Math.max(1,Math.round(s/60)):0;
 function flWords(levels){return levels.map((l,i)=>{const p=levels[i-1],wait=i&&p&&p.ackTimeoutSeconds?'After '+hoMins(p.ackTimeoutSeconds)+' without acknowledgement':'At once';
   return `${wait}: ${flWho(l)} is told by ${flChans(l)}.${l.ackTimeoutSeconds?' They have '+hoMins(l.ackTimeoutSeconds)+' to acknowledge before the next level.':' Nobody is told after this level.'}`;});}
 function flBoard(d){const n=(id,kind,x,y,data)=>({id,kind,position:{x,y},data}),nodes=[n('t','trigger',0,60,{title:cap(FL.sev)+' alert · '+((flTeam()||{}).name||'team'),severity:FL_SEVB[FL.sev]})],edges=[];
-  d.levels.forEach((l,i)=>{nodes.push(n('n'+i,'notify',380+i*380,60,{level:'Level '+l.level,who:flWho(l),channels:(l.channels||[]).map(c=>FL_CHB[c]).filter(Boolean),respondMinutes:flMin(l.ackTimeoutSeconds)}));
+  d.levels.forEach((l,i)=>{nodes.push(n('n'+i,'notify',340+i*340,60,{level:'Level '+l.level,who:flWho(l),channels:(l.channels||[]).map(c=>FL_CHB[c]).filter(Boolean),respondMinutes:flMin(l.ackTimeoutSeconds)}));
     const p=d.levels[i-1];edges.push({id:'e'+i,source:i?'n'+(i-1):'t',target:'n'+i,data:{minutes:i&&p?flMin(p.ackTimeoutSeconds):null,always:false}});});
-  if((d.softChannels||[]).length){nodes.push(n('m','inform',380,330,{level:'',who:'Kept informed',note:d.softChannels.map(c=>HO_CHN[c]||c).join(', ')+(d.softDigestMinutes?', one summary every '+d.softDigestMinutes+' min':', at once')}));edges.push({id:'em',source:'t',target:'m',data:{minutes:null,always:true}});}
+  if((d.softChannels||[]).length){nodes.push(n('m','inform',340,300,{level:'',who:'Kept informed',note:d.softChannels.map(c=>HO_CHN[c]||c).join(', ')+(d.softDigestMinutes?', one summary every '+d.softDigestMinutes+' min':', at once')}));edges.push({id:'em',source:'t',target:'m',data:{minutes:null,always:true}});}
   return {nodes,edges};}
 function flPeople(){const seen={},out=[];(HO.data.users||[]).forEach(u=>{if(!seen[u.id]){seen[u.id]=1;out.push(u);}});
   return out.sort((a,b)=>flRoles(b.id).length-flRoles(a.id).length||String(a.displayName).localeCompare(b.displayName));}
@@ -1803,7 +1803,7 @@ function flMount(){const slot=$('flowSlot'),d=FL.draft;
   if(!window.HeraldFlow){slot.innerHTML='<p class="muted" style="padding:16px">The board could not be loaded (herald-flow.js).</p>';return;}
   const tips={t:'An alert of this severity arrives for the team.',m:'Kept informed, not called.'};flWords(d.levels).forEach((w,i)=>{tips['n'+i]=w;});
   slot.addEventListener('mouseover',e=>{const nd=e.target.closest&&e.target.closest('.react-flow__node');if(nd&&tips[nd.dataset.id]&&nd.title!==tips[nd.dataset.id])nd.title=tips[nd.dataset.id];});
-  const opts={flow:flBoard(d),readOnly:true,onSelect:x=>{const m=x&&x.type==='node'&&/^n(\d+)$/.exec(x.id);FL.sel=m?+m[1]:-1;const p=$('flPanel');if(p)p.innerHTML=flPanel();}};
+  const opts={flow:flBoard(d),readOnly:true,viewport:{x:24,y:40,zoom:0.8},onSelect:x=>{const m=x&&x.type==='node'&&/^n(\d+)$/.exec(x.id);FL.sel=m?+m[1]:-1;const p=$('flPanel');if(p)p.innerHTML=flPanel();}};
   if(FL.sel>=0)opts.selectedId='n'+FL.sel;
   try{FL.ed=window.HeraldFlow.mount(slot,opts);}catch(e){FL.ed=null;slot.innerHTML='<p class="muted" style="padding:16px">The board failed to start.</p>';}}
 /* ---- Screens from the UI handoff: approvals, on-call schedule, metrics, history and settings (escalation, my notifications,
