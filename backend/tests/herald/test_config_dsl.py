@@ -6,15 +6,18 @@ import copy
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from app.herald import dsl
 from app.herald.dsl import DslError, herald_to_rule, load_directory, rule_to_herald, when_to_match
-from app.herald.explain import LeafCache, event_view, explain_when, failing_leaves
+from app.herald.explain import event_view, explain_when, failing_leaves
 from app.pipeline.fields import EventView
 from app.pipeline.rules.compiler import compile_rule
 from app.pipeline.rules.index import rule_from_row
 from app.pipeline.rules.model import parse_rule
-from tests.herald.config_helpers import brief_rules, sample
+from tests.herald.config_helpers import RUNBOOKS, brief_rules, sample
+
+SEED_RULES = RUNBOOKS.parent / "rules.yaml"
 
 SECTIONS = ("name", "owner", "enabled", "severity", "when", "notify", "group", "runbook", "resolve_when")
 
@@ -54,8 +57,9 @@ async def test_brief_rules_round_trip_exactly(directory):
         rule = parse_rule(data)
         compile_rule(rule)
         back = rule_to_herald(rule, directory, extras)
+        expected = {**doc, "owner": "team:team-payments" if doc["owner"] == "person:anna" else doc["owner"]}
         for key in SECTIONS:
-            assert back[key] == doc.get(key, True if key == "enabled" else None), (doc["id"], key)
+            assert back[key] == expected.get(key, True if key == "enabled" else None), (doc["id"], key)
         expected_present = {"body": "", "fields": [], "highlight": [], "colour": None, **doc["present"]}
         assert back["present"] == expected_present
 
@@ -89,8 +93,12 @@ async def test_brief_rules_match_the_samples(directory):
 
 
 async def test_every_seeded_rule_round_trips(seeded, directory):
-    rows = await seeded.fetch("SELECT id, team_id, enabled, version, definition FROM rules ORDER BY name")
-    assert len(rows) >= 5
+    seeded_names = [r["rule"]["name"] for r in yaml.safe_load(SEED_RULES.read_text())["rules"]]
+    rows = await seeded.fetch(
+        "SELECT id, team_id, enabled, version, definition FROM rules WHERE name = ANY($1) ORDER BY name",
+        seeded_names,
+    )
+    assert len(rows) == len(seeded_names) == 5
     events = _events()
     for row in rows:
         rule = rule_from_row(row)
@@ -110,7 +118,8 @@ async def test_every_seeded_rule_round_trips(seeded, directory):
 
 async def test_changed_section_replaces_only_that_section(seeded, directory):
     row = await seeded.fetchrow(
-        "SELECT id, team_id, enabled, version, definition FROM rules WHERE name LIKE 'Rates%'"
+        "SELECT id, team_id, enabled, version, definition FROM rules WHERE name = $1",
+        "Rates - big rejected trades",
     )
     rule = rule_from_row(row)
     doc = rule_to_herald(rule, directory)
@@ -258,7 +267,7 @@ def test_explain_tree_matches_our_compiler():
     raw = sample("trade_rejected")
     raw["payload"]["notional"] = 2_000_000
     ev = event_view(raw, None)
-    why = explain_when(when, ev, LeafCache())
+    why = explain_when(when, ev)
     assert why["passed"] is False
     fails = failing_leaves(why)
     assert fails == [

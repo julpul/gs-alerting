@@ -10,10 +10,10 @@ op `ne` / `severity_gte`                 `neq` / `in` [that severity and worse]
 `present{title, body, fields, colour}`   `presentation{titleTemplate, bodyTemplate, fields, color}`
 `group{by, window}`                      `dedup.fields` (+ `grouping{byField: by[0], windowSeconds}`)
 `severity` (null = from the event)       `priority`
-`owner` team:<slug> | person:<id>        `teamId` (a person's rules live on their first team)
+`owner` team:<slug> (or person:<id>)      `teamId` (a person -> their first team; read back as team:<slug>)
 `runbook`, `name`, `enabled`             `runbookId`, `name`, `enabled`
 
-What our model cannot hold (`present.highlight`, `resolve_when`, a person owner, the exact Herald notify
+What our model cannot hold (`present.highlight`, `resolve_when`, the exact Herald notify
 list) is kept in `definition.herald` (ignored by our compiler). When the rule is read back, a stored
 Herald section is shown only while it still translates to what the rule holds now, so a later `/v1`
 edit never shows stale data. Saving over an existing rule keeps our section untouched when the Herald
@@ -30,6 +30,7 @@ from uuid import UUID
 import asyncpg
 
 from app.core.scope import Scope
+from app.herald.views import field_name
 from app.pipeline.rules.index import rule_from_row
 from app.pipeline.rules.model import RuleDef, RuleValidationError
 
@@ -110,8 +111,7 @@ def field_to_ours(path: str) -> str:
     return "_" + path[1:] if path.startswith("@") else path
 
 
-def field_to_herald(path: str) -> str:
-    return "@" + path[1:] if path.startswith("_") else path
+field_to_herald = field_name  # `_severity` -> `@severity` (HB-CORE's views)
 
 
 def template_to_ours(text: str | None) -> str | None:
@@ -472,7 +472,6 @@ def herald_to_rule(
         if section == "group" and "grouping" not in values:
             data.pop("grouping", None)
     extras = {
-        "owner": doc.get("owner"),
         "highlight": list((doc.get("present") or {}).get("highlight") or []),
         "resolve_when": expand(doc["resolve_when"]) if doc.get("resolve_when") else None,
         "doc": {k: doc.get(k) for k in ("when", "notify", "group", "present", "severity")},
@@ -487,11 +486,7 @@ def rule_to_herald(
     data = rule.definition()
     extras = extras or {}
     slug = directory.team_slugs.get(rule.team_id, str(rule.team_id))
-    owner = f"team:{slug}"
-    stored_owner = extras.get("owner")
-    if isinstance(stored_owner, str) and stored_owner.startswith("person:"):
-        if directory.person_team.get(stored_owner.split(":", 1)[1]) == rule.team_id:
-            owner = stored_owner
+    owner = f"team:{slug}"  # always a team (both UIs filter on `team:<slug>`; we have no personal owners)
     severity = data.get("priority")
     doc: dict[str, Any] = {
         "id": str(rule.id) if rule.id else None,

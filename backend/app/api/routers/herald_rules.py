@@ -29,7 +29,7 @@ from app.herald.dsl import (
     stored_rule,
     when_to_match,
 )
-from app.herald.explain import LeafCache, attrs, event_view, explain_when, failing_leaves, raw_events
+from app.herald.explain import attrs, event_view, explain_when, failing_leaves, raw_events
 from app.herald.identity import Actor
 from app.herald.platforms import platform_source, visible_sources
 from app.herald.preview import preview
@@ -186,10 +186,9 @@ async def test_rule(body: RuleTest, who: Actor, pool: Pool, redis: RedisDep) -> 
                 for event in body.events
                 for raw in raw_events(event, dict(src) if src else None)
             ]
-    cache = LeafCache()
     results = []
     for source, received_at, ev, event_id, raw in items:
-        why = explain_when(body.when, ev, cache)
+        why = explain_when(body.when, ev)
         results.append(
             {
                 "id": event_id,

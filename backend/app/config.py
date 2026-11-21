@@ -19,10 +19,11 @@ class Settings(BaseSettings):
     smtp_from: str = "alerts@gs-alerting.local"
     mockgw_url: str = "http://localhost:8090"
     public_base_url: str = "http://localhost:8080"
-    # Herald UI demo tools: Mailpit's HTTP API (empty = http://<SMTP_HOST>:8025) and the pages people open.
+    # Links the Herald UI shows to the demo's fake outside world (browser-facing URLs).
+    public_mailpit_url: str = "http://localhost:8025"
+    public_mockgw_url: str = "http://localhost:8090"
+    # Mailpit's HTTP API for the Herald demo tools (empty = http://<SMTP_HOST>:8025).
     mailpit_api_url: str = ""
-    mailpit_public_url: str = "http://localhost:8025"
-    mockgw_public_url: str = "http://localhost:8090"
 
     # secrets (dev defaults; override in .env / Railway)
     jwt_secret: str = "dev-jwt-secret-change-me"

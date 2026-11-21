@@ -14,8 +14,8 @@ from fastapi import Query
 from pydantic import BaseModel
 
 from app.api.deps import Pool, RedisDep
-from app.herald.dsl import Directory, DslError, StoredRule, load_directory, rule_to_herald, scoped_rules
-from app.herald.explain import LeafCache, attrs, event_view, explain_rule, explain_when, raw_events
+from app.herald.dsl import Directory, StoredRule, load_directory, rule_to_herald, scoped_rules
+from app.herald.explain import attrs, closes, event_view, explain_rule, raw_events
 from app.herald.identity import Actor
 from app.herald.platforms import platform_source, visible_sources
 from app.herald.routing import herald_router
@@ -45,7 +45,6 @@ class _Matcher:
     """The caller's enabled rules, compiled once per request."""
 
     def __init__(self, rules: list[StoredRule]) -> None:
-        self.cache = LeafCache()
         self.items: list[tuple[StoredRule, CompiledRule]] = []
         for item in rules:
             if not item.rule.enabled:
@@ -55,15 +54,8 @@ class _Matcher:
             except RuleValidationError:
                 continue
 
-    def closes(self, item: StoredRule, ev: EventView) -> bool:
-        when = item.extras.get("resolve_when")
-        try:
-            return bool(when) and explain_when(when, ev, self.cache)["passed"]
-        except DslError:
-            return False
-
     def outcome(self, ev: EventView) -> tuple[list[str], list[str]]:
-        closed = [str(item.rule.id) for item, _ in self.items if self.closes(item, ev)]
+        closed = [str(item.rule.id) for item, _ in self.items if closes(item.extras.get("resolve_when"), ev)]
         fired = [
             str(item.rule.id) for item, c in self.items if c.matches(ev) and str(item.rule.id) not in closed
         ]
@@ -114,13 +106,12 @@ async def explain_event(body: EventIn, who: Actor, pool: Pool) -> dict[str, Any]
         directory = await load_directory(conn)
         rules = await scoped_rules(conn, who.scope)
     source = dict(src) if src else None
-    cache = LeafCache()
     items = []
     for raw in raw_events(body.event, source) or [{}]:
         ev = event_view(raw, source)
         explained = []
         for item in rules:
-            result = explain_rule(item.rule, ev, item.extras.get("resolve_when"), cache)
+            result = explain_rule(item.rule, ev, item.extras.get("resolve_when"))
             explained.append(
                 {
                     "id": str(item.rule.id),

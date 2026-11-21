@@ -58,7 +58,7 @@ async def test_parse_appendix_b_formats(client):
         await client.post("/api/runbooks/parse", json={"text": _text("HighErrorRate.md")}, headers=MASTER)
     ).json()
     assert md["source_format"] == "markdown" and len(md["steps"]) == 4
-    assert md["steps"][1]["suggest"] == "failover_region" and md["steps"][1]["action"] is None
+    assert md["steps"][1]["suggest"] == "failover_region"
     assert md["steps"][0]["kind"] == "manual"
 
     txt = (
@@ -105,7 +105,7 @@ async def test_list_runbooks_shape_and_used_by(client):
     assert set(settle) >= RUNBOOK_KEYS
     assert settle["source_format"] == "yaml" and settle["reviewed"] is True
     assert any(name.startswith("Settlements") for name in settle["used_by"])
-    assert settle["steps"][0]["id"] == 1 and settle["steps"][0]["key"] == "s1"
+    assert settle["steps"][0]["id"] == 1 and settle["steps"][0]["uid"] == "s1"
     md = by_id[str(stable_id("runbook", "HighErrorRate"))]
     assert md["matches"] == {"alertname": "HighErrorRate"} and md["reviewed"] is False
 

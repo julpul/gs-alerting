@@ -1,33 +1,27 @@
 """Our runbooks / runbook steps in Herald's `Runbook` and `Step` shapes.
 
-Step id = the step's 1-based position (Herald uses ints); our own step id (`s1`, ...) is kept as `key`.
-Kinds: our `text` -> Herald `manual`; `check`, `action`, `wait` are the same. `guard` -> `condition`.
-A step whose action mapping was guessed (`suggested`) shows it as `suggest` (never run until reviewed).
+Steps use HB-CORE's `views.step_out` (id = 1-based `order`, our step id = `uid`, `text` -> `manual`,
+`guard` -> `condition`); a step whose action mapping was guessed (`suggested`) also shows it as `suggest`.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from app.herald.views import step_out
+from app.schemas import api as wire
+
 PARSED_BY = {"ai": "llm", "llm": "llm", "human": "human"}
-KINDS = {"check": "check", "action": "action", "wait": "wait"}
 
 
 def step_wire(step: dict[str, Any], position: int) -> dict[str, Any]:
-    suggested = bool(step.get("suggested"))
-    action = step.get("action")
-    return {
-        "id": position,
-        "key": step.get("id"),
-        "kind": KINDS.get(step.get("kind") or "", "action" if action and not suggested else "manual"),
-        "text": step.get("text") or "",
-        "action": None if suggested else action,
-        "params": step.get("parameters") or {},
-        "approval": step.get("approval") or "none",
-        "condition": step.get("guard"),
-        "suggest": action if suggested else None,
-        "url": step.get("url"),
-    }
+    """HB-CORE's `views.step_out` + Herald's `suggest` for an action the parser guessed."""
+    parsed = wire.RunbookStep.model_validate(step)
+    out = step_out(parsed)
+    out["id"] = parsed.order or position
+    if parsed.suggested and parsed.action:
+        out["suggest"] = parsed.action
+    return out
 
 
 def steps_wire(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:

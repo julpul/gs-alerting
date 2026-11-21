@@ -96,7 +96,7 @@ async def _bearer(client) -> dict:
     return {"Authorization": f"Bearer {resp.json()['accessToken']}"}
 
 
-async def test_put_keeps_person_owner_and_highlight(client):
+async def test_put_person_owner_reads_back_as_team_and_keeps_highlight(client):
     doc = {
         **next(d for d in brief_rules() if d["id"] == "anna-payments-critical"),
         "name": f"Anna {uuid4().hex[:6]}",
@@ -109,7 +109,7 @@ async def test_put_keeps_person_owner_and_highlight(client):
         for r in (await client.get("/api/rules", headers=ANNA)).json()
         if r["doc"]["id"] == resp.json()["id"]
     )
-    assert listed["doc"]["owner"] == "person:anna"
+    assert listed["doc"]["owner"] == "team:team-payments"
     assert listed["doc"]["present"]["highlight"] == ["labels.region"]
     assert listed["doc"]["notify"] == doc["notify"]
 

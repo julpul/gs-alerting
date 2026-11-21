@@ -145,7 +145,7 @@ async def sim_phone(who: Actor, pool: Pool) -> dict[str, Any]:
     messages.sort(key=lambda m: m["at"] or 0, reverse=True)
     failures = state.get("failures") or {}
     down = any(name in failures for name in (*GATEWAY_CHANNELS, "all"))
-    return {"down": down, "page": get_settings().mockgw_public_url, "messages": messages}
+    return {"down": down, "page": get_settings().public_mockgw_url, "messages": messages}
 
 
 class SimGateway(BaseModel):
@@ -187,9 +187,9 @@ async def sim_mail(who: Actor) -> dict[str, Any]:
             response.raise_for_status()
             data = response.json()
     except (httpx.HTTPError, ValueError):
-        return {"page": settings.mailpit_public_url, "messages": [], "unavailable": True}
+        return {"page": settings.public_mailpit_url, "messages": [], "unavailable": True}
     return {
-        "page": settings.mailpit_public_url,
+        "page": settings.public_mailpit_url,
         "messages": [
             {
                 "id": m.get("ID"),
