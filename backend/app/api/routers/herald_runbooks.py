@@ -3,14 +3,16 @@
 Parsing is ours (`app.runbooks.parsers`: YAML / Markdown / link deterministic, free text via the AI parser
 with the heuristic splitter as fallback). `ai: false` asks for the fixed rules only ("Split into steps"),
 `ai: true` reads the text as free text with the AI parser ("Write with AI"; still falls back to the splitter
-when the model does not answer, `source` then says `heuristic`). An AI preview also returns `draft_steps`
-(our step shape); sending them back on save stores exactly the steps the person reviewed.
+when the model does not answer, `source` then says `heuristic`). An AI preview or `draft: true` also
+returns `draft_steps` (our step shape); sending them back on save stores exactly the reviewed steps.
 Runbook id = our uuid; a runbook first saved under a Herald slug remembers it (`attached.heraldId`), so
-saving the same slug again updates it.
+saving the same slug again updates it. A runbook saved from a reviewed draft remembers who accepted it and the
+file it came from (`attached.acceptedBy`, `attached.sourceFile`).
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -37,6 +39,7 @@ class RunbookText(BaseModel):
     text: str
     format: str | None = None
     ai: bool | None = None
+    draft: bool | None = None
 
 
 class RunbookIn(BaseModel):
@@ -45,6 +48,7 @@ class RunbookIn(BaseModel):
     title: str | None = None
     steps: list[wire.RunbookStep] | None = None
     ai: bool | None = None
+    source_file: str | None = None
 
 
 async def _used_by(conn: asyncpg.Connection, who: Any) -> dict[str, list[str]]:
@@ -71,9 +75,9 @@ async def parse(body: RunbookText, who: Actor) -> dict[str, Any]:
     else:
         parsed = await parse_runbook(body.text, body.format or "auto", use_ai=body.ai is None)
     out = parsed_wire(parsed, body.text)
-    if body.ai:
-        if _model_did_not_answer(parsed, body.text):
-            out.update(parsed_by="parser", source="heuristic")
+    if body.ai and _model_did_not_answer(parsed, body.text):
+        out.update(parsed_by="parser", source="heuristic")
+    if body.ai or body.draft:
         out["draft_steps"] = [s.model_dump(mode="json", exclude_none=True) for s in parsed.steps]
     return out
 
@@ -99,6 +103,13 @@ async def _find(conn: asyncpg.Connection, who: Any, runbook_id: str) -> asyncpg.
     return row
 
 
+def _accepted(body: RunbookIn, user: User) -> dict[str, Any]:
+    out: dict[str, Any] = {"acceptedBy": user.display_name, "acceptedAt": datetime.now(UTC).isoformat()}
+    if body.source_file:
+        out["sourceFile"] = body.source_file.strip()[:200]
+    return out
+
+
 @router.put("/api/runbooks/{runbook_id}")
 async def save_runbook(runbook_id: str, body: RunbookIn, who: Actor, pool: Pool) -> dict[str, Any]:
     """Save a runbook pasted in any format; rules pointing at it see the new steps at once."""
@@ -109,9 +120,18 @@ async def save_runbook(runbook_id: str, body: RunbookIn, who: Actor, pool: Pool)
     async with pool.acquire() as conn:
         row = await _find(conn, who, runbook_id)
         fmt = "text" if body.ai else body.format
+        accepted = _accepted(body, user) if body.steps else {}
         if row is not None:
             saved = await store.update_runbook(
-                conn, who.scope, user, row, name=title, fmt=fmt, source=body.text
+                conn,
+                who.scope,
+                user,
+                row,
+                name=title,
+                fmt=fmt,
+                source=body.text,
+                steps=body.steps or None,
+                attached={**accepted, **({"parsedBy": "ai"} if body.ai and body.steps else {})},
             )
         else:
             if parse_uuid(runbook_id) is not None:
@@ -125,7 +145,11 @@ async def save_runbook(runbook_id: str, body: RunbookIn, who: Actor, pool: Pool)
                 source=body.text,
                 steps=body.steps or None,
                 team_ref=who.teams[0].removeprefix("team:") if who.teams else None,
-                attached={"heraldId": runbook_id, **({"parsedBy": "ai"} if body.ai and body.steps else {})},
+                attached={
+                    "heraldId": runbook_id,
+                    **accepted,
+                    **({"parsedBy": "ai"} if body.ai and body.steps else {}),
+                },
             )
         used = await _used_by(conn, who)
     return runbook_wire(saved, used.get(saved["id"]))

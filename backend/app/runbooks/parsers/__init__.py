@@ -16,6 +16,7 @@ from app.runbooks.parsers import link, markdown, text
 from app.runbooks.parsers import yaml as structured
 
 FORMATS = ("yaml", "markdown", "text", "link")
+_YAML_LIST = re.compile(r"^-\s+[\w\"'-]+\s*:")
 _STRUCTURED_KEY = re.compile(rf"^(?:runbook|{'|'.join(structured.STEP_LIST_KEYS)}):", re.MULTILINE)
 
 
@@ -23,7 +24,7 @@ def detect_format(content: str) -> str:
     stripped = content.strip()
     if link.is_link(stripped):
         return "link"
-    if stripped[:1] in "{[" or _STRUCTURED_KEY.search(stripped):
+    if stripped[:1] in "{[" or _STRUCTURED_KEY.search(stripped) or _YAML_LIST.match(stripped):
         try:
             if structured.is_structured(structured.load(stripped)):
                 return "yaml"
@@ -31,6 +32,8 @@ def detect_format(content: str) -> str:
             pass
         if structured.json_document(stripped) is not None:
             return "json"
+    if stripped[:1] != "#" and structured.loose(stripped) is not None:
+        return "yaml"
     if markdown.has_items(stripped) or markdown.title_of(stripped):
         return "markdown"
     return "text"
@@ -41,7 +44,7 @@ async def _parse_as(content: str, fmt: str, use_ai: bool) -> ParsedRunbook | Non
         try:
             return structured.parse(content)
         except structured.StructuredError:
-            return None
+            return structured.loose(content)
     if fmt == "markdown":
         return markdown.parse(content)
     if fmt == "link":

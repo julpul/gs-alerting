@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from app.core.ids import stable_id
 from tests.herald.config_helpers import ANNA, MASTER, RUNBOOKS
 
+SAMPLE = Path(__file__).resolve().parents[3] / "docs" / "samples" / "runbooks" / "deploy-rollback.yaml"
 RUNBOOK_KEYS = {
     "id",
     "title",
@@ -150,3 +152,32 @@ async def test_put_rejections(client):
     seeded_rates = str(stable_id("runbook", "settlement-timeout"))
     denied = await client.put(f"/api/runbooks/{seeded_rates}", json={"text": "1. a"}, headers=ANNA)
     assert denied.status_code == 404
+
+
+async def test_file_draft_parse_then_save_stores_reviewed_steps(client, seeded):
+    text = SAMPLE.read_text()
+    parsed = (
+        await client.post(
+            "/api/runbooks/parse", json={"text": text, "format": "auto", "draft": True}, headers=ANNA
+        )
+    ).json()
+    assert parsed["source_format"] == "yaml" and len(parsed["draft_steps"]) == 4
+    reviewed = parsed["draft_steps"][:2]
+    slug = f"deploy-rollback-{uuid4().hex[:6]}"
+    body = {
+        "text": text,
+        "title": "Deploy rollback",
+        "format": parsed["source_format"],
+        "steps": reviewed,
+        "source_file": "deploy-rollback.yaml",
+    }
+    saved = await client.put(f"/api/runbooks/{slug}", json=body, headers=ANNA)
+    assert saved.status_code == 200, saved.text
+    rb = saved.json()
+    assert len(rb["steps"]) == 2 and rb["source_text"] == text
+    assert rb["accepted_by"] and rb["source_file"] == "deploy-rollback.yaml"
+    again = await client.put(f"/api/runbooks/{slug}", json={**body, "steps": reviewed[:1]}, headers=ANNA)
+    assert again.json()["id"] == rb["id"] and len(again.json()["steps"]) == 1
+    assert again.json()["accepted_by"] == rb["accepted_by"]
+    listed = {r["id"]: r for r in (await client.get("/api/runbooks", headers=ANNA)).json()}
+    assert listed[rb["id"]]["source_file"] == "deploy-rollback.yaml"
