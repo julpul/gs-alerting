@@ -46,6 +46,20 @@ async def stats_hash(redis: aioredis.Redis, metric: str) -> dict[str, float]:
     return out
 
 
+async def exact_outcomes(redis: aioredis.Redis) -> dict[str, float]:
+    """Per-event outcome counts the worker writes in the same Redis pipeline that marks the event done
+    (`stats:source:<id>` hashes). Exact even when a worker is SIGKILLed, unlike the 1 s Prometheus
+    mirror, so `lost` does not show the killed process's unflushed counter deltas."""
+    totals: dict[str, float] = {}
+    async for key in redis.scan_iter(match=rkey("stats", "source", "*"), count=500):
+        for field, value in (await redis.hgetall(key)).items():
+            try:
+                totals[field] = totals.get(field, 0.0) + float(value)
+            except ValueError:
+                continue
+    return totals
+
+
 def events_per_second(ingested_total: float, now: float | None = None) -> float:
     """Rate of the ingested counter over the last ~10 s of samples taken by successive calls."""
     now = time.monotonic() if now is None else now
@@ -141,7 +155,7 @@ async def metrics_summary(
     pool: asyncpg.Pool, redis: aioredis.Redis, scope: Scope, window_minutes: int = 15
 ) -> dict[str, Any]:
     ingested_by_source = await stats_hash(redis, INGESTED)
-    outcomes = await stats_hash(redis, OUTCOMES)
+    outcomes = await exact_outcomes(redis) or await stats_hash(redis, OUTCOMES)
     ingested = sum(ingested_by_source.values())
     depths = await queue_depths()
 
