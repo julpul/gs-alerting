@@ -485,10 +485,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [content, format]
+              required: [content]
               properties:
                 content: { type: string }
-                format: { type: string, enum: [yaml, markdown, text, link] }
+                format: { type: string, enum: [auto, yaml, markdown, text, link], description: 'auto (default) detects YAML/JSON, Markdown/checklist, link or free text' }
       responses:
         '200': { description: Draft steps, content: { application/json: { schema: { $ref: '#/components/schemas/Runbook' } } } }
 
@@ -603,7 +603,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [level], properties: { level: { $ref: '#/components/schemas/TrustLevel' } } }
+            schema: { type: object, properties: { level: { $ref: '#/components/schemas/TrustLevel' }, cap: { oneOf: [ { $ref: '#/components/schemas/TrustLevel' }, { type: 'null' } ] } } }
       responses:
         '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/ActionTrust' } } } }
   /v1/preferences/me:
@@ -896,6 +896,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        shortId: { type: [integer, 'null'], description: 'Number used in SMS replies: APPROVE <shortId>' }
         status: { type: string, enum: [pending, approved, rejected, expired] }
         origin: { type: string, enum: [runbook_step, agent_request] }
         requestedBy: { $ref: '#/components/schemas/Actor' }
@@ -1027,6 +1028,9 @@ components:
         format: { type: string, enum: [yaml, markdown, text, link] }
         source: { type: string, description: Original content }
         steps: { type: array, items: { $ref: '#/components/schemas/RunbookStep' } }
+        teamId: { type: [string, 'null'], description: 'Owning team (null = organisation wide)' }
+        attached: { type: object, additionalProperties: true, description: 'Where it applies: {ruleIds: [], matches: {field: value|glob}, schema, type}' }
+        parsedBy: { type: [string, 'null'], enum: [deterministic, heuristic, ai, null] }
     RunbookStep:
       type: object
       properties:
@@ -1034,12 +1038,18 @@ components:
         order: { type: integer }
         kind: { type: string, enum: [text, check, action] }
         text: { type: string, description: 'Rendered with event values' }
-        action: { type: [string, 'null'], enum: [http_get, retry_workflow, restart_service, webhook, open_ticket, escalate, null] }
+        action: { type: [string, 'null'], description: 'Registered action name (open set: http_get, retry_workflow, restart_service, webhook, open_ticket, escalate, failover_region, rollback_deploy, notify_text, ...)' }
         parameters: { type: object, additionalProperties: true }
         approval: { type: string, enum: [none, required] }
         risk: { type: string, enum: [low, medium, high] }
         trustLevel: { $ref: '#/components/schemas/TrustLevel' }
         state: { type: string, enum: [not_started, pending_approval, running, succeeded, failed, skipped] }
+        guard: { type: [string, 'null'], description: 'Machine-readable precondition, e.g. previous.failures >= 2' }
+        guardMet: { type: [boolean, 'null'], description: 'Evaluated guard for this alert; null when the step has no guard' }
+        suggested: { type: boolean, description: 'Action mapping was guessed by a heuristic or AI and needs human review' }
+        url: { type: [string, 'null'], description: 'Link steps: the page to open' }
+        parsedBy: { type: [string, 'null'], enum: [deterministic, heuristic, ai, null] }
+        approvalId: { type: [string, 'null'], description: 'Pending or last approval of this step on this alert' }
         lastRun:
           type: [object, 'null']
           properties:
