@@ -19,7 +19,7 @@ UI = Herald web UI served by our api (`/` classic, `/ads/` React); API = `/v1` (
 | M11 | Retries + no loss during channel downtime | ✅ | Retry queues 5 s/30 s → DLQ → fallback channel · T4 chaos **LOST = 0** (`loadtest/results/`), `tests/delivery/test_worker.py::test_failing_sms_retries_then_dead_letters_and_falls_back_to_email` |
 | M12 | Live feed via push | ✅ | SSE `/v1/stream` + UI `/api/stream` · `tests/api/test_stream.py`, `tests/herald/test_core_*` |
 | M13 | Ack / resolve in UI | ✅ | `/v1/alerts/{id}/ack|resolve`, SMS `ACK n`, MCP `ack_alert` · `tests/api/test_alerts.py`, `tests/escalation/test_inbound_sms.py` |
-| M14 | Manage rules + channel preferences in UI | ⏳ | Herald UI rule editor + preferences via BFF (`app/api/routers/herald_*`) |
+| M14 | Manage rules + channel preferences in UI | ✅ | Herald UI rule editor + preferences via BFF (`app/api/routers/herald_*`) |
 | M15 | Propose fixes / enhancements to alerts | 🟡 | AI suggestion panel (Accept/Reject), comments/notes, Copilot `propose_rule` / runbook drafts · `tests/ai/test_suggest.py` |
 | M16 | Dedup with counter | ✅ | Fingerprint + partial unique index + UPDATE fast path · T6: 500 → **1 alert ×500**, 1 phone + 1 SMS · `tests/pipeline/test_worker.py::test_500_identical_events_*` |
 | M17 | Throttling / grouping per rule or recipient | ✅ | `grouping.byField + windowSeconds` (Pricing per instrument / 5 min), per-recipient throttle → digest email · `tests/delivery/test_routing.py::test_throttle_*`, `tests/escalation/test_digest.py` |
@@ -42,4 +42,4 @@ UI = Herald web UI served by our api (`/` classic, `/ads/` React); API = `/v1` (
 ## QA gate (2026-11-21 ~05:00, local stack + Railway, Playwright through both UIs)
 - Verified end to end through the UI: live feed in two tabs, ack/resolve without refresh, classic rule editor (nested AND/OR + numeric) live without restart, SMS outage → retry → DLQ → email fallback (nothing lost), dedup 500 → one alert ×500, Pricing grouping per instrument, Appendix B runbooks + 8 unseen runbooks parsed, executable steps (http_get, retry_workflow), risky step approved by a *different* person (four-eyes) from alert detail and Approvals screen, Alertmanager `resolved` auto-close, MCP: PAT from UI → initialize/tools/list/list_alerts → revoke → 401, Railway UI identical.
 - Unseen schemas S1–S9 accepted (S3 text and S9 top-level array via `/v1/ingest` being fixed in FIX-BE).
-- Open: M14 channel-preference editor in the UI (FIX-UI), M15 AI Accept/Reject needs an LLM key (manual AI test by the team).
+- After FIX-UI/FIX-BE (05:30): M14 ✅ (`/ads/#/preferences`, team channel policy editor, classic Teams table); S3 text logs + S9 arrays accepted on `/v1/ingest`; wildcard paths; four-eyes approvers. Open: M15 AI Accept/Reject needs an LLM key (manual AI test by the team).

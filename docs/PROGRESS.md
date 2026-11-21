@@ -12,7 +12,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P2 core pipeline | done | **PASS** (QA: demo events → 5 rules, Mailpit + mockgw deliveries, SSE, dedup ×501 → 1 alert, SMS outage → DLQ + email fallback, isolation, coverage 97.6 %) | 3 minor findings fixed by orchestrator |
 | P3 video features + measurement | done | T1/T6 PASS (see results) | |
 | P4 agents + sources | done | 842 tests green, coverage 97 % | |
-| P6 UI integration (Herald UI) | in_progress | 948 tests green; QA gate vs Must checklist running | BFF `/api/*` (HB-CORE, HB-CONFIG), UI served + new AI/MCP screens (HUI), all on Opus 5.5 high |
+| P6 UI integration (Herald UI) | done | 1017 tests green; QA gate: 27/29 M+J verified in browser, fixes merged (FIX-UI, FIX-BE); Railway redeployed | BFF `/api/*` (HB-CORE, HB-CONFIG), UI served + new AI/MCP screens (HUI), all on Opus 5.5 high |
 | P5 ship | in_progress | — | perf tuning by orchestrator; deploy blocked on GitHub Actions billing/visibility decision |
 
 ## Tasks
