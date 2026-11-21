@@ -69,10 +69,10 @@ async def _gh(monkeypatch, token: str = "tok-123") -> FakeGitHub:
     monkeypatch.setattr(
         github,
         "make_client",
-        lambda: httpx.AsyncClient(
+        lambda tok: httpx.AsyncClient(
             base_url="https://api.github.test",
             transport=httpx.MockTransport(fake.handler),
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {tok}"},
         ),
     )
     return fake
@@ -110,7 +110,9 @@ async def test_detail_codebase_and_links(client, seeded, linked, monkeypatch):
     assert "open a pull request" in cb["claude_prompt"] and "list_alerts" in cb["claude_prompt"]
     assert "- Service: payments-api" in cb["claude_prompt"]
     assert cb["claude_cmd"].startswith('claude "') and cb["claude_cmd"].endswith('"')
-    assert cb["pr"]["available"] is False and "GITHUB_TOKEN" in cb["pr"]["reason"] and cb["pr"]["url"] is None
+    assert (
+        cb["pr"]["available"] is False and "Connect GitHub" in cb["pr"]["reason"] and cb["pr"]["url"] is None
+    )
     links = {x["label"]: x["url"] for x in d["observability_links"]}
     assert "Bad" not in links  # a template that renders to a non-http URL is dropped
     start = int((now - timedelta(minutes=15)).timestamp() * 1000)
@@ -194,7 +196,7 @@ async def test_pr_conflicts_and_errors(client, seeded, linked, monkeypatch):
     row = await alert(seeded, title="No token")
     monkeypatch.setattr(get_settings(), "github_token", "")
     r = await client.post(f"/api/alerts/{row['short_id']}/codebase/pr", headers=as_person("anna"))
-    assert r.status_code == 409 and "GITHUB_TOKEN" in r.json()["detail"]
+    assert r.status_code == 409 and "Connect GitHub" in r.json()["detail"]
 
     await seeded.execute(
         "UPDATE sources SET codebase = $2 WHERE id = $1",
@@ -222,7 +224,7 @@ async def test_pr_conflicts_and_errors(client, seeded, linked, monkeypatch):
 async def test_pr_unreachable_github_is_502(client, seeded, linked, monkeypatch):
     await _gh(monkeypatch)
 
-    def boom() -> httpx.AsyncClient:
+    def boom(tok: str) -> httpx.AsyncClient:
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("down")
 

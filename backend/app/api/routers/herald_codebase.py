@@ -51,6 +51,7 @@ async def open_pr(alert_id: str, who: Actor, pool: Pool) -> dict[str, Any]:
         result = await github.open_draft_pr(
             owner,
             name,
+            token=await github.token_for(conn, row["domain_id"]),
             base=codebase["branch"],
             branch=f"herald/a-{short}-{github.slugify(row['title'])}",
             file_path=brief_path,

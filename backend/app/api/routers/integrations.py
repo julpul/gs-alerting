@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
 
 from app.ai.llm import llm_configured
@@ -18,6 +18,7 @@ from app.core.errors import AppError, ORJSONResponse, forbidden
 from app.core.ids import parse_uuid
 from app.core.scope import Scope
 from app.core.security import decrypt_secret, encrypt_secret
+from app.herald.github import ORG_WIDE, verify_token
 
 router = APIRouter(prefix="/v1/integrations", tags=["integrations"])
 
@@ -30,41 +31,84 @@ class IntegrationBody(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
-def _wire(kind: str, status: str, domain_id: UUID | None, mode: str | None) -> dict[str, Any]:
+def _wire(
+    kind: str,
+    status: str,
+    domain_id: UUID | None,
+    mode: str | None,
+    *,
+    login: str | None = None,
+    can_edit: bool = False,
+) -> dict[str, Any]:
     return {
         "kind": kind,
         "status": status,
-        "scopeDomainId": str(domain_id) if domain_id else None,
+        "scopeDomainId": str(domain_id) if domain_id and domain_id != ORG_WIDE else None,
         "mode": mode,
+        "login": login,
+        "canEdit": can_edit,
     }
 
 
-def _default_row(kind: str) -> dict[str, Any]:
+def _default_row(kind: str, can_edit: bool) -> dict[str, Any]:
     if kind == "llm":
-        return _wire(kind, "connected" if llm_configured() else "not_connected", None, "default")
-    return _wire(kind, "not_connected", None, None)
+        return _wire(
+            kind, "connected" if llm_configured() else "not_connected", None, "default", can_edit=can_edit
+        )
+    return _wire(kind, "not_connected", None, None, can_edit=can_edit)
+
+
+def _roots(scope: Scope) -> list[UUID]:
+    return [r.scope_id for r in scope.roles if r.role == "domain_root" and r.scope_type == "domain"]
+
+
+def _login(blob: bytes | None) -> str | None:
+    if not blob:
+        return None
+    try:
+        return json.loads(decrypt_secret(blob)).get("login") or None
+    except Exception:
+        return None
 
 
 @router.get("")
 async def list_integrations(pool: Pool, scope: CurrentScope) -> ORJSONResponse:
     async with pool.acquire() as conn:
         if scope.is_master:
-            rows = await conn.fetch("SELECT domain_id, kind, mode FROM integrations ORDER BY kind, domain_id")
+            rows = await conn.fetch(
+                "SELECT domain_id, kind, mode, config_encrypted FROM integrations ORDER BY kind, domain_id"
+            )
         else:
             rows = await conn.fetch(
-                "SELECT domain_id, kind, mode FROM integrations WHERE domain_id = ANY($1) "
-                "ORDER BY kind, domain_id",
+                "SELECT domain_id, kind, mode, config_encrypted FROM integrations "
+                "WHERE domain_id = ANY($1) OR (kind = 'github' AND domain_id = $2) ORDER BY kind, domain_id",
                 list(scope.domain_ids),
+                ORG_WIDE,
             )
-    out = [_wire(r["kind"], "connected", r["domain_id"], r["mode"]) for r in rows]
+    roots = set(_roots(scope))
+
+    def editable(domain_id: UUID | None) -> bool:
+        return scope.is_master or (domain_id in roots)
+
+    out = [
+        _wire(
+            r["kind"],
+            "connected",
+            r["domain_id"],
+            r["mode"],
+            login=_login(r["config_encrypted"]) if r["kind"] == "github" else None,
+            can_edit=editable(r["domain_id"]),
+        )
+        for r in rows
+    ]
     present = {r["kind"] for r in rows}
-    out += [_default_row(k) for k in KINDS if k not in present]
+    out += [_default_row(k, scope.is_master or bool(roots)) for k in KINDS if k not in present]
     return ORJSONResponse(out)
 
 
-async def _domain(conn: asyncpg.Connection, scope: Scope, ref: str | None) -> UUID:
+async def _domain(conn: asyncpg.Connection, scope: Scope, ref: str | None, kind: str) -> UUID:
     """The domain a caller configures: given, or their only domain-root domain; they must be root/master."""
-    roots = [r.scope_id for r in scope.roles if r.role == "domain_root" and r.scope_type == "domain"]
+    roots = _roots(scope)
     if ref:
         domain_id = await conn.fetchval(
             "SELECT id FROM domains WHERE id = $1 OR slug = $2", parse_uuid(ref) or UUID(int=0), ref
@@ -73,6 +117,8 @@ async def _domain(conn: asyncpg.Connection, scope: Scope, ref: str | None) -> UU
             raise AppError(422, "invalid_domain", "unknown domain")
     elif len(roots) == 1:
         domain_id = roots[0]
+    elif kind == "github" and scope.is_master:
+        return ORG_WIDE
     else:
         raise AppError(422, "invalid_domain", "scopeDomainId is required")
     if not (scope.is_master or domain_id in roots):
@@ -120,10 +166,18 @@ async def put_integration(
     if kind not in KINDS:
         raise AppError(422, "invalid_kind", f"kind must be one of {', '.join(KINDS)}")
     async with pool.acquire() as conn:
-        domain_id = await _domain(conn, scope, body.scopeDomainId)
+        domain_id = await _domain(conn, scope, body.scopeDomainId, kind)
         existing = await _stored(conn, domain_id, kind)
-        merged = {**existing, **{k: v for k, v in body.config.items() if v not in (None, "")}}
+        given = {k: v for k, v in body.config.items() if v not in (None, "")}
+        merged = {**existing, **given}
         mode: str | None = None
+        if kind == "github":
+            merged.pop("login", None)
+            if given.get("token"):
+                merged["login"] = await verify_token(str(given["token"]), given.get("repo"))
+            elif not existing.get("token"):
+                raise AppError(422, "invalid_config", "token is required")
+            merged["login"] = merged.get("login") or existing.get("login")
         if kind == "llm":
             mode = _check_llm(merged)
         elif not body.config:
@@ -154,4 +208,30 @@ async def put_integration(
                 {"kind": kind, "mode": mode, "fields": sorted(body.config)},
             )
     status = "not_connected" if mode == "default" and not llm_configured() else "connected"
-    return ORJSONResponse(_wire(kind, status, domain_id, mode))
+    login = merged.get("login") if kind == "github" else None
+    return ORJSONResponse(_wire(kind, status, domain_id, mode, login=login, can_edit=True))
+
+
+@router.delete("/{kind}")
+async def delete_integration(
+    pool: Pool,
+    user: CurrentUser,
+    scope: CurrentScope,
+    kind: str = Path(...),
+    scopeDomainId: str | None = Query(default=None),
+) -> ORJSONResponse:
+    if kind not in KINDS:
+        raise AppError(422, "invalid_kind", f"kind must be one of {', '.join(KINDS)}")
+    async with pool.acquire() as conn:
+        domain_id = await _domain(conn, scope, scopeDomainId, kind)
+        async with conn.transaction():
+            await conn.execute("DELETE FROM integrations WHERE domain_id = $1 AND kind = $2", domain_id, kind)
+            await audit(
+                conn,
+                user_actor(user.id, user.display_name),
+                "integration.delete",
+                "integration",
+                f"{domain_id}:{kind}",
+                {"kind": kind},
+            )
+    return ORJSONResponse(_default_row(kind, True))
