@@ -484,6 +484,7 @@ body.nav-hidden .shell,body.nav-hidden .shell.gut{grid-template-columns:minmax(0
 .avf{border:0;background:none;padding:0;margin-left:-4px;border-radius:50%;cursor:pointer;box-shadow:0 0 0 2px #fff;display:grid}
 .avf:hover{transform:translateY(-2px)} .avf[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent)}
 .avf.avme{display:flex;align-items:center;gap:6px;padding:0 10px 0 0;border-radius:14px;margin-left:0;margin-right:4px;font-size:13px;font-weight:600;color:var(--ink);background:var(--sunk)}
+.avf.avnone{margin-left:8px;padding:0 10px 0 8px;height:28px;color:var(--muted)}
 /* Board */
 .board{display:grid;grid-template-columns:repeat(3,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto;padding-bottom:4px}
 .bcol{background:var(--sunk);border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:6px;min-height:160px}
@@ -705,10 +706,12 @@ html{scrollbar-color:#c4cad3 transparent;scrollbar-width:thin}
 ::-webkit-scrollbar-thumb:hover{background:#9aa3ae;background-clip:padding-box}
 
 /* New-alert banner: slides in at the top when the live feed brings an alert this page has not seen. */
-#newAlert{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:80;width:min(720px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--nb-col,#C9372C);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:12px 14px;display:flex;gap:12px;align-items:center;animation:nbIn .25s ease-out}
+#newAlert{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:80;width:min(720px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:12px 14px;display:flex;gap:12px;align-items:center;animation:nbIn .25s ease-out}
 #newAlert[hidden]{display:none}
 #newAlert .nbt{flex:1;min-width:0}
-#newAlert .nbt b{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--nb-col,#C9372C)}
+#newAlert .nbt b{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+#newAlert .nbic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#262B5E;color:#fff;flex:none}
+#newAlert .nbic .ic{color:#fff}
 #newAlert .nbt span{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #newAlert .nbt small{color:var(--muted)}
 @keyframes nbIn{from{opacity:0;transform:translate(-50%,-12px)}to{opacity:1;transform:translate(-50%,0)}}
@@ -927,9 +930,8 @@ function noticeNew(){const owner=T().owner,ids=new Set(S.alerts.map(a=>a.id));
       clearTimeout(nbTimer);nbTimer=setTimeout(()=>{S.newAlert=null;paintNewAlert();},20000);paintNewAlert();}}
   seenAlerts=ids;seenOwner=owner;}
 function paintNewAlert(){const n=$('newAlert');if(!n)return;const x=S.newAlert;if(!x){n.hidden=true;n.innerHTML='';return;}
-  const a=x.a,sev=SEVS[a.severity]||{},who=a.im?(a.imRef===me()?a.im+' (you)':a.im):'nobody yet';
-  n.style.setProperty('--nb-col',a.colour||sev.col||'#C9372C');
-  n.innerHTML=`${ic('alert')}<div class="nbt"><b>New ${esc(a.severity||'')} alert · ${esc(a.key)}${x.more>0?' · +'+x.more+' more':''}</b><span>${esc(a.title)}</span><small>${esc(a.source||'')} · In charge: ${esc(who)}${a.auto&&a.assignReason?' ('+esc(a.assignReason)+')':''}</small></div>
+  const a=x.a,who=a.im?(a.imRef===me()?a.im+' (you)':a.im):'nobody yet';
+  n.innerHTML=`<span class="nbic">${ic('alert')}</span><div class="nbt"><b>New alert · ${esc(a.key)}${x.more>0?' · +'+x.more+' more':''} ${loz(cap(a.severity||''),a.severity==='critical'||a.severity==='error'?'danger':a.severity==='warning'?'warning':'')}</b><span>${esc(a.title)}</span><small>${esc(a.source||'')} · In charge: ${esc(who)}${a.auto&&a.assignReason?' ('+esc(a.assignReason)+')':''}</small></div>
     <button class="btn pri sm" data-act="newAlertOpen" data-id="${esc(a.id)}">Open alert</button><button class="iconbtn" data-act="newAlertClose" aria-label="Dismiss">${ic('dismiss','sm')}</button>`;
   n.hidden=false;}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){nbCount=0;document.title=baseTitle;}});
@@ -1089,7 +1091,11 @@ function chipHtml(n){let s=n.status,t;
   return `<span class="chip ${s}">${ic(CHICON[n.channel]||'send','sm')}${esc(n.to)} · ${CH[n.channel]||esc(n.channel)} · ${t}</span>`;}
 const initials=n=>String(n||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
 const AVC=['#262B5E','#5e4db2','#216e4e','#a54800','#ae2e24','#206a83'];
-const avatar=(name,sm)=>{let h=0;for(const c of String(name))h=(h*31+c.charCodeAt(0))%997;return `<span class="av${sm?' sm':''}" style="background:${AVC[h%AVC.length]}" aria-hidden="true">${esc(initials(name))}</span>`;};
+const avatar=(name,sm,label)=>{let h=0;for(const c of String(name))h=(h*31+c.charCodeAt(0))%997;return `<span class="av${sm?' sm':''}" style="background:${AVC[h%AVC.length]}" aria-hidden="true">${esc(label||initials(name))}</span>`;};
+/* Board filter: two people with the same initials (Anna Kowalska, Agnieszka Krol) show the first two letters of their first name (An, Ag); the full name is in the tooltip. */
+function avLabel(ref,t){const ids=['person:'+String(me()).replace(/^person:/,'')].concat((t.memberIds||[]).map(id=>'person:'+id)),name=pname(ref),ini=initials(name);
+  const clash=ids.filter(r=>r!==ref&&initials(pname(r))===ini).length;if(!clash)return ini;const w=String(name).split(/\s+/).filter(Boolean);
+  const two=(w[0]||'').slice(0,2);return two.charAt(0).toUpperCase()+two.charAt(1).toLowerCase();}
 const userHtml=name=>name?`<span class="user">${avatar(name,true)}<span>${esc(name)}</span></span>`:`<span class="user muted"><span class="av sm none" aria-hidden="true">${ic('person','sm')}</span><span>Unassigned</span></span>`;
 function ago(t){const x=Math.max(0,Math.round((Date.now()-t)/1000));if(x<60)return 'just now';const m=Math.round(x/60);if(m<60)return m+' min ago';const h=Math.round(m/60);if(h<24)return h+' h ago';return Math.round(h/24)+' d ago';}
 const loz=(text,kind)=>`<span class="loz ${kind||''}">${esc(text)}</span>`;
@@ -1180,8 +1186,8 @@ function viewFeed(){const t=T(),f=S.f,q=(S.q||'').trim().toLowerCase();
       right:`<span class="live" id="liveDot">${liveHtml()}</span>`,
       desc:(t.personal?'Alerts that go to '+esc(t.oncall)+' personally.':'Problems that need someone from '+esc(t.name)+'.')+' New ones appear by themselves. Open an alert to see what to do, or hand it to a colleague.'});
   const bar=lvNote()+`<div class="row tbar"><label class="search sm">${ic('search','sm')}<input class="in" id="alertQ" data-oni="q" value="${esc(S.q)}" placeholder="Search" aria-label="Search this team’s alerts"></label>
-      <div class="avgroup" role="group" aria-label="Filter by assignee"><button class="avf avme" data-act="fAssignee" data-v="${esc(me())}" aria-pressed="${f.assignee===me()}" title="Alerts assigned to me">${avatar(pname(me()),true)}<span class="avl">Me</span></button>${(t.memberIds||[]).filter(id=>'person:'+id!==me()).map(id=>`<button class="avf" data-act="fAssignee" data-v="person:${esc(id)}" aria-pressed="${f.assignee==='person:'+id}" title="Assigned to ${esc(pname('person:'+id))}">${avatar(pname('person:'+id),true)}</button>`).join('')}
-        <button class="avf" data-act="fAssignee" data-v="none" aria-pressed="${f.assignee==='none'}" title="Unassigned"><span class="av sm none">${ic('person','sm')}</span></button></div>
+      <div class="avgroup" role="group" aria-label="Filter by assignee"><button class="avf avme" data-act="fAssignee" data-v="${esc(me())}" aria-pressed="${f.assignee===me()}" title="Alerts assigned to me">${avatar(pname(me()),true,avLabel(me(),t))}<span class="avl">Me</span></button>${(t.memberIds||[]).filter(id=>'person:'+id!==me()).map(id=>`<button class="avf" data-act="fAssignee" data-v="person:${esc(id)}" aria-pressed="${f.assignee==='person:'+id}" title="Assigned to ${esc(pname('person:'+id))}">${avatar(pname('person:'+id),true,avLabel('person:'+id,t))}</button>`).join('')}
+        <button class="avf avme avnone" data-act="fAssignee" data-v="none" aria-pressed="${f.assignee==='none'}" title="Alerts nobody is in charge of">${ic('person','sm')}<span class="avl">Unassigned</span></button></div>
       <select class="in" id="fPlatform" data-onc="fPlatform" aria-label="Filter by platform">${opt('','All platforms',f.platform)}${S.platforms.map(x=>opt(x.id,x.name,f.platform)).join('')}</select>
       ${f.mode==='list'?`<label class="chk"><input type="checkbox" id="fResolved" data-onc="fResolved" ${f.resolved?'checked':''}> Show resolved</label>`:''}
       ${filtered?'<button class="btn subtle" data-act="filterReset">Clear filters</button>':''}</div>`;
@@ -1201,7 +1207,7 @@ function snippetFor(x,body){
   if(x.type==='http_poll')return '# Herald fetches from this platform itself. Nothing to send.';
   return 'curl -X POST '+location.origin+'/ingest/'+x.id+' \\\n'+(x.needs_token?'  -H "X-Herald-Token: <the token for this platform>" \\\n':'')+'  -H "Content-Type: application/json" \\\n  -d \''+body+"'";}
 function viewPlatforms(){const cur=S.platform&&plat(S.platform);if(cur)return viewPlatform(cur);
-  return pageHead({title:'Platforms',right:`<button class="btn pri" data-act="connectOpen" ${canEdit()?'':'disabled title="'+sso('Choose a rule editor or team lead under Viewing as','Needs the rule editor or team lead role')+'"'}>${ic('add','sm')}Connect platform</button>`,
+  return pageHead({title:'Platforms',right:canEdit()?`<button class="btn pri" data-act="connectOpen">${ic('add','sm')}Connect platform</button>`:'',
       desc:'The systems that send events to Herald. Each card shows how many problems are open on that platform for '+esc(T().name)+'. Open one to see its problems and events, send it an event, or see how it is connected.'})
     +(S.platforms.length?`<div class="pgrid">${S.platforms.map(x=>{const open=x.firing+x.acked;return `<button class="pcard" data-act="openPlatform" data-id="${esc(x.id)}" aria-label="Open ${esc(x.name)}">
         <span class="tile">${ic(PICON[x.icon]||'plug_connected','lg')}</span>
@@ -1633,7 +1639,7 @@ function navHtml(){const mine=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef=
   const sep='<div class="navsep" role="separator"></div>';
   return item('feed','Alerts','alert',open?`<span class="cnt red" title="${open} not acknowledged">${open}</span>`:'',S.view==='feed')
     +item('logs','Logs','document_bullet_list','',S.view==='logs')+sep
-    +`<div class="navrow">${item('platforms','Platforms','plug_connected','',S.view==='platforms'&&!S.platform)}<button class="iconbtn sm" data-act="platFold" aria-expanded="${S.platOpen}" title="${S.platOpen?'Hide':'Show'} the list of platforms" aria-label="${S.platOpen?'Hide':'Show'} the list of platforms">${ic(S.platOpen?'chevron_up':'chevron_down','sm')}</button><button class="iconbtn sm" data-act="connectOpen" title="${canEdit()?'Connect a platform':'Connecting a platform needs a rule editor or team lead'}" aria-label="Connect a platform" ${canEdit()?'':'disabled'}>${ic('add','sm')}</button></div>`
+    +`<div class="navrow">${item('platforms','Platforms','plug_connected','',S.view==='platforms'&&!S.platform)}<button class="iconbtn sm" data-act="platFold" aria-expanded="${S.platOpen}" title="${S.platOpen?'Hide':'Show'} the list of platforms" aria-label="${S.platOpen?'Hide':'Show'} the list of platforms">${ic(S.platOpen?'chevron_up':'chevron_down','sm')}</button>${canEdit()?`<button class="iconbtn sm" data-act="connectOpen" title="Connect a platform" aria-label="Connect a platform">${ic('add','sm')}</button>`:''}</div>`
     +`<div class="navsub" ${S.platOpen?'':'hidden'}>${S.platforms.map(x=>{const n=x.firing+x.acked;return `<button class="navb" data-act="openPlatform" data-id="${esc(x.id)}" ${S.view==='platforms'&&S.platform===x.id?'aria-current="page"':''} title="${esc(x.name)}${n?': '+n+' open problem'+(n>1?'s':''):': no open problems'}">${ptile(x.id)}<span class="nl">${esc(x.name)}</span>${n?`<span class="cnt ${x.firing?'red':''}">${n}</span>`:''}</button>`;}).join('')}</div>`
     +item('rules','Rules','flow','',S.view==='rules')+item('flows','Escalation flows','branch','',S.view==='flows')+item('runbooks','Runbooks','clipboard_task_list_ltr','',S.view==='runbooks')+sep
     +item('preferences','Teams','people_team','',S.view==='preferences')+item('oncall','On-call','clock','',S.view==='oncall')+sep
