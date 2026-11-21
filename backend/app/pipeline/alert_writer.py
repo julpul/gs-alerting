@@ -1,7 +1,7 @@
 """Alert upsert (spec 4.4 step 5, spec 8): dedup, grouping, notify-on-state-change, all in ONE transaction.
 
-New alert  -> timeline `created`, deliveries (`plan_deliveries`), outbox rows `ai.tasks` + SSE
-              `alert.created`.
+New alert  -> timeline `created`, automatic incident manager (`escalation.auto_assign`), deliveries
+              (`plan_deliveries`), outbox rows `ai.tasks` + SSE `alert.created`.
 Duplicate  -> `count++`, `last_seen_at`, grouped item appended (cap 100); nothing else unless the severity
               went up (then deliveries `severity_up` + SSE `alert.updated`).
 The caller publishes `UpsertResult.outbox_ids` after commit (`core.outbox.publish_outbox_rows`).
@@ -20,6 +20,7 @@ import asyncpg
 from app.core.ids import uuid7
 from app.core.outbox import add_outbox
 from app.core.timeline import add_timeline
+from app.escalation.auto_assign import assign_new_alert
 from app.pipeline.envelope import SEVERITY_RANK, format_ts, parse_received_at, priority_for
 from app.pipeline.fields import EventView
 from app.pipeline.fingerprint import knowledge_key
@@ -264,6 +265,9 @@ async def _on_state_change(
                 "Suspicious content detected in the event; AI action suggestions are disabled",
                 data={"flag": SUSPICIOUS},
             )
+        decision = await assign_new_alert(conn, alert, rule_def)
+        if decision is not None:
+            alert["assignee_id"] = decision.user_id
         await plan(conn, alert, rule_def, reason="created")
         await add_outbox(
             conn,

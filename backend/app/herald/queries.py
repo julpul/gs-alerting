@@ -20,7 +20,8 @@ from app.herald.ids import actor_ref, actor_user_ids, people_refs, team_slugs
 ALERT_COLUMNS = (
     "a.id, a.short_id, a.team_id, a.domain_id, a.rule_id, a.source_id, a.title, a.body, a.severity, a.color, "
     "a.status, a.count, a.first_seen_at, a.last_seen_at, a.escalation_level, a.ack_deadline, a.acked_at, "
-    "a.acked_by, a.resolved_at, a.assignee_id, a.flags, a.fields, s.name AS source_name"
+    "a.acked_by, a.resolved_at, a.assignee_id, a.assigned_by, a.assign_reason, a.flags, a.fields, "
+    "s.name AS source_name"
 )
 DELIVERY_COLUMNS = (
     "d.id, d.alert_id, d.recipient_user_id, d.recipient_address, d.channel, d.kind, d.status, d.attempts, "
@@ -67,6 +68,7 @@ async def herald_alerts(conn: asyncpg.Connection, alert_ids: list[UUID]) -> list
     users = {r["acked_by"] for r in rows} | {r["assignee_id"] for r in rows}
     users |= {d["recipient_user_id"] for ds in deliveries.values() for d in ds}
     users |= actor_user_ids(resolvers.values())
+    users |= actor_user_ids(r["assigned_by"] for r in rows)
     refs = await people_refs(conn, users)
     out = []
     for alert_id in alert_ids:

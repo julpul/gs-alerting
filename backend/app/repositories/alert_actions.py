@@ -165,7 +165,12 @@ async def assign_alert(
     if not target_scope.can_see_team(alert["team_id"]):
         raise AppError(422, "validation_error", "userId: user does not belong to the alert's team")
     actor = user_actor(user.id, user.display_name)
-    await conn.execute("UPDATE alerts SET assignee_id = $2 WHERE id = $1", alert["id"], assignee_id)
+    await conn.execute(
+        "UPDATE alerts SET assignee_id = $2, assigned_by = $3, assign_reason = NULL WHERE id = $1",
+        alert["id"],
+        assignee_id,
+        actor,
+    )
     await add_timeline(
         conn,
         alert["id"],
@@ -182,7 +187,11 @@ async def unassign_alert(conn: asyncpg.Connection, alert: asyncpg.Record, user: 
     if alert["assignee_id"] is None:
         return False
     actor = user_actor(user.id, user.display_name)
-    await conn.execute("UPDATE alerts SET assignee_id = NULL WHERE id = $1", alert["id"])
+    await conn.execute(
+        "UPDATE alerts SET assignee_id = NULL, assigned_by = $2, assign_reason = NULL WHERE id = $1",
+        alert["id"],
+        actor,
+    )
     await add_timeline(conn, alert["id"], "assigned", f"Unassigned by {user.display_name}", actor=actor)
     await audit(conn, actor, "alert.unassign", "alert", str(alert["id"]), {})
     return True

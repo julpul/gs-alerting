@@ -34,7 +34,8 @@ approvals service as the calling person, and translate the result (`views.py`). 
 | step state `done` / `failed` / `awaiting_approval` / `rejected` | `succeeded` / `failed` / `pending_approval` / `skipped` after a rejection |
 | actor `person:x` / `system:<name>` / `agent:<name>` | stored actor dict `{type, id, name}` |
 | `colour` | `alerts.color`, else a colour per severity |
-| `incident_manager` | `alerts.assignee_id` (not set automatically on ack, unlike Herald) |
+| `incident_manager` | `alerts.assignee_id`: set automatically when the alert is created (`app/escalation/auto_assign.py`: named in the rule > on call > least busy member), not on ack |
+| `assigned_by` / `assign_reason` | who made the current assignment (`system:auto-assign` or `person:x`) / the automatic reason (`on call for Team Payments`); both null while unassigned. Timeline `assigned` detail: `to`, `reason`, `auto` |
 
 Roles (`/api/me`, a UI hint; authorization is always our scope): master -> `admin`, domain_root ->
 `approver` (Herald ranks approver above editor, so the UI also lets them edit), member / informed ->

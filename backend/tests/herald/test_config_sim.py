@@ -74,8 +74,12 @@ async def test_send_raises_an_alert_through_the_worker(client, seeded, real_work
 
     row = await eventually(alert, timeout=20)
     assert row["name"].startswith("Settlements") and row["status"] in ("open", "escalated")
-    recent = (await client.get("/api/events/recent?source=workflow-broker", headers=MASTER)).json()
-    assert any(r["raw"].get("workflowId") == event["workflowId"] and r["fired"] for r in recent)
+
+    async def fired() -> bool:  # the recent stream is written after the alert's commit: poll, don't race
+        recent = (await client.get("/api/events/recent?source=workflow-broker", headers=MASTER)).json()
+        return any(r["raw"].get("workflowId") == event["workflowId"] and r["fired"] for r in recent)
+
+    assert await eventually(fired, timeout=10)
 
 
 async def test_fields_for_an_unseen_schema_after_one_event(client, real_worker):

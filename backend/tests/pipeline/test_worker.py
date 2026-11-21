@@ -79,7 +79,7 @@ async def test_first_event_creates_alert_with_everything(
     assert planner.calls[0]["rule"] is rule.rule
 
     timeline = await worker_env.pool.fetch("SELECT type, text FROM timeline WHERE alert_id = $1", alert["id"])
-    assert [t["type"] for t in timeline] == ["created"]
+    assert [t["type"] for t in timeline] == ["created", "assigned"]  # the on-call owns it right away
 
     async def published_outbox():
         rows = await worker_env.pool.fetch(
@@ -136,8 +136,8 @@ async def test_500_identical_events_one_alert_count_500_one_delivery_plan(
     assert alert["count"] == 500
     assert planner.reasons == ["created"]
     assert (
-        await worker_env.pool.fetchval("SELECT count(*) FROM timeline WHERE alert_id = $1", alert["id"]) == 1
-    )
+        await worker_env.pool.fetchval("SELECT count(*) FROM timeline WHERE alert_id = $1", alert["id"]) == 2
+    )  # created + the automatic assignment, nothing per duplicate
     await eventually(lambda: _value(outcomes["alerted_new"] == 1 and outcomes["deduplicated"] == 499))
 
     # SSE: count changes are throttled (<= 1 per 250 ms) but the final count always arrives

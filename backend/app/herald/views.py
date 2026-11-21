@@ -158,11 +158,23 @@ def alert_out(
         "acked_by": refs.get(row["acked_by"]) if row["acked_by"] else None,
         "resolved_by": resolved_by,
         "incident_manager": refs.get(row["assignee_id"]) if row["assignee_id"] else None,
+        **assignment_out(row, refs),
         "source": row["source_name"],
         "flags": [f for f in (row["flags"] or []) if f in {x.value for x in wire.Flag}],
         "escalation_level": row["escalation_level"],
         "escalates_at": iso(row["ack_deadline"]),
         "deliveries": deliveries,
+    }
+
+
+def assignment_out(row: Any, refs: dict[UUID, str]) -> dict[str, Any]:
+    """Who made the current assignment (`system:auto-assign` or `person:x`) and the automatic reason.
+
+    Both are null while nobody owns the alert or for assignments older than this bookkeeping."""
+    by = row["assigned_by"] if row["assignee_id"] else None
+    return {
+        "assigned_by": actor_ref(by, refs) if by else None,
+        "assign_reason": row["assign_reason"] if by else None,
     }
 
 
@@ -298,6 +310,8 @@ def timeline_out(
         assignee = data.get("assigneeId")
         action = "assigned"
         detail["to"] = refs.get(UUID(assignee)) if assignee else None
+        detail["reason"] = data.get("reason")
+        detail["auto"] = bool(data.get("auto"))
     elif kind == "comment":
         action = "note"
     elif kind == "step_run":

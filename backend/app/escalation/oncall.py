@@ -12,12 +12,10 @@ import asyncpg
 KIND_PRECEDENCE = ("override", "manual", "rotation")
 
 
-async def current_oncall(conn: asyncpg.Connection, team_id: UUID, at: datetime | None = None) -> list[UUID]:
-    """User ids on call for `team_id` at `at` (default now).
-
-    Among the shifts covering `at`, only those of the highest-precedence kind count. Without any shift
-    the fallback is every member of the team.
-    """
+async def oncall_from_shifts(
+    conn: asyncpg.Connection, team_id: UUID, at: datetime | None = None
+) -> list[UUID]:
+    """User ids whose shifts cover `at` (default now), highest-precedence kind only; [] without shifts."""
     at = at or datetime.now(UTC)
     rows = await conn.fetch(
         "SELECT user_id, kind FROM shifts WHERE team_id = $1 AND start_at <= $2 AND end_at > $2 "
@@ -29,6 +27,18 @@ async def current_oncall(conn: asyncpg.Connection, team_id: UUID, at: datetime |
         users = list(dict.fromkeys(r["user_id"] for r in rows if r["kind"] == kind))
         if users:
             return users
+    return []
+
+
+async def current_oncall(conn: asyncpg.Connection, team_id: UUID, at: datetime | None = None) -> list[UUID]:
+    """User ids on call for `team_id` at `at` (default now).
+
+    Among the shifts covering `at`, only those of the highest-precedence kind count. Without any shift
+    the fallback is every member of the team.
+    """
+    users = await oncall_from_shifts(conn, team_id, at)
+    if users:
+        return users
     members = await conn.fetch(
         "SELECT user_id FROM team_members WHERE team_id = $1 ORDER BY user_id", team_id
     )
