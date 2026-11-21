@@ -1,5 +1,66 @@
-# Demo organization (TECH_SPEC section 21). Ids are derived with uuid5 from the slugs / emails.
+# Vistula Capital (fictional investment bank, Warsaw / London): the demo organization seeded by
+# seed/loaders/10_org.py. Ids are uuid5 of slugs / emails. All users have password `demo`.
+# Conventions:
+#   * keys starting with `x-` only hold YAML anchors, loaders ignore them;
+#   * `roles[].scope` is a domain slug, a team slug, or null for org-wide roles; `member` roles also make the
+#     user a team member (team_members), which is what the rotations and on-call lookups are built from;
+#   * the seven original demo identities (`core: true`) keep their emails, names, phones and scopes; with
+#     SEED_PROFILE=core (the test suite) only those are seeded, without preferences;
+#   * phones are fake (+48 500 1xx xxx), written compact as in spec section 21;
+#   * `rotations` and `systems` are documentation of the intended on-call order (first member on call "now",
+#     `startsAt` relative to seed time); the rotation loader builds shifts from team_members;
+#   * preferences.workingHours are interpreted in the user's own timezone (the loader stores them as
+#     {from, to, timezone}).
+
+x-preferences:
+  engineer: &pref_engineer
+    bySeverity:
+      critical: [phone, sms]
+      error: [sms, email]
+      warning: [email]
+      info: [ui]
+    workingHours: &wh_warsaw { start: "08:00", end: "20:00", days: [1, 2, 3, 4, 5] }
+  sms_first: &pref_sms_first
+    bySeverity:
+      critical: [sms, phone]
+      error: [sms]
+      warning: [email, ui]
+      info: [ui]
+    workingHours: *wh_warsaw
+  lead: &pref_lead
+    bySeverity:
+      critical: [phone, sms, email]
+      error: [sms, email]
+      warning: [email]
+      info: [ui]
+    workingHours: { start: "07:30", end: "19:00", days: [1, 2, 3, 4, 5] }
+  informed: &pref_informed
+    bySeverity:
+      critical: [email, sms]
+      error: [email]
+      warning: [ui]
+      info: [ui]
+    workingHours: { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] }
+  london: &pref_london
+    bySeverity:
+      critical: [phone, sms]
+      error: [sms, email]
+      warning: [email]
+      info: [ui]
+    workingHours: { start: "08:30", end: "18:30", days: [1, 2, 3, 4, 5] }
+  new_york: &pref_new_york
+    bySeverity:
+      critical: [phone, sms]
+      error: [email, sms]
+      warning: [email]
+      info: [ui]
+    workingHours: { start: "09:00", end: "18:00", days: [1, 2, 3, 4, 5] }
+
 password: demo
+
+org:
+  name: Vistula Capital
+  description: Mid-size investment bank, offices in Warsaw (HQ) and London, small desk in New York.
 
 domains:
   - { slug: payments, name: Payments }
@@ -16,24 +77,332 @@ teams:
   - { slug: checkout-project, name: Checkout Project, domains: [payments, security] }
 
 users:
-  - { email: master@demo, name: Mira Master, phone: "+48500100100" }
-  - { email: root.payments@demo, name: Paulina Payments, phone: "+48500100110" }
-  - { email: root.settlements@demo, name: Stefan Settlements, phone: "+48500100120" }
-  - { email: root.security@demo, name: Sylwia Security, phone: "+48500100130" }
-  - { email: anna@demo, name: Anna Kowalska, phone: "+48500100200", manager: manager@demo }
-  - { email: piotr@demo, name: Piotr Wisniewski, phone: "+48500100201", manager: manager@demo }
-  - { email: manager@demo, name: Marta Manager, phone: "+48500100300" }
+  # ---- demo identities from spec §21 (do not change emails/roles/phones) ----------------------------
+  - email: master@demo
+    core: true
+    displayName: Mira Master
+    title: CTO, Master of the organization
+    phone: "+48500100100"
+    timezone: Europe/Warsaw
+    manager: null
+    roles: [{ role: master, scopeType: org, scope: null }]
+    preferences: *pref_lead
 
-# role: master (org) | domain_root (domain slug) | member / informed (team slug)
-roles:
-  - { user: master@demo, role: master }
-  - { user: root.payments@demo, role: domain_root, domain: payments }
-  - { user: root.settlements@demo, role: domain_root, domain: settlements }
-  - { user: root.security@demo, role: domain_root, domain: security }
-  - { user: anna@demo, role: member, team: team-payments }
-  - { user: piotr@demo, role: member, team: team-settlements }
-  - { user: manager@demo, role: informed, team: team-payments }
-  - { user: manager@demo, role: informed, team: team-settlements }
-  - { user: manager@demo, role: informed, team: team-pricing }
-  - { user: manager@demo, role: informed, team: team-rates }
-  - { user: manager@demo, role: informed, team: team-security }
+  - email: root.payments@demo
+    core: true
+    displayName: Paulina Payments
+    title: Head of Payments Engineering (Domain Root Payments)
+    phone: "+48500100110"
+    timezone: Europe/Warsaw
+    manager: master@demo
+    roles: [{ role: domain_root, scopeType: domain, scope: payments }]
+    preferences: *pref_lead
+
+  - email: root.settlements@demo
+    core: true
+    displayName: Stefan Settlements
+    title: Head of Settlements Technology (Domain Root Settlements)
+    phone: "+48500100120"
+    timezone: Europe/Warsaw
+    manager: master@demo
+    roles: [{ role: domain_root, scopeType: domain, scope: settlements }]
+    preferences: *pref_lead
+
+  - email: root.security@demo
+    core: true
+    displayName: Sylwia Security
+    title: CISO (Domain Root Security)
+    phone: "+48500100130"
+    timezone: Europe/Warsaw
+    manager: master@demo
+    roles: [{ role: domain_root, scopeType: domain, scope: security }]
+    preferences: *pref_lead
+
+  - email: anna@demo
+    core: true
+    displayName: Anna Kowalska
+    title: Senior SRE, Payments on-call
+    phone: "+48500100200"
+    timezone: Europe/Warsaw
+    manager: manager@demo
+    roles: [{ role: member, scopeType: team, scope: team-payments }]
+    preferences: *pref_engineer
+
+  - email: piotr@demo
+    core: true
+    displayName: Piotr Wisniewski
+    title: Settlements engineer, Settlements on-call
+    phone: "+48500100201"
+    timezone: Europe/Warsaw
+    manager: manager@demo
+    roles: [{ role: member, scopeType: team, scope: team-settlements }]
+    preferences: *pref_engineer
+
+  - email: manager@demo
+    core: true
+    displayName: Marta Manager
+    title: Head of Trading Operations (informed on trading and settlement incidents)
+    phone: "+48500100300"
+    timezone: Europe/Warsaw
+    manager: master@demo
+    roles:
+      - { role: informed, scopeType: team, scope: team-payments }
+      - { role: informed, scopeType: team, scope: team-settlements }
+      - { role: informed, scopeType: team, scope: team-pricing }
+      - { role: informed, scopeType: team, scope: team-rates }
+      - { role: informed, scopeType: team, scope: team-security }
+    preferences: *pref_informed
+
+  # ---- Markets domain root --------------------------------------------------------------------------
+  - email: root.markets@demo
+    displayName: Grzegorz Michalak
+    title: Head of Markets Technology (Domain Root Markets)
+    phone: "+48500100140"
+    timezone: Europe/Warsaw
+    manager: master@demo
+    roles: [{ role: domain_root, scopeType: domain, scope: markets }]
+    preferences: *pref_lead
+
+  # ---- Payments -------------------------------------------------------------------------------------
+  - email: marta.nowak@demo
+    displayName: Marta Nowak
+    title: Backend engineer, payments-api
+    phone: "+48500100206"
+    timezone: Europe/Warsaw
+    manager: root.payments@demo
+    roles: [{ role: member, scopeType: team, scope: team-payments }]
+    preferences: *pref_engineer
+
+  - email: tomasz.kaminski@demo
+    displayName: Tomasz Kaminski
+    title: SRE, payments platform
+    phone: "+48500100202"
+    timezone: Europe/Warsaw
+    manager: root.payments@demo
+    roles: [{ role: member, scopeType: team, scope: team-payments }]
+    preferences: *pref_sms_first
+
+  - email: ewa.wisniewska@demo
+    displayName: Ewa Wisniewska
+    title: Payments product engineer (Checkout Project)
+    phone: "+48500100203"
+    timezone: Europe/Warsaw
+    manager: root.payments@demo
+    roles:
+      - { role: member, scopeType: team, scope: team-payments }
+      - { role: member, scopeType: team, scope: checkout-project }
+    preferences: *pref_engineer
+
+  - email: agnieszka.krol@demo
+    displayName: Agnieszka Krol
+    title: Release manager, payments
+    phone: "+48500100204"
+    timezone: Europe/Warsaw
+    manager: root.payments@demo
+    roles: [{ role: member, scopeType: team, scope: team-payments }]
+    preferences: *pref_engineer
+
+  - email: bartek.jankowski@demo
+    displayName: Bartek Jankowski
+    title: Full-stack engineer (Checkout Project)
+    phone: "+48500100205"
+    timezone: Europe/Warsaw
+    manager: root.payments@demo
+    roles: [{ role: member, scopeType: team, scope: checkout-project }]
+    preferences: *pref_engineer
+
+  # ---- Settlements ----------------------------------------------------------------------------------
+  - email: kasia.zielinska@demo
+    displayName: Kasia Zielinska
+    title: Settlements engineer, order-settlement
+    phone: "+48500100211"
+    timezone: Europe/Warsaw
+    manager: root.settlements@demo
+    roles: [{ role: member, scopeType: team, scope: team-settlements }]
+    preferences: *pref_engineer
+
+  - email: marek.lewandowski@demo
+    displayName: Marek Lewandowski
+    title: SRE, settlements platform
+    phone: "+48500100212"
+    timezone: Europe/Warsaw
+    manager: root.settlements@demo
+    roles: [{ role: member, scopeType: team, scope: team-settlements }]
+    preferences: *pref_sms_first
+
+  - email: julia.dabrowska@demo
+    displayName: Julia Dabrowska
+    title: Settlements operations analyst
+    phone: "+48500100213"
+    timezone: Europe/Warsaw
+    manager: root.settlements@demo
+    roles: [{ role: member, scopeType: team, scope: team-settlements }]
+    preferences: *pref_engineer
+
+  # ---- Pricing (Markets) ----------------------------------------------------------------------------
+  - email: adam.wojcik@demo
+    displayName: Adam Wojcik
+    title: Quant developer, pricing-engine
+    phone: "+48500100401"
+    timezone: Europe/Warsaw
+    manager: root.markets@demo
+    roles: [{ role: member, scopeType: team, scope: team-pricing }]
+    preferences: *pref_engineer
+
+  - email: oliwia.kaczmarek@demo
+    displayName: Oliwia Kaczmarek
+    title: Pricing platform engineer
+    phone: "+48500100402"
+    timezone: Europe/Warsaw
+    manager: root.markets@demo
+    roles: [{ role: member, scopeType: team, scope: team-pricing }]
+    preferences: *pref_engineer
+
+  - email: michal.wrobel@demo
+    displayName: Michal Wrobel
+    title: Market data engineer
+    phone: "+48500100403"
+    timezone: Europe/Warsaw
+    manager: root.markets@demo
+    roles: [{ role: member, scopeType: team, scope: team-pricing }]
+    preferences: *pref_sms_first
+
+  # ---- Rates (Markets, London + New York) -----------------------------------------------------------
+  - email: james.hartley@demo
+    displayName: James Hartley
+    title: Rates desk technologist (London)
+    phone: "+48500100410"
+    timezone: Europe/London
+    manager: root.markets@demo
+    roles: [{ role: member, scopeType: team, scope: team-rates }]
+    preferences: *pref_london
+
+  - email: sophie.bennett@demo
+    displayName: Sophie Bennett
+    title: Head of Rates trading (London), informed on rejected trades
+    phone: "+48500100411"
+    timezone: Europe/London
+    manager: master@demo
+    roles: [{ role: informed, scopeType: team, scope: team-rates }]
+    preferences: *pref_informed
+
+  - email: daniel.reyes@demo
+    displayName: Daniel Reyes
+    title: Rates quant (New York)
+    phone: "+48500100412"
+    timezone: America/New_York
+    manager: root.markets@demo
+    roles: [{ role: member, scopeType: team, scope: team-rates }]
+    preferences: *pref_new_york
+
+  # ---- Security -------------------------------------------------------------------------------------
+  - email: natalia.mazur@demo
+    displayName: Natalia Mazur
+    title: Security engineer
+    phone: "+48500100501"
+    timezone: Europe/Warsaw
+    manager: root.security@demo
+    roles: [{ role: member, scopeType: team, scope: team-security }]
+    preferences: *pref_engineer
+
+  - email: krzysztof.pawlak@demo
+    displayName: Krzysztof Pawlak
+    title: SecOps analyst, Security on-call
+    phone: "+48500100502"
+    timezone: Europe/Warsaw
+    manager: root.security@demo
+    roles: [{ role: member, scopeType: team, scope: team-security }]
+    preferences: *pref_sms_first
+
+  - email: ola.sikora@demo
+    displayName: Ola Sikora
+    title: Application security engineer (Checkout Project)
+    phone: "+48500100503"
+    timezone: Europe/Warsaw
+    manager: root.security@demo
+    roles:
+      - { role: member, scopeType: team, scope: team-security }
+      - { role: member, scopeType: team, scope: checkout-project }
+    preferences: *pref_engineer
+
+# Weekly rotations. First member is on call at seed time (startsAt is relative to seed time).
+rotations:
+  - { team: team-payments, name: Payments weekly, shiftHours: 168, handoverTime: "09:00", timezone: Europe/Warsaw, startsAt: "-1d", members: [anna@demo, marta.nowak@demo, tomasz.kaminski@demo, ewa.wisniewska@demo] }
+  - { team: team-settlements, name: Settlements weekly, shiftHours: 168, handoverTime: "09:00", timezone: Europe/Warsaw, startsAt: "-2d", members: [piotr@demo, kasia.zielinska@demo, marek.lewandowski@demo] }
+  - { team: team-pricing, name: Pricing weekly, shiftHours: 168, handoverTime: "09:00", timezone: Europe/Warsaw, startsAt: "-3d", members: [adam.wojcik@demo, oliwia.kaczmarek@demo, michal.wrobel@demo] }
+  - { team: team-rates, name: Rates weekly (London/NY follow-the-sun by week), shiftHours: 168, handoverTime: "09:00", timezone: Europe/London, startsAt: "-1d", members: [james.hartley@demo, daniel.reyes@demo] }
+  - { team: team-security, name: Security weekly, shiftHours: 168, handoverTime: "09:00", timezone: Europe/Warsaw, startsAt: "-4d", members: [krzysztof.pawlak@demo, natalia.mazur@demo, ola.sikora@demo] }
+  - { team: checkout-project, name: Checkout weekly, shiftHours: 168, handoverTime: "09:00", timezone: Europe/Warsaw, startsAt: "-2d", members: [ewa.wisniewska@demo, bartek.jankowski@demo, ola.sikora@demo] }
+
+# Systems the teams own and how their telemetry reaches us (source names/keys are seeded by P2-RULES).
+systems:
+  - slug: payments-api
+    name: Payments API
+    ownerTeam: team-payments
+    domain: payments
+    description: Card and SEPA payment initiation API, 3 regions (eu-west, eu-central, us-east).
+    emits:
+      - { source: prometheus, via: alertmanager-webhook, schema: alertmanager, rules: [anna-payments-critical] }
+  - slug: order-settlement
+    name: order-settlement workflow engine
+    ownerTeam: team-settlements
+    domain: settlements
+    description: Workflow engine that settles matched orders (validate-counterparty, reserve-funds, ledger-commit, send-confirmation).
+    emits:
+      - { source: workflow-broker, via: webhook, schema: "WORKFLOW_FAILED / WORKFLOW_SUCCEEDED", rules: [settlements-order-settlement-failed] }
+  - slug: counterparty-service
+    name: counterparty-service
+    ownerTeam: team-settlements
+    domain: settlements
+    description: Reference data and eligibility checks for counterparties; called by validate-counterparty (5 s client timeout).
+    emits: []
+  - slug: pricing-engine-1
+    name: pricing-engine-1
+    ownerTeam: team-pricing
+    domain: markets
+    description: Pricing engine instance (FX majors).
+    emits: [{ source: pricing-logs, via: webhook, schema: log-line, rules: [pricing-engine-warnings] }]
+  - slug: pricing-engine-2
+    name: pricing-engine-2
+    ownerTeam: team-pricing
+    domain: markets
+    description: Pricing engine instance (FX crosses and metals).
+    emits: [{ source: pricing-logs, via: webhook, schema: log-line, rules: [pricing-engine-warnings] }]
+  - slug: pricing-engine-3
+    name: pricing-engine-3
+    ownerTeam: team-pricing
+    domain: markets
+    description: Pricing engine instance (rates curves); the one with the flaky curve cache.
+    emits: [{ source: pricing-logs, via: webhook, schema: log-line, rules: [pricing-engine-warnings] }]
+  - slug: pricing-engine-4
+    name: pricing-engine-4
+    ownerTeam: team-pricing
+    domain: markets
+    description: Pricing engine instance (PLN and CEE products).
+    emits: [{ source: pricing-logs, via: webhook, schema: log-line, rules: [pricing-engine-warnings] }]
+  - slug: trade-gateway
+    name: trade-gateway
+    ownerTeam: team-rates
+    domain: markets
+    description: Order entry and pre-trade risk gateway; publishes accepted/rejected trade events to its own RabbitMQ queue vistula.trade-gateway.
+    emits:
+      - { source: trade-gateway, via: rabbitmq-connector, schema: "trade.accepted.v1 / trade.rejected.v2", rules: [rates-big-rejected-trades] }
+  - slug: pr-review-agent
+    name: pr-review-agent
+    ownerTeam: team-security
+    domain: security
+    description: AI agent reviewing pull requests; raises typed security alerts through the public API.
+    emits:
+      - { source: pr-review-agent, via: raise-api, schema: "typed (security.*)", rules: [security-typed-alerts] }
+  - slug: custody-recon
+    name: custody reconciliation
+    ownerTeam: team-settlements
+    domain: settlements
+    description: "Not onboarded yet: its schema is unknown to the platform. Used by the new_schema scenario (schema {evt, sev, acct, details})."
+    emits: [{ source: custody, via: webhook, schema: "custody.break", rules: [] }]
+  - slug: checkout-api
+    name: checkout-api
+    ownerTeam: checkout-project
+    domain: payments
+    description: Checkout backend (cross-domain project, Payments + Security). No telemetry onboarded in the demo.
+    emits: []

@@ -1,0 +1,18 @@
+# The three Appendix B runbooks. `key` is the slug behind stable_id("runbook", key) (rules reference it as
+# `runbookId`); `team` is a team slug; `ruleKeys` are keys of seed/fixtures/rules.yaml.
+runbooks:
+  - key: settlement-timeout
+    file: settlement-timeout.yaml
+    team: team-settlements
+  - key: HighErrorRate
+    file: HighErrorRate.md
+    team: team-payments
+    attached:
+      matches: { alertname: HighErrorRate }
+  - key: pricing-latency
+    file: pricing-latency.txt
+    name: Pricing latency
+    team: team-pricing
+    attached:
+      ruleKeys: [pricing-engine-warnings]
+      matches: { logger: "pricing-engine-*" }

@@ -1,0 +1,1950 @@
+# Vistula Capital -- 40 resolved incidents over the last 30 days, seeded by loaders/90_history.py.
+#
+# Purpose: "fixed before" demo. Several failures repeat on purpose (counterparty TIMEOUT x5, payments-api
+# HighErrorRate x4, pricing-engine-3 latency x4, secret_leaked x3, rates rejected trades x5).
+#
+# Field semantics
+#   openedAt      offset relative to seed time (`-12d3h`): alert.first_seen_at = now - offset
+#   ackAfter / resolveAfter / timeline[].at   offsets relative to openedAt (`3m`, `1h35m`, `0s`)
+#   team, ruleKey, ruleName   team slug and the seeded rule it belongs to (`stable_id("rule", ruleKey)`; falls back
+#                 to (team, ruleName))
+#   source        seeded source name; `raw` is an event in that source's schema, sent through the production
+#                 normalizer to compute the knowledge key (the loader does NOT use type/service/errorCode below,
+#                 they are documentation of what the normalizer yields)
+#   count         dedup counter of the alert (events folded into it)
+#   raw           string values "@openedAt" / "@openedAt:epoch_ms" are replaced by the opened-at timestamp
+#   timeline[].actor   user email or `system`; timeline[].type in alert.created | notification.sent |
+#                 alert.escalated | alert.acknowledged | comment | action.run | alert.resolved
+#   resolvedBy / resolutionNote   become the `resolutions` row (and a `resolution_note` knowledge chunk)
+incidents:
+- id: hist-001
+  openedAt: -29d4h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at validate-counterparty
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: TIMEOUT
+  count: 9
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-010042
+    workflowName: order-settlement
+    step: validate-counterparty
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: TIMEOUT
+      message: Counterparty service did not respond in 5000 ms
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: piotr@demo
+    text: Acknowledged
+  - at: 11m
+    type: comment
+    actor: piotr@demo
+    text: counterparty-service CPU at 100% on node ip-10-4-2-17, throttling visible in cAdvisor
+  - at: 38m
+    type: action.run
+    actor: piotr@demo
+    text: retry_workflow x9 (all succeeded)
+  - at: 52m
+    type: alert.resolved
+    actor: piotr@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 52m
+  resolvedBy: piotr@demo
+  resolutionNote: 'counterparty-service pods were CPU-throttled by a noisy neighbour: the EOD reference-data file
+    import ran on the same node pool. Moved the import job to its own pool (nodeSelector batch=true), throttling
+    stopped and p99 went back under 400 ms. Retried the 9 stuck workflows with retry_workflow, all settled.'
+- id: hist-002
+  openedAt: -28d3h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: HighErrorRate on payments-api (eu-west)
+  type: HighErrorRate
+  service: payments-api
+  errorCode: null
+  count: 3
+  raw:
+    alertname: HighErrorRate
+    labels:
+      service: payments-api
+      region: eu-west
+      severity: critical
+    annotations:
+      summary: Error rate 12% over the last 5 minutes
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: anna@demo
+    text: Acknowledged
+  - at: 6m
+    type: comment
+    actor: anna@demo
+    text: 5xx started 09:41, right after the 3.8.0 rollout finished in eu-west
+  - at: 12m
+    type: action.run
+    actor: anna@demo
+    text: rollback_deploy payments-api -> 3.7.9 (approval by root.payments@demo)
+  - at: 31m
+    type: alert.resolved
+    actor: anna@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 31m
+  resolvedBy: anna@demo
+  resolutionNote: 'Bad deploy: payments-api 3.8.0 added a fraud-score client without a timeout, so slow fraud-score
+    responses piled up and requests failed. Rolled back to 3.7.9 with rollback_deploy (approved by root.payments),
+    error rate back to normal 4 minutes later. Fix in 3.8.1: 800 ms timeout and a circuit breaker.'
+- id: hist-003
+  openedAt: -27d5h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: warning
+  title: pricing-engine-3 latency on US10Y
+  type: null
+  service: pricing-engine-3
+  errorCode: null
+  count: 31
+  raw:
+    level: WARN
+    logger: pricing-engine-3
+    instrument: US10Y
+    latencyMs: 940
+    message: Quote latency 940ms exceeds SLO 250ms, curve cache miss ratio 0.78
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 12m
+    type: alert.acknowledged
+    actor: adam.wojcik@demo
+    text: Acknowledged
+  - at: 40m
+    type: action.run
+    actor: adam.wojcik@demo
+    text: curve-cache warm --all
+  - at: 1h5m
+    type: alert.resolved
+    actor: adam.wojcik@demo
+    text: Resolved with note
+  ackAfter: 12m
+  resolveAfter: 1h5m
+  resolvedBy: adam.wojcik@demo
+  resolutionNote: Curve cache (Redis) had an eviction storm after someone changed the maxmemory-policy to noeviction
+    and memory ran out. Set it back to allkeys-lru with 6 GB, ran the warm-up script `curve-cache warm --all`, latency
+    back under 40 ms.
+- id: hist-004
+  openedAt: -27d2h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at ledger-commit
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: DB_POOL_EXHAUSTED
+  count: 40
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-020311
+    workflowName: order-settlement
+    step: ledger-commit
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: DB_POOL_EXHAUSTED
+      message: Could not acquire ledger DB connection within 3000 ms (pool=40/40)
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: kasia.zielinska@demo
+    text: Acknowledged
+  - at: 22m
+    type: action.run
+    actor: kasia.zielinska@demo
+    text: rollback_deploy order-settlement -> 2.13.4 (approved by root.settlements@demo)
+  - at: 1h10m
+    type: alert.resolved
+    actor: kasia.zielinska@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 1h10m
+  resolvedBy: kasia.zielinska@demo
+  resolutionNote: 'ledger-commit was leaking connections after the 2.14.0 release: the cancel path of the retry
+    wrapper never returned the connection to the pool. Rolled back to 2.13.4 (pipeline job rollback-order-settlement),
+    fix shipped in 2.14.1 with a regression test. 40 workflows retried after rollback.'
+- id: hist-005
+  openedAt: -26d11h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at validate-counterparty
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: TIMEOUT
+  count: 4
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-030107
+    workflowName: order-settlement
+    step: validate-counterparty
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: TIMEOUT
+      message: Counterparty service did not respond in 5000 ms
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: kasia.zielinska@demo
+    text: Acknowledged
+  - at: 15m
+    type: action.run
+    actor: kasia.zielinska@demo
+    text: retry_workflow x4 (all succeeded)
+  - at: 18m
+    type: alert.resolved
+    actor: kasia.zielinska@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 18m
+  resolvedBy: kasia.zielinska@demo
+  resolutionNote: Rolling restart of counterparty-service during a deploy emptied the connection pool for ~90 s.
+    Waited for the rollout to finish, then retried the 4 failed workflows (all ok). Asked the counterparty team
+    to add a preStop drain hook (SET-512).
+- id: hist-006
+  openedAt: -26d5h
+  team: team-security
+  ruleKey: security-typed-alerts
+  ruleName: Security - typed alerts
+  source: pr-review-agent
+  severity: critical
+  title: Possible AWS access key committed in vistula/payments-api#1873
+  type: security.secret_leaked
+  service: pr-review-agent
+  errorCode: null
+  count: 1
+  raw:
+    type: security.secret_leaked
+    severity: critical
+    title: Possible AWS access key committed in vistula/payments-api#1873
+    description: pr-review-agent found a string matching an AWS access key id in the diff.
+    dedupKey: secret:vistula/payments-api:1873
+    attributes:
+      repo: vistula/payments-api
+      pullRequest: 1873
+      file: scripts/load_test.sh
+      secretType: aws_access_key_id
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Security - typed alerts'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: root.security@demo via email, ui'
+  - at: 4m
+    type: alert.acknowledged
+    actor: krzysztof.pawlak@demo
+    text: Acknowledged
+  - at: 15m
+    type: action.run
+    actor: krzysztof.pawlak@demo
+    text: 'IAM: key deactivated and deleted'
+  - at: 1h5m
+    type: alert.resolved
+    actor: krzysztof.pawlak@demo
+    text: Resolved with note
+  ackAfter: 4m
+  resolveAfter: 1h5m
+  resolvedBy: krzysztof.pawlak@demo
+  resolutionNote: 'The key belonged to a sandbox IAM user a developer had used for local load tests. Deactivated
+    and deleted the key in IAM, force-pushed a cleaned branch, checked CloudTrail: no use from outside the office
+    IPs. Added the git-secrets pre-commit hook to the repository template.'
+- id: hist-007
+  openedAt: -25d4h
+  team: team-rates
+  ruleKey: rates-big-rejected-trades
+  ruleName: Rates - big rejected trades
+  source: trade-gateway
+  severity: error
+  title: Rejected EUR 25000000 - LIMIT_BREACH
+  type: trade.rejected.v2
+  service: trade-gateway
+  errorCode: LIMIT_BREACH
+  count: 1
+  raw:
+    meta:
+      schema: trade.rejected.v2
+      producer: trade-gateway
+      ts: '@openedAt:epoch_ms'
+    payload:
+      tradeId: T-884213
+      desk: rates
+      notional: 25000000
+      currency: EUR
+      reason: LIMIT_BREACH
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Rates - big rejected trades'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via email, ui; soft: sophie.bennett@demo, manager@demo via email, ui'
+  - at: 6m
+    type: alert.acknowledged
+    actor: james.hartley@demo
+    text: Acknowledged
+  - at: 12m
+    type: comment
+    actor: james.hartley@demo
+    text: limit utilisation 112% of the reduced limit
+  - at: 1h20m
+    type: alert.resolved
+    actor: james.hartley@demo
+    text: Resolved with note
+  ackAfter: 6m
+  resolveAfter: 1h20m
+  resolvedBy: james.hartley@demo
+  resolutionNote: Risk had temporarily lowered the EUR rates DV01 limit after a volatility spike and the trader
+    was not told. Risk (via Sophie Bennett) approved a one-day limit increase, the trade was re-entered and accepted.
+    Asked risk to post limit changes on the desk channel.
+- id: hist-008
+  openedAt: -24d8h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: error
+  title: pricing-engine-1 market data feed disconnected on EURPLN
+  type: null
+  service: pricing-engine-1
+  errorCode: null
+  count: 6
+  raw:
+    level: ERROR
+    logger: pricing-engine-1
+    instrument: EURPLN
+    latencyMs: 0
+    message: Market data feed session lost (heartbeat timeout)
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 8m
+    type: alert.acknowledged
+    actor: michal.wrobel@demo
+    text: Acknowledged
+  - at: 21m
+    type: alert.resolved
+    actor: michal.wrobel@demo
+    text: Resolved with note
+  ackAfter: 8m
+  resolveAfter: 21m
+  resolvedBy: michal.wrobel@demo
+  resolutionNote: The primary vendor feed handler lost its session; the secondary handler took over after 40 seconds
+    and quotes were published again. Nothing to do besides confirming with the vendor; reconnect logic works as
+    designed.
+- id: hist-009
+  openedAt: -24d6h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at validate-counterparty
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: VALIDATION_ERROR
+  count: 5
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-040555
+    workflowName: order-settlement
+    step: validate-counterparty
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: VALIDATION_ERROR
+      message: Sanctions screening list older than 24h, refusing to settle
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 4m
+    type: alert.acknowledged
+    actor: piotr@demo
+    text: Acknowledged
+  - at: 35m
+    type: alert.resolved
+    actor: piotr@demo
+    text: Resolved with note
+  ackAfter: 4m
+  resolveAfter: 35m
+  resolvedBy: piotr@demo
+  resolutionNote: The sanctions list sync job had failed overnight (expired credentials for the list provider),
+    so the validation guard correctly refused to settle. Rotated the credentials, ran the sync manually, retried
+    5 workflows. Added a failure alert on the sync job itself (SET-519).
+- id: hist-010
+  openedAt: -23d5h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: PaymentsApiPodCrashLoop on payments-api (eu-west)
+  type: PaymentsApiPodCrashLoop
+  service: payments-api
+  errorCode: null
+  count: 2
+  raw:
+    alertname: PaymentsApiPodCrashLoop
+    labels:
+      service: payments-api
+      region: eu-west
+      severity: critical
+    annotations:
+      summary: 3 of 6 pods in CrashLoopBackOff
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 1m
+    type: alert.acknowledged
+    actor: tomasz.kaminski@demo
+    text: Acknowledged
+  - at: 11m
+    type: action.run
+    actor: tomasz.kaminski@demo
+    text: restart_service payments-api (approved)
+  - at: 22m
+    type: alert.resolved
+    actor: tomasz.kaminski@demo
+    text: Resolved with note
+  ackAfter: 1m
+  resolveAfter: 22m
+  resolvedBy: tomasz.kaminski@demo
+  resolutionNote: 'Pods were OOMKilled: the Helm chart refactor accidentally lowered the memory limit from 1Gi to
+    512Mi. Restored the limit in values-prod.yaml, pods came back healthy within 3 minutes. Added a chart test that
+    fails when limits drop below the previous release.'
+- id: hist-011
+  openedAt: -22d2h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at validate-counterparty
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: TIMEOUT
+  count: 23
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-050213
+    workflowName: order-settlement
+    step: validate-counterparty
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: TIMEOUT
+      message: Counterparty service did not respond in 5000 ms
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 6m
+    type: alert.acknowledged
+    actor: piotr@demo
+    text: Acknowledged
+  - at: 14m
+    type: comment
+    actor: piotr@demo
+    text: 'pg_stat_statements: seq scan on counterparty_eligibility, 5.8 s avg'
+  - at: 52m
+    type: action.run
+    actor: piotr@demo
+    text: open_ticket SET-498 (index migration)
+  - at: 1h20m
+    type: action.run
+    actor: piotr@demo
+    text: retry_workflow x23 (21 succeeded, 2 handed to ops)
+  - at: 1h35m
+    type: alert.resolved
+    actor: piotr@demo
+    text: Resolved with note
+  ackAfter: 6m
+  resolveAfter: 1h35m
+  resolvedBy: piotr@demo
+  resolutionNote: 'Root cause was counterparty-service''s eligibility query: missing index on counterparty_eligibility(bic)
+    after the table doubled in size, plus an autovacuum running at the same time. Created the index with CREATE
+    INDEX CONCURRENTLY, p99 dropped from 6 s to 120 ms. Retried 23 workflows; 2 needed a settlement date fix that
+    julia.dabrowska handled manually.'
+- id: hist-012
+  openedAt: -21d8h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: HighErrorRate on payments-api (eu-west)
+  type: HighErrorRate
+  service: payments-api
+  errorCode: null
+  count: 5
+  raw:
+    alertname: HighErrorRate
+    labels:
+      service: payments-api
+      region: eu-west
+      severity: critical
+    annotations:
+      summary: Error rate 18% over the last 5 minutes
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: marta.nowak@demo
+    text: Acknowledged
+  - at: 9m
+    type: comment
+    actor: marta.nowak@demo
+    text: 'redis-eu-west: role change at 14:02, replicas promoted'
+  - at: 26m
+    type: action.run
+    actor: marta.nowak@demo
+    text: restart_service payments-api pod 2/6, 5/6 (approved)
+  - at: 47m
+    type: alert.resolved
+    actor: marta.nowak@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 47m
+  resolvedBy: marta.nowak@demo
+  resolutionNote: 'eu-west Redis cluster did a failover, session lookups missed and /v1/payments/confirm returned
+    5xx. Failover completed on its own after ~6 minutes, but 2 of 6 pods kept stale connections: restarted them
+    one by one. Client library now reconnects on READONLY errors (PAY-1203).'
+- id: hist-013
+  openedAt: -20d3h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: warning
+  title: pricing-engine-3 latency on DE10Y
+  type: null
+  service: pricing-engine-3
+  errorCode: null
+  count: 22
+  raw:
+    level: WARN
+    logger: pricing-engine-3
+    instrument: DE10Y
+    latencyMs: 780
+    message: Quote latency 780ms exceeds SLO 250ms, curve cache miss ratio 0.8
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 9m
+    type: alert.acknowledged
+    actor: oliwia.kaczmarek@demo
+    text: Acknowledged
+  - at: 14m
+    type: action.run
+    actor: oliwia.kaczmarek@demo
+    text: curve-cache warm --all
+  - at: 34m
+    type: alert.resolved
+    actor: oliwia.kaczmarek@demo
+    text: Resolved with note
+  ackAfter: 9m
+  resolveAfter: 34m
+  resolvedBy: oliwia.kaczmarek@demo
+  resolutionNote: 'Same signature as last time: cache miss ratio 0.8 after the nightly curve rebuild finished late.
+    Ran `curve-cache warm --all`, p99 normal after 3 minutes. The rebuild now starts 30 minutes earlier (PRC-82).'
+- id: hist-014
+  openedAt: -19d10h
+  team: team-security
+  ruleKey: security-typed-alerts
+  ruleName: Security - typed alerts
+  source: pr-review-agent
+  severity: warning
+  title: Suspicious login to admin console from a new country
+  type: security.suspicious_login
+  service: pr-review-agent
+  errorCode: null
+  count: 1
+  raw:
+    type: security.suspicious_login
+    severity: warning
+    title: Suspicious login to admin console from a new country
+    description: Login for ola.sikora@demo from Lisbon (PT), first time seen.
+    dedupKey: login:ola.sikora:PT
+    attributes:
+      user: ola.sikora@demo
+      country: PT
+      mfa: satisfied
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Security - typed alerts'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via email; soft: root.security@demo via email, ui'
+  - at: 25m
+    type: alert.acknowledged
+    actor: krzysztof.pawlak@demo
+    text: Acknowledged
+  - at: 41m
+    type: alert.resolved
+    actor: krzysztof.pawlak@demo
+    text: Resolved with note
+  ackAfter: 25m
+  resolveAfter: 41m
+  resolvedBy: krzysztof.pawlak@demo
+  resolutionNote: Ola was travelling and confirmed on Slack; MFA had been satisfied and the device was her managed
+    laptop. Marked as benign and added the trip to the allowlist for a week.
+- id: hist-015
+  openedAt: -19d7h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at reserve-funds
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: SETTLEMENT_DATE_MISMATCH
+  count: 3
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-060871
+    workflowName: order-settlement
+    step: reserve-funds
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: SETTLEMENT_DATE_MISMATCH
+      message: Value date 2026-11-11 is not a business day in PL
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 5m
+    type: alert.acknowledged
+    actor: julia.dabrowska@demo
+    text: Acknowledged
+  - at: 40m
+    type: alert.resolved
+    actor: julia.dabrowska@demo
+    text: Resolved with note
+  ackAfter: 5m
+  resolveAfter: 40m
+  resolvedBy: julia.dabrowska@demo
+  resolutionNote: Instructions with value date on a Polish public holiday (11 Nov). The 2026 holiday calendar table
+    had not been loaded after the year rollover. Loaded the calendar from treasury's export, moved the 3 instructions
+    to the next business day and retried. Added calendar load to the January checklist.
+- id: hist-016
+  openedAt: -18d7h
+  team: team-rates
+  ruleKey: rates-big-rejected-trades
+  ruleName: Rates - big rejected trades
+  source: trade-gateway
+  severity: error
+  title: Rejected GBP 18000000 - LIMIT_BREACH
+  type: trade.rejected.v2
+  service: trade-gateway
+  errorCode: LIMIT_BREACH
+  count: 1
+  raw:
+    meta:
+      schema: trade.rejected.v2
+      producer: trade-gateway
+      ts: '@openedAt:epoch_ms'
+    payload:
+      tradeId: T-901774
+      desk: rates
+      notional: 18000000
+      currency: GBP
+      reason: LIMIT_BREACH
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Rates - big rejected trades'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via email, ui; soft: sophie.bennett@demo, manager@demo via email, ui'
+  - at: 9m
+    type: alert.acknowledged
+    actor: daniel.reyes@demo
+    text: Acknowledged
+  - at: 35m
+    type: alert.resolved
+    actor: daniel.reyes@demo
+    text: Resolved with note
+  ackAfter: 9m
+  resolveAfter: 35m
+  resolvedBy: daniel.reyes@demo
+  resolutionNote: 'Correct rejection: the order would have breached the counterparty exposure limit. Nothing to
+    fix. The trader split the order over two days after credit approved a temporary extension.'
+- id: hist-017
+  openedAt: -17d9h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at reserve-funds
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: TREASURY_API_503
+  count: 8
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-070119
+    workflowName: order-settlement
+    step: reserve-funds
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: TREASURY_API_503
+      message: Treasury liquidity API returned 503
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: marek.lewandowski@demo
+    text: Acknowledged
+  - at: 26m
+    type: alert.resolved
+    actor: marek.lewandowski@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 26m
+  resolvedBy: marek.lewandowski@demo
+  resolutionNote: Treasury liquidity API was unavailable for 20 minutes (their database failover). Nothing to fix
+    on our side; retried 8 workflows after their status page went green. Suggested to treasury that the API returns
+    429 with Retry-After instead of 503 so our client backs off properly.
+- id: hist-018
+  openedAt: -16d6h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: error
+  title: pricing-engine-2 stale quotes on XAUUSD
+  type: null
+  service: pricing-engine-2
+  errorCode: null
+  count: 12
+  raw:
+    level: ERROR
+    logger: pricing-engine-2
+    instrument: XAUUSD
+    latencyMs: 0
+    message: 'Stale quote guard: no ticks for XAUUSD in 90s'
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 6m
+    type: alert.acknowledged
+    actor: michal.wrobel@demo
+    text: Acknowledged
+  - at: 43m
+    type: alert.resolved
+    actor: michal.wrobel@demo
+    text: Resolved with note
+  ackAfter: 6m
+  resolveAfter: 43m
+  resolvedBy: michal.wrobel@demo
+  resolutionNote: 'No ticks for gold at the weekend market open: the vendor starts the XAUUSD stream a few minutes
+    after the open, and our stale-quote guard fires in the meantime. Expected behaviour. Raised the threshold for
+    metals during the first 10 minutes of the Sunday session (PRC-71).'
+- id: hist-019
+  openedAt: -15d9h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at validate-counterparty
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: TIMEOUT
+  count: 6
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-080934
+    workflowName: order-settlement
+    step: validate-counterparty
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: TIMEOUT
+      message: Counterparty service did not respond in 5000 ms
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 4m
+    type: alert.acknowledged
+    actor: marek.lewandowski@demo
+    text: Acknowledged
+  - at: 24m
+    type: action.run
+    actor: marek.lewandowski@demo
+    text: retry_workflow x6 (all succeeded)
+  - at: 27m
+    type: alert.resolved
+    actor: marek.lewandowski@demo
+    text: Resolved with note
+  ackAfter: 4m
+  resolveAfter: 27m
+  resolvedBy: marek.lewandowski@demo
+  resolutionNote: 'Transient network partition between the eu-west-b subnet and counterparty-service (cloud provider
+    incident #4471). It cleared on its own after ~20 minutes. Retried 6 failed workflows, all settled. Nothing to
+    change in our setup; linked the provider incident in the ticket.'
+- id: hist-020
+  openedAt: -15d2h
+  team: team-security
+  ruleKey: security-typed-alerts
+  ruleName: Security - typed alerts
+  source: pr-review-agent
+  severity: critical
+  title: WAF blocked SQL injection burst against checkout-api
+  type: security.exploit_detected
+  service: pr-review-agent
+  errorCode: null
+  count: 4300
+  raw:
+    type: security.exploit_detected
+    severity: critical
+    title: WAF blocked SQL injection burst against checkout-api
+    description: 4300 requests with SQL injection patterns from a single ASN in 10 minutes, all blocked at the WAF.
+    dedupKey: exploit:checkout-api:AS64511
+    attributes:
+      service: checkout-api
+      asn: AS64511
+      blocked: 4300
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Security - typed alerts'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: root.security@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: natalia.mazur@demo
+    text: Acknowledged
+  - at: 1h45m
+    type: alert.resolved
+    actor: natalia.mazur@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 1h45m
+  resolvedBy: natalia.mazur@demo
+  resolutionNote: The WAF blocked everything; no request reached the application (checked app logs for the attack
+    pattern). Blocked the ASN at the edge for 7 days and added the pattern set to the monitoring dashboard. No customer
+    data was touched.
+- id: hist-021
+  openedAt: -14d12h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: HighErrorRate on payments-api (eu-central)
+  type: HighErrorRate
+  service: payments-api
+  errorCode: null
+  count: 2
+  raw:
+    alertname: HighErrorRate
+    labels:
+      service: payments-api
+      region: eu-central
+      severity: critical
+    annotations:
+      summary: Error rate 8% over the last 5 minutes
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: tomasz.kaminski@demo
+    text: Acknowledged
+  - at: 29m
+    type: alert.resolved
+    actor: tomasz.kaminski@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 29m
+  resolvedBy: tomasz.kaminski@demo
+  resolutionNote: A single node in AZ b had run out of ephemeral ports (conntrack table full) and dropped about
+    1 in 6 outbound calls. Cordoned and drained the node; the autoscaling group replaced it. Error rate normal after
+    the drain.
+- id: hist-022
+  openedAt: -13d6h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: warning
+  title: pricing-engine-3 latency on EURUSD
+  type: null
+  service: pricing-engine-3
+  errorCode: null
+  count: 17
+  raw:
+    level: WARN
+    logger: pricing-engine-3
+    instrument: EURUSD
+    latencyMs: 710
+    message: Quote latency 710ms exceeds SLO 250ms, curve cache miss ratio 0.64
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 14m
+    type: alert.acknowledged
+    actor: michal.wrobel@demo
+    text: Acknowledged
+  - at: 38m
+    type: alert.resolved
+    actor: michal.wrobel@demo
+    text: Resolved with note
+  ackAfter: 14m
+  resolveAfter: 38m
+  resolvedBy: michal.wrobel@demo
+  resolutionNote: Redis cluster resharding during the planned maintenance window caused cache misses for about 10
+    minutes. Waited for the rebalance to finish; no action needed. Added the Redis maintenance window to the team
+    calendar so we can mute this alert next time.
+- id: hist-023
+  openedAt: -12d6h
+  team: team-security
+  ruleKey: security-typed-alerts
+  ruleName: Security - typed alerts
+  source: pr-review-agent
+  severity: critical
+  title: Possible acquirer API key committed in vistula/checkout-web#2044
+  type: security.secret_leaked
+  service: pr-review-agent
+  errorCode: null
+  count: 1
+  raw:
+    type: security.secret_leaked
+    severity: critical
+    title: Possible acquirer API key committed in vistula/checkout-web#2044
+    description: pr-review-agent found a live-looking payment provider key in .env.example.
+    dedupKey: secret:vistula/checkout-web:2044
+    attributes:
+      repo: vistula/checkout-web
+      pullRequest: 2044
+      file: .env.example
+      secretType: payment_provider_api_key
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Security - typed alerts'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: root.security@demo via email, ui'
+  - at: 5m
+    type: alert.escalated
+    actor: system
+    text: No ack after 5 min, escalated to root.security@demo
+  - at: 7m
+    type: alert.acknowledged
+    actor: root.security@demo
+    text: Acknowledged
+  - at: 9m
+    type: comment
+    actor: natalia.mazur@demo
+    text: Taking over from Viktor, rotating the key with the acquirer
+  - at: 32m
+    type: action.run
+    actor: natalia.mazur@demo
+    text: open_ticket SEC-771 (key rotation, acquirer)
+  - at: 2h
+    type: alert.resolved
+    actor: natalia.mazur@demo
+    text: Resolved with note
+  ackAfter: 7m
+  resolveAfter: 2h
+  resolvedBy: natalia.mazur@demo
+  resolutionNote: 'A live acquirer API key had been pasted into .env.example. Rotated the key with the acquirer
+    within 25 minutes and checked their access logs: no use from unknown IPs. Removed the file from history, added
+    .env* to the scanner deny list. root.security acked first because the on-call was in transit.'
+- id: hist-024
+  openedAt: -12d5h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at send-confirmation
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: VALIDATION_ERROR
+  count: 2
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-090222
+    workflowName: order-settlement
+    step: send-confirmation
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: VALIDATION_ERROR
+      message: 'Settlement instruction rejected: invalid BIC'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 6m
+    type: alert.acknowledged
+    actor: julia.dabrowska@demo
+    text: Acknowledged
+  - at: 55m
+    type: alert.resolved
+    actor: julia.dabrowska@demo
+    text: Resolved with note
+  ackAfter: 6m
+  resolveAfter: 55m
+  resolvedBy: julia.dabrowska@demo
+  resolutionNote: Counterparty changed its BIC after a merger and our static data still had the old one. Ops updated
+    the BIC in reference data (REF-2210), retried both confirmations. Asked the data steward to subscribe to the
+    vendor's BIC change feed.
+- id: hist-025
+  openedAt: -11d3h
+  team: team-rates
+  ruleKey: rates-big-rejected-trades
+  ruleName: Rates - big rejected trades
+  source: trade-gateway
+  severity: error
+  title: Rejected EUR 25000000 - LIMIT_BREACH
+  type: trade.rejected.v2
+  service: trade-gateway
+  errorCode: LIMIT_BREACH
+  count: 2
+  raw:
+    meta:
+      schema: trade.rejected.v2
+      producer: trade-gateway
+      ts: '@openedAt:epoch_ms'
+    payload:
+      tradeId: T-926530
+      desk: rates
+      notional: 25000000
+      currency: EUR
+      reason: LIMIT_BREACH
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Rates - big rejected trades'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via email, ui; soft: sophie.bennett@demo, manager@demo via email, ui'
+  - at: 4m
+    type: alert.acknowledged
+    actor: james.hartley@demo
+    text: Acknowledged
+  - at: 22m
+    type: action.run
+    actor: james.hartley@demo
+    text: run risk-limits-sync (manual trigger)
+  - at: 52m
+    type: alert.resolved
+    actor: james.hartley@demo
+    text: Resolved with note
+  ackAfter: 4m
+  resolveAfter: 52m
+  resolvedBy: james.hartley@demo
+  resolutionNote: 'Same as 25 days ago, different root cause: the nightly limit refresh job (risk-limits-sync) had
+    failed, so Friday''s reduced limits were still active. Re-ran the job and limits were restored, the 2 rejected
+    trades were re-entered. RISK-3341 opened so a failed limit refresh raises an alert.'
+- id: hist-026
+  openedAt: -10d11h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: warning
+  title: pricing-engine-4 latency on PL10Y
+  type: null
+  service: pricing-engine-4
+  errorCode: null
+  count: 9
+  raw:
+    level: WARN
+    logger: pricing-engine-4
+    instrument: PL10Y
+    latencyMs: 1210
+    message: Quote latency 1210ms exceeds SLO 250ms, GC pause 980ms
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 20m
+    type: alert.acknowledged
+    actor: oliwia.kaczmarek@demo
+    text: Acknowledged
+  - at: 45m
+    type: action.run
+    actor: oliwia.kaczmarek@demo
+    text: restart_service pricing-engine-4 (approved)
+  - at: 1h12m
+    type: alert.resolved
+    actor: oliwia.kaczmarek@demo
+    text: Resolved with note
+  ackAfter: 20m
+  resolveAfter: 1h12m
+  resolvedBy: oliwia.kaczmarek@demo
+  resolutionNote: Engine-4 hit its container memory limit and the runtime spent seconds in garbage collection. Raised
+    the limit to 3 GiB and the heap setting accordingly, restarted the pod. Added an alert on RSS above 85% of the
+    limit (PRC-90).
+- id: hist-027
+  openedAt: -10d3h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at send-confirmation
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: QUEUE_UNAVAILABLE
+  count: 5
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-100478
+    workflowName: order-settlement
+    step: send-confirmation
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: QUEUE_UNAVAILABLE
+      message: Publish to settlement-confirmations blocked (broker alarm)
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: piotr@demo
+    text: Acknowledged
+  - at: 48m
+    type: alert.resolved
+    actor: piotr@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 48m
+  resolvedBy: piotr@demo
+  resolutionNote: 'RabbitMQ node 2 raised a disk alarm and blocked publishers: the dead-letter queue of an old integration
+    had grown to 38 GB. Purged the DLQ after checking with the owner, alarm cleared, publishers resumed, retried
+    5 workflows. Added a max-length policy to all DLQs and a disk-free alert at 20%.'
+- id: hist-028
+  openedAt: -9d7h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: HighErrorRate on payments-api (eu-west)
+  type: HighErrorRate
+  service: payments-api
+  errorCode: null
+  count: 4
+  raw:
+    alertname: HighErrorRate
+    labels:
+      service: payments-api
+      region: eu-west
+      severity: critical
+    annotations:
+      summary: Error rate 41% over the last 5 minutes
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 1m
+    type: alert.acknowledged
+    actor: anna@demo
+    text: Acknowledged
+  - at: 4m
+    type: comment
+    actor: anna@demo
+    text: 'acquirer status page: degraded authorisations eu-west, ETA unknown'
+  - at: 13m
+    type: action.run
+    actor: anna@demo
+    text: failover_region eu-west -> eu-central (approval by root.payments@demo)
+  - at: 14m
+    type: comment
+    actor: root.payments@demo
+    text: Approved failover to eu-central
+  - at: 54m
+    type: action.run
+    actor: anna@demo
+    text: failover_region eu-central -> eu-west at 10%, then 100%
+  - at: 58m
+    type: alert.resolved
+    actor: anna@demo
+    text: Resolved with note
+  ackAfter: 1m
+  resolveAfter: 58m
+  resolvedBy: anna@demo
+  resolutionNote: 'The eu-west acquirer link degraded (card authorisations timing out upstream). Followed the payments
+    failover wiki page: failed 100% of card traffic over to eu-central with failover_region (approved by root.payments),
+    error rate dropped within 2 minutes. Failed back 40 minutes later after the acquirer confirmed a fix and the
+    canary at 10% was clean.'
+- id: hist-029
+  openedAt: -8d4h
+  team: team-security
+  ruleKey: security-typed-alerts
+  ruleName: Security - typed alerts
+  source: pr-review-agent
+  severity: error
+  title: Critical RCE in image library flagged in checkout-api#1991
+  type: security.exploit_detected
+  service: pr-review-agent
+  errorCode: null
+  count: 1
+  raw:
+    type: security.exploit_detected
+    severity: error
+    title: Critical RCE in image library flagged in checkout-api#1991
+    description: Dependency libimg 2.3.1 has a known remote code execution CVE, fixed in 2.3.4.
+    dedupKey: dep:checkout-api:libimg
+    attributes:
+      repo: vistula/checkout-api
+      pullRequest: 1991
+      package: libimg
+      fixedIn: 2.3.4
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Security - typed alerts'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms; soft: root.security@demo via email, ui'
+  - at: 11m
+    type: alert.acknowledged
+    actor: ola.sikora@demo
+    text: Acknowledged
+  - at: 3h
+    type: alert.resolved
+    actor: ola.sikora@demo
+    text: Resolved with note
+  ackAfter: 11m
+  resolveAfter: 3h
+  resolvedBy: ola.sikora@demo
+  resolutionNote: The vulnerable version was only in the PR, never deployed. Bumped the dependency to 2.3.4, re-ran
+    the scan, merged. Added the package to the allowed-versions policy so older ranges fail CI.
+- id: hist-030
+  openedAt: -8d3h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at validate-counterparty
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: TIMEOUT
+  count: 12
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-110655
+    workflowName: order-settlement
+    step: validate-counterparty
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: TIMEOUT
+      message: Counterparty service did not respond in 5000 ms
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: piotr@demo
+    text: Acknowledged
+  - at: 9m
+    type: action.run
+    actor: piotr@demo
+    text: http_get counterparty-service /health -> 200, eligibility_cache_hit_ratio=0.12
+  - at: 31m
+    type: action.run
+    actor: piotr@demo
+    text: retry_workflow x12 (all succeeded)
+  - at: 44m
+    type: alert.resolved
+    actor: piotr@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 44m
+  resolvedBy: piotr@demo
+  resolutionNote: 'Same pattern as 22 days ago, different cause: the eligibility lookup was slow because the cache
+    had been flushed at 08:00 and the cold cache made each call hit the DB. Raised the client timeout from 5000
+    to 8000 ms with the flag counterparty.timeoutMs and ran the cache preload job; timeouts stopped within 5 minutes.
+    Retried 12 workflows. TODO: warm the cache on deploy (SET-530).'
+- id: hist-031
+  openedAt: -7d4h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: warning
+  title: pricing-engine-3 latency on USDPLN
+  type: null
+  service: pricing-engine-3
+  errorCode: null
+  count: 28
+  raw:
+    level: WARN
+    logger: pricing-engine-3
+    instrument: USDPLN
+    latencyMs: 1320
+    message: Quote latency 1320ms exceeds SLO 250ms, curve cache miss ratio 0.88
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 16m
+    type: alert.acknowledged
+    actor: adam.wojcik@demo
+    text: Acknowledged
+  - at: 35m
+    type: action.run
+    actor: adam.wojcik@demo
+    text: curve-cache warm --all
+  - at: 52m
+    type: alert.resolved
+    actor: adam.wojcik@demo
+    text: Resolved with note
+  ackAfter: 16m
+  resolveAfter: 52m
+  resolvedBy: adam.wojcik@demo
+  resolutionNote: 'Cache miss ratio high again: the warm-up job had been failing silently for two days because its
+    market-data API token had expired. Rotated the token, re-ran `curve-cache warm --all`, latency back to normal.
+    Added an alert for warm-up job failures (PRC-88) so it does not stay silent again.'
+- id: hist-032
+  openedAt: -6d10h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at send-confirmation
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: GATEWAY_UNAVAILABLE
+  count: 7
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-120301
+    workflowName: order-settlement
+    step: send-confirmation
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: GATEWAY_UNAVAILABLE
+      message: SWIFT gateway connection refused
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: kasia.zielinska@demo
+    text: Acknowledged
+  - at: 32m
+    type: alert.resolved
+    actor: kasia.zielinska@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 32m
+  resolvedBy: kasia.zielinska@demo
+  resolutionNote: SWIFT Alliance gateway failed over to the secondary node, confirmations were refused for about
+    15 minutes. No money movement was affected, only confirmations. Retried the 7 confirmations in one batch after
+    the gateway team confirmed the failover.
+- id: hist-033
+  openedAt: -6d8h
+  team: team-rates
+  ruleKey: rates-big-rejected-trades
+  ruleName: Rates - big rejected trades
+  source: trade-gateway
+  severity: error
+  title: Rejected EUR 12500000 - STALE_PRICE
+  type: trade.rejected.v2
+  service: trade-gateway
+  errorCode: STALE_PRICE
+  count: 3
+  raw:
+    meta:
+      schema: trade.rejected.v2
+      producer: trade-gateway
+      ts: '@openedAt:epoch_ms'
+    payload:
+      tradeId: T-944118
+      desk: rates
+      notional: 12500000
+      currency: EUR
+      reason: STALE_PRICE
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Rates - big rejected trades'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via email, ui; soft: sophie.bennett@demo, manager@demo via email, ui'
+  - at: 7m
+    type: alert.acknowledged
+    actor: daniel.reyes@demo
+    text: Acknowledged
+  - at: 29m
+    type: alert.resolved
+    actor: daniel.reyes@demo
+    text: Resolved with note
+  ackAfter: 7m
+  resolveAfter: 29m
+  resolvedBy: daniel.reyes@demo
+  resolutionNote: Stale-price rejections caused by the pricing-engine-3 cache problem raised in Team Pricing the
+    same hour. Cleared as soon as they warmed the cache; the trader re-submitted the 3 orders.
+- id: hist-034
+  openedAt: -5d9h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: PaymentsDbConnectionsExhausted on payments-api (eu-west)
+  type: PaymentsDbConnectionsExhausted
+  service: payments-api
+  errorCode: null
+  count: 3
+  raw:
+    alertname: PaymentsDbConnectionsExhausted
+    labels:
+      service: payments-api
+      region: eu-west
+      severity: critical
+    annotations:
+      summary: payments-db connections at 498/500
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: anna@demo
+    text: Acknowledged
+  - at: 10m
+    type: action.run
+    actor: anna@demo
+    text: http_get payments-api /health/db -> degraded
+  - at: 26m
+    type: alert.resolved
+    actor: anna@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 26m
+  resolvedBy: anna@demo
+  resolutionNote: A reporting job from the settlements team ran an unindexed query that held ~300 connections. Terminated
+    the sessions (pg_terminate_backend), connections recovered. Asked them to use the read replica and set statement_timeout=30s
+    on the reporting role (PAY-1210).
+- id: hist-035
+  openedAt: -4d4h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at ledger-commit
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: DEADLOCK
+  count: 3
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-130889
+    workflowName: order-settlement
+    step: ledger-commit
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: DEADLOCK
+      message: 'ledger transaction rolled back: deadlock detected'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 5m
+    type: alert.acknowledged
+    actor: kasia.zielinska@demo
+    text: Acknowledged
+  - at: 23m
+    type: alert.resolved
+    actor: kasia.zielinska@demo
+    text: Resolved with note
+  ackAfter: 5m
+  resolveAfter: 23m
+  resolvedBy: kasia.zielinska@demo
+  resolutionNote: Two settlements for the same account pair took row locks in opposite order. The workflow engine
+    already retries deadlocks once, 3 workflows hit it twice. Retried manually; opened SET-538 to sort account ids
+    before locking.
+- id: hist-036
+  openedAt: -4d3h
+  team: team-security
+  ruleKey: security-typed-alerts
+  ruleName: Security - typed alerts
+  source: pr-review-agent
+  severity: critical
+  title: Possible vendor API token committed in vistula/pricing-engine#2011
+  type: security.secret_leaked
+  service: pr-review-agent
+  errorCode: null
+  count: 1
+  raw:
+    type: security.secret_leaked
+    severity: critical
+    title: Possible vendor API token committed in vistula/pricing-engine#2011
+    description: pr-review-agent found a market data vendor token in a test fixture.
+    dedupKey: secret:vistula/pricing-engine:2011
+    attributes:
+      repo: vistula/pricing-engine
+      pullRequest: 2011
+      file: tests/fixtures/vendor.json
+      secretType: api_token
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Security - typed alerts'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: root.security@demo via email, ui'
+  - at: 5m
+    type: alert.escalated
+    actor: system
+    text: No ack after 5 min, escalated to root.security@demo
+  - at: 5m
+    type: alert.acknowledged
+    actor: natalia.mazur@demo
+    text: Acknowledged
+  - at: 20m
+    type: comment
+    actor: natalia.mazur@demo
+    text: 'Pinged adam.wojcik: warm-up job uses this token, new one incoming'
+  - at: 1h30m
+    type: alert.resolved
+    actor: natalia.mazur@demo
+    text: Resolved with note
+  ackAfter: 5m
+  resolveAfter: 1h30m
+  resolvedBy: natalia.mazur@demo
+  resolutionNote: A vendor API token sat in a test fixture. The vendor revoked and reissued it. Coordinated with
+    Team Pricing because their warm-up job (PRC-88) needed the new token the same day. Fixture now loads the token
+    from the environment; the pre-commit hook has a rule for the vendor's token format.
+- id: hist-037
+  openedAt: -3d6h
+  team: team-settlements
+  ruleKey: settlements-workflow-failed
+  ruleName: Settlements - workflow failed
+  source: workflow-broker
+  severity: error
+  title: order-settlement failed at ledger-commit
+  type: WORKFLOW_FAILED
+  service: order-settlement
+  errorCode: DB_POOL_EXHAUSTED
+  count: 18
+  raw:
+    type: WORKFLOW_FAILED
+    workflowId: WF-H-140512
+    workflowName: order-settlement
+    step: ledger-commit
+    severity: ERROR
+    environment: prod
+    timestamp: '@openedAt'
+    error:
+      code: DB_POOL_EXHAUSTED
+      message: Could not acquire ledger DB connection within 3000 ms (pool=40/40)
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Settlements - workflow failed'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via phone, sms; soft: manager@demo via email, ui'
+  - at: 2m
+    type: alert.acknowledged
+    actor: piotr@demo
+    text: Acknowledged
+  - at: 20m
+    type: action.run
+    actor: piotr@demo
+    text: config change ledger.pool.max 40 -> 60 (approved by root.settlements@demo)
+  - at: 50m
+    type: action.run
+    actor: piotr@demo
+    text: retry_workflow x18 (all succeeded)
+  - at: 58m
+    type: alert.resolved
+    actor: piotr@demo
+    text: Resolved with note
+  ackAfter: 2m
+  resolveAfter: 58m
+  resolvedBy: piotr@demo
+  resolutionNote: 'Pool exhausted again, this time because the EOD reconciliation job overlapped with the settlement
+    peak. Bumped the pool from 40 to 60 (max_connections on the DB has headroom) and moved the reconciliation start
+    20 minutes later. Longer term: dedicated pool for reconciliation (SET-541). Retried 18 workflows.'
+- id: hist-038
+  openedAt: -2d6h
+  team: team-rates
+  ruleKey: rates-big-rejected-trades
+  ruleName: Rates - big rejected trades
+  source: trade-gateway
+  severity: error
+  title: Rejected USD 250000000 - NOTIONAL_SANITY
+  type: trade.rejected.v2
+  service: trade-gateway
+  errorCode: NOTIONAL_SANITY
+  count: 1
+  raw:
+    meta:
+      schema: trade.rejected.v2
+      producer: trade-gateway
+      ts: '@openedAt:epoch_ms'
+    payload:
+      tradeId: T-961002
+      desk: rates
+      notional: 250000000
+      currency: USD
+      reason: NOTIONAL_SANITY
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Rates - big rejected trades'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via email, ui; soft: sophie.bennett@demo, manager@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: james.hartley@demo
+    text: Acknowledged
+  - at: 12m
+    type: alert.resolved
+    actor: james.hartley@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 12m
+  resolvedBy: james.hartley@demo
+  resolutionNote: 'Fat finger: the trader typed an extra zero (250M instead of 25M). The sanity check rejected it,
+    which is what it is for. Re-entered at 25M, accepted.'
+- id: hist-039
+  openedAt: -2d4h
+  team: team-payments
+  ruleKey: anna-payments-api-critical
+  ruleName: Anna - critical payments-api
+  source: prometheus
+  severity: critical
+  title: CardGatewayTimeouts on payments-api (eu-west)
+  type: CardGatewayTimeouts
+  service: payments-api
+  errorCode: null
+  count: 6
+  raw:
+    alertname: CardGatewayTimeouts
+    labels:
+      service: payments-api
+      region: eu-west
+      severity: critical
+    annotations:
+      summary: Card gateway p99 > 5s for 10 minutes
+    startsAt: '@openedAt'
+    status: firing
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Anna - critical payments-api'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via sms (email outside 08:00-20:00); soft: root.payments@demo via email, ui'
+  - at: 3m
+    type: alert.acknowledged
+    actor: tomasz.kaminski@demo
+    text: Acknowledged
+  - at: 37m
+    type: alert.resolved
+    actor: tomasz.kaminski@demo
+    text: Resolved with note
+  ackAfter: 3m
+  resolveAfter: 37m
+  resolvedBy: tomasz.kaminski@demo
+  resolutionNote: The acquirer had an unannounced maintenance window. The circuit breaker opened as designed and
+    traffic fell back to the secondary acquirer, so customer impact was small. Raised it with the vendor and added
+    their maintenance calendar to the payments wiki.
+- id: hist-040
+  openedAt: -1d9h
+  team: team-pricing
+  ruleKey: pricing-engine-warnings
+  ruleName: Pricing - engine warnings (grouped)
+  source: pricing-logs
+  severity: warning
+  title: pricing-engine-1 latency on EURUSD
+  type: null
+  service: pricing-engine-1
+  errorCode: null
+  count: 11
+  raw:
+    level: WARN
+    logger: pricing-engine-1
+    instrument: EURUSD
+    latencyMs: 690
+    message: Quote latency 690ms exceeds SLO 250ms, request thread pool saturated (32/32)
+    ts: '@openedAt'
+  timeline:
+  - at: 0s
+    type: alert.created
+    actor: system
+    text: Alert opened by rule 'Pricing - engine warnings (grouped)'
+  - at: 1s
+    type: notification.sent
+    actor: system
+    text: 'Hard: on-call via ui; soft: manager@demo via email, ui'
+  - at: 18m
+    type: alert.acknowledged
+    actor: oliwia.kaczmarek@demo
+    text: Acknowledged
+  - at: 46m
+    type: alert.resolved
+    actor: oliwia.kaczmarek@demo
+    text: Resolved with note
+  ackAfter: 18m
+  resolveAfter: 46m
+  resolvedBy: oliwia.kaczmarek@demo
+  resolutionNote: A burst of RFQ requests from the new client portal saturated the request thread pool. Increased
+    the pool from 32 to 64 and added a per-client rate limit at the gateway (PRC-93).

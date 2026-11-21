@@ -10,7 +10,7 @@ from typing import Any
 
 import asyncpg
 import orjson
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import Response
 
 from app.api.deps import Pool, RabbitDep
@@ -161,15 +161,18 @@ async def ingest_batch(
     )
 
 
+async def _raise_source(pool: Pool, x_api_key: str | None = Header(default=None)) -> dict[str, Any]:
+    """Resolved as a dependency so a bad key is a 401 even when the body is invalid too."""
+    return await _source_for(pool, x_api_key)
+
+
 @router.post("/v1/alerts/raise", status_code=202)
 async def raise_alert(
-    body: RaiseAlertRequest,
-    pool: Pool,
-    rabbit: RabbitDep,
-    x_api_key: str | None = Header(default=None),
+    source: dict[str, Any] = Depends(_raise_source),
+    body: RaiseAlertRequest = ...,
+    rabbit: RabbitDep = ...,
 ) -> Response:
     """Typed alert API: same pipeline, the envelope is pre-normalized (`typed: true`)."""
-    source = await _source_for(pool, x_api_key)
     raw = body.model_dump(mode="json", exclude_none=True)
     attributes = body.attributes or {}
     severity = body.severity.value

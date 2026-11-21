@@ -264,3 +264,8 @@ async def test_source_key_cache_ttl_negative_cache_and_lru(pool, make_source):
     assert len(cache._items) == 2
     cache.clear()
     assert not cache._items
+
+
+async def test_raise_with_bad_key_is_401_even_with_invalid_body(client):
+    resp = await client.post("/v1/alerts/raise", json={}, headers={"X-Api-Key": "nope"})
+    assert resp.status_code == 401

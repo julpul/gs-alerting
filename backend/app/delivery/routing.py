@@ -223,7 +223,12 @@ async def plan_deliveries(
     seq = await conn.fetchval(
         "SELECT COALESCE(MAX(notification_seq), 0) + 1 FROM deliveries WHERE alert_id = $1", alert_id
     )
-    received_at = alert.get("first_event_received_at") or alert.get("first_seen_at")
+    # End-to-end latency (spec §18) is defined for the first notification of an alert. Later
+    # notifications (escalation, renotify, resolved updates) are deliberately delayed, so they carry no
+    # event_received_at and stay out of the latency metrics.
+    received_at = (
+        alert.get("first_event_received_at") or alert.get("first_seen_at") if reason == "created" else None
+    )
     priority = SEVERITY_PRIORITY.get(severity, 0)
     digest = policy.soft_digest_minutes
     created: list[dict[str, Any]] = []
