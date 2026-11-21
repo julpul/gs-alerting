@@ -13,6 +13,7 @@ from app.core.audit import audit
 from app.core.errors import AppError, forbidden, not_found
 from app.core.ids import parse_uuid
 from app.core.sse import publish_sse
+from app.herald.codebase import codebase_bundle
 from app.mcp.context import ToolContext
 from app.mcp.registry import tool
 from app.repositories import alert_actions as actions
@@ -97,6 +98,21 @@ async def get_alert(
             raise not_found("alert")
         detail = await repo.alert_detail(conn, row)
     return {**detail, "notice": UNTRUSTED_NOTICE}
+
+
+@tool()
+async def get_codebase(
+    tc: ToolContext, alert_id: Annotated[str, Field(description="alert id or short id (A-1234)")]
+) -> dict:
+    """The codebase (Git repo, branch, path) linked to the alert's platform, a ready-made fix prompt, the
+    draft pull request state and rendered observability links (logs, dashboards). `codebase` is null when
+    the platform has none."""
+    async with tc.pool.acquire() as conn:
+        row = await repo.find_alert(conn, alert_id, tc.scope, detail=True)
+        if row is None:
+            raise not_found("alert")
+        bundle = await codebase_bundle(conn, row, await repo.alert_detail(conn, row))
+    return {**bundle, "notice": UNTRUSTED_NOTICE}
 
 
 @tool(writes=True)

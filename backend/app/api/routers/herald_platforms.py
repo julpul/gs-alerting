@@ -10,12 +10,15 @@ from pydantic import BaseModel
 
 from app.api.deps import Pool, RedisDep
 from app.config import get_settings
+from app.core.audit import audit
 from app.core.errors import AppError, forbidden
+from app.herald.codebase import CodebaseIn, ObservabilityIn
 from app.herald.identity import Actor
 from app.herald.platforms import (
     SOURCE_SELECT,
     alert_counts,
     ingest_path,
+    platform_source,
     platform_wire,
     platform_with_counts,
     source_by_name,
@@ -45,7 +48,9 @@ async def platforms(who: Actor, pool: Pool, redis: RedisDep) -> list[dict[str, A
 
 
 class PlatformIn(BaseModel):
-    name: str
+    name: str | None = None
+    codebase: CodebaseIn | None = None  # null removes it
+    observability: ObservabilityIn | None = None
     icon: str | None = None
     team: str | None = None  # team slug; default: the "acting for" team, else the caller's own team
 
@@ -78,10 +83,16 @@ async def connect_platform(platform_id: str, body: PlatformIn, who: Actor, pool:
         raise AppError(
             422, "validation_error", "use lower-case letters, digits and dashes for the platform id"
         )
-    display = body.name.strip()[:60] or platform_id
+    wanted = body.model_fields_set & {"codebase", "observability"}
     async with pool.acquire() as conn:
-        if await source_by_name(conn, platform_id) is not None:
+        existing = await source_by_name(conn, platform_id)
+        if existing is not None and not wanted:
             raise AppError(409, "conflict", "a platform with this id is already connected")
+        if existing is not None:
+            return await _update_links(conn, who, body, wanted, platform_id)
+        if body.name is None:
+            raise AppError(422, "validation_error", "name: required")
+        display = body.name.strip()[:60] or platform_id
         team_id = await _team_for(conn, who, body.team)
         domain_id = await repo.team_domain(conn, team_id)
         if domain_id is None:
@@ -98,7 +109,7 @@ async def connect_platform(platform_id: str, body: PlatformIn, who: Actor, pool:
                 mapping=None,
                 user=User(**who.user),
             )
-        row = await conn.fetchrow(f"{SOURCE_SELECT} WHERE id = $1", row["id"])
+        row = await _save_links(conn, row["id"], body, wanted)
     base = get_settings().public_base_url.rstrip("/")
     return {
         **platform_wire(row),
@@ -110,3 +121,30 @@ async def connect_platform(platform_id: str, body: PlatformIn, who: Actor, pool:
         "url": f"{base}{ingest_path(platform_id)}",
         "ingestUrl": repo.ingest_url(key),
     }
+
+
+async def _save_links(conn: Any, source_id: Any, body: PlatformIn, wanted: set[str]) -> Any:
+    for column in sorted(wanted):  # column names come from the fixed set above, never from input
+        value = getattr(body, column)
+        await conn.execute(
+            f"UPDATE sources SET {column} = $2 WHERE id = $1",
+            source_id,
+            value.model_dump() if value is not None else None,
+        )
+    return await conn.fetchrow(f"{SOURCE_SELECT} WHERE id = $1", source_id)
+
+
+async def _update_links(
+    conn: Any, who: Any, body: PlatformIn, wanted: set[str], platform_id: str
+) -> dict[str, Any]:
+    existing = await platform_source(conn, who.scope, platform_id)
+    if existing is None:
+        raise AppError(404, "not_found", "no such platform")
+    if not await can_edit_team(conn, who.scope, existing["team_id"]):
+        raise forbidden("you cannot edit this platform")
+    async with conn.transaction():
+        row = await _save_links(conn, existing["id"], body, wanted)
+        await audit(
+            conn, who.actor, "source.links_updated", "source", str(row["id"]), {"fields": sorted(wanted)}
+        )
+    return platform_wire(row)

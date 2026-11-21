@@ -23,6 +23,7 @@ spec; the personal access token is the hackathon shortcut.
 
 | Tool | What it does |
 | --- | --- |
+| `get_codebase(alert_id)` | The platform's Git repo + fix prompt + PR state + rendered observability links (null codebase when none linked) |
 | `list_alerts(status?, team?, limit?)`, `get_alert(id)` | Scoped reads; `get_alert` includes runbook state, latest AI suggestion, deliveries, timeline |
 | `ack_alert(id)`, `comment_alert(id, text)` | As the user (ack needs member or higher on the team) |
 | `raise_alert(type, severity, title, description?, attributes?, dedup_key?, source?)` | Same pipeline as `POST /v1/alerts/raise` |

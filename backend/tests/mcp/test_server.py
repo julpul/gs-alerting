@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 
+from tests.api import alerts_helpers as h
 from tests.api.alerts_helpers import make_alert
 
 from .helpers import call, call_error
@@ -11,6 +12,7 @@ from .helpers import call, call_error
 EXPECTED_TOOLS = {
     "list_alerts",
     "get_alert",
+    "get_codebase",
     "ack_alert",
     "comment_alert",
     "raise_alert",
@@ -145,3 +147,28 @@ async def test_ack_needs_a_role_on_the_team(informed_pat, connect, seeded):
         assert "forbidden" in await call_error(agent, "ack_alert", {"id": str(alert["id"])})
         assert (await call(agent, "comment_alert", {"id": str(alert["id"]), "text": "FYI"}))["text"] == "FYI"
         assert str(alert["id"]) in {a["id"] for a in (await call(agent, "list_alerts"))["items"]}
+
+
+async def test_get_codebase_is_scoped_and_renders_links(make_pat, connect, seeded):
+    await seeded.execute(
+        "UPDATE sources SET codebase = $2, observability = $3 WHERE id = $1",
+        h.SOURCE_ID,
+        {"repo": "https://github.com/o/n", "branch": "main", "path": "svc"},
+        {"links": [{"label": "L", "url": "https://x.test/?a={{alert}}"}]},
+    )
+    try:
+        row = await make_alert(seeded, title="Codebase tool")
+        ref = f"A-{row['short_id']}"
+        anna = await make_pat("anna@demo", "cb-anna")
+        async with connect(anna.token) as agent:
+            out = await call(agent, "get_codebase", {"alert_id": ref})
+            assert out["codebase"]["web_url"] == "https://github.com/o/n/tree/main/svc"
+            assert "get_alert" in out["codebase"]["claude_prompt"]
+            assert out["observability_links"] == [{"label": "L", "url": f"https://x.test/?a={ref}"}]
+        piotr = await make_pat("piotr@demo", "cb-piotr")
+        async with connect(piotr.token) as agent:
+            assert "not_found" in await call_error(agent, "get_codebase", {"alert_id": ref})
+    finally:
+        await seeded.execute(
+            "UPDATE sources SET codebase = NULL, observability = NULL WHERE id = $1", h.SOURCE_ID
+        )

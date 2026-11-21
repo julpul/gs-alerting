@@ -19,7 +19,7 @@ from app.repositories.sources import stream_stats
 
 SOURCE_SELECT = (
     "SELECT id, name, team_id, domain_id, type, preset, key_prefix, config, mapping, mapping_status, "
-    "default_severity, created_at FROM sources"
+    "default_severity, created_at, codebase, observability FROM sources"
 )
 PLATFORM_ALIASES = {
     "workflow-events": "workflow-broker",
@@ -70,6 +70,8 @@ def platform_wire(row: asyncpg.Record) -> dict[str, Any]:
         "managed": "ui" if meta else "file",
         "needs_token": True,
         "team": str(row["team_id"]),
+        "codebase": row["codebase"],
+        "observability": row["observability"],
     }
 
 

@@ -213,3 +213,14 @@ async def test_reseed_moves_a_rotation_left_in_email_order_once(full_pool):
     assert (
         await full_pool.fetchval("SELECT count(*) FROM shifts WHERE rotation_id = $1", rotation_id) == shifts
     )
+
+
+async def test_prometheus_source_has_codebase_and_links_and_reseed_restores_them(full_pool):
+    sql = "SELECT codebase, observability FROM sources WHERE name = 'prometheus'"
+    row = await full_pool.fetchrow(sql)
+    assert row["codebase"]["repo"] == "https://github.com/julpul/gs-alerting"
+    assert row["codebase"]["path"] == "demo/payments-api"
+    assert [x["label"] for x in row["observability"]["links"]] == ["Logs in Datadog", "Service dashboard"]
+    await full_pool.execute("UPDATE sources SET codebase = NULL WHERE name = 'prometheus'")
+    await run_seed(full_pool)
+    assert (await full_pool.fetchrow(sql))["codebase"]["branch"] == "main"
