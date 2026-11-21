@@ -56,10 +56,17 @@ class EffectivePolicy(BaseModel):
         )
 
 
-def scaled_seconds(seconds: int) -> int:
-    """Policy seconds, shrunk 60x (minutes become seconds) when `DEMO_FAST_ESCALATION` is on."""
+FAST_FACTOR = 10
+FAST_FLOOR_SECONDS = 15
+FAST_RENOTIFY_FLOOR_SECONDS = 60
+
+
+def scaled_seconds(seconds: int, *, renotify: bool = False) -> int:
+    """Policy seconds, shrunk 10x when `DEMO_FAST_ESCALATION` is on (5 min -> 30 s: a live demo can still
+    acknowledge in time). Reminders stay at least a minute apart so the last level is not flooded."""
     if get_settings().demo_fast_escalation:
-        return max(1, seconds // 60)
+        floor = FAST_RENOTIFY_FLOOR_SECONDS if renotify else FAST_FLOOR_SECONDS
+        return max(floor, seconds // FAST_FACTOR)
     return seconds
 
 

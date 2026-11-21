@@ -124,8 +124,8 @@ async def test_demo_fast_escalation_shrinks_deadlines(seeded, monkeypatch):
     fresh = await seeded.fetchrow(
         "SELECT ack_deadline, next_renotify_at FROM alerts WHERE id = $1", alert["id"]
     )
-    assert fresh["ack_deadline"] == NOON + timedelta(seconds=5)
-    assert fresh["next_renotify_at"] == NOON + timedelta(seconds=2)
+    assert fresh["ack_deadline"] == NOON + timedelta(seconds=30)
+    assert fresh["next_renotify_at"] == NOON + timedelta(seconds=60)
 
 
 async def test_anna_sms_inside_window_email_outside(seeded):

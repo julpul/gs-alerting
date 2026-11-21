@@ -861,7 +861,9 @@ async function loadDirectory(){const d=await api('/api/directory',{admin:true});
   TEAMS=out;if(!S.team||!TEAMS[S.team])S.team=Object.keys(TEAMS)[0];}
 const rname=d=>d.channel==='ui'&&(!d.recipient||d.recipient==='unknown')?'Team feed':pname(d.recipient);
 function mapDelivery(d){return {channel:d.channel,to:rname(d),attempts:d.attempts,error:d.error||d.last_error,
-  status:d.status==='sent'?'delivered':d.status==='retrying'?'retrying':d.status==='dead'?'parked':'pending'};}
+  status:d.status==='sent'?'delivered':d.status==='retrying'?'retrying':d.status==='dead'?'parked':d.status==='suppressed'?'digest':'pending'};}
+/* Repeated reminders to the same person on the same channel and outcome are one line with a count. */
+function groupNotifs(ns){const out=[],at={};ns.forEach(n=>{const k=n.to+'|'+n.channel+'|'+n.status;if(at[k]!=null)out[at[k]].times++;else{at[k]=out.length;out.push(Object.assign({times:1},n));}});return out;}
 function mapAlert(a){const r=ruleById(a.rule_id);
   return {id:String(a.id),key:a.key,code:String(a.id),rule:a.rule_id,ruleName:r?r.name:a.rule_id,owner:a.owner,status:a.status,severity:a.severity,
     colour:a.colour||SEVS[a.severity].col,title:a.title,body:a.body,count:a.count,firstSeen:Date.parse(a.first_seen),lastSeen:Date.parse(a.last_seen),
@@ -1377,7 +1379,7 @@ function drawerAlert(a){const rb=a.runbook,t=TEAMS[teamKey(a.owner)],ns=a.notifs
       <dt>Seen</dt><dd class="num">${nf(a.count)} time${a.count>1?'s':''}</dd>
       <dt>First seen</dt><dd class="num">${clock(a.firstSeen)}</dd><dt>Last seen</dt><dd class="num">${clock(a.lastSeen)}</dd></dl>
       ${open?'<p class="help" style="padding:0 12px 12px">Changing the assignee hands the alert over. The new person is told on their own channels.</p>':''}</div>
-    <div class="dbox"><h3>Notified</h3><ul class="nlist">${ns.map(n=>`<li>${ic(CHICON[n.channel]||'send','sm')}<span>${esc(n.to)}<br><span class="muted">${CH[n.channel]||esc(n.channel)}</span></span>${loz(n.status==='delivered'?(n.channel==='ui'?'Shown':'Delivered'):n.status==='retrying'?'Retrying':n.status==='parked'?'Failed':'Sending',n.status==='delivered'?'success':n.status==='parked'?'danger':'warning')}</li>`).join('')||'<li><span></span><span class="muted">Nobody was notified.</span><span></span></li>'}</ul></div>
+    <div class="dbox"><h3>Notified</h3><ul class="nlist">${groupNotifs(ns).map(n=>`<li>${ic(CHICON[n.channel]||'send','sm')}<span>${esc(n.to)}<br><span class="muted">${CH[n.channel]||esc(n.channel)}${n.times>1?' · '+n.times+' times':''}</span></span>${loz(n.status==='delivered'?(n.channel==='ui'?'Shown':'Delivered'):n.status==='retrying'?'Retrying':n.status==='parked'?'Failed':n.status==='digest'?'In the summary email':'Sending',n.status==='delivered'?'success':n.status==='parked'?'danger':n.status==='digest'?'':'warning')}</li>`).join('')||'<li><span></span><span class="muted">Nobody was notified.</span><span></span></li>'}</ul></div>
   </aside></div>`;}
 function drawerEvent(ev){const x=S.evExplain;
   $('drawerHead').innerHTML=`<div class="row"><span class="lab grow">Event received ${clock(ev.at)} from ${esc(ev.source)}</span><button class="btn sm" id="drClose" data-act="closeDrawer">Close</button></div>

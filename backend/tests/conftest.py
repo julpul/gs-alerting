@@ -28,6 +28,14 @@ DEFAULT_ENV = {
     "SEED_PROFILE": "core",
     "SEED_SKIP_EMBEDDINGS": "1",
 }
+FORCED_ENV = {
+    "AUTH_MODE": "demo",
+    "DEMO_PASSWORD": "",
+    "OIDC_ISSUER": "",
+    "OIDC_CLIENT_SECRET": "",
+    "JWT_SECRET": DEFAULT_ENV["JWT_SECRET"],
+    "APP_SECRET": DEFAULT_ENV["APP_SECRET"],
+}
 
 
 def _with_database(dsn: str, name: str) -> str:
@@ -54,6 +62,10 @@ async def _delete_prefixed_rabbit(prefix: str) -> None:
 async def session_env() -> AsyncIterator[dict[str, str]]:
     for key, value in DEFAULT_ENV.items():
         os.environ.setdefault(key, value)
+    # Never the developer's sign-in setup: LiteLLM loads the repo `.env` on import (python-dotenv does not
+    # override variables that are already set, so pinning them here wins).
+    for key, value in FORCED_ENV.items():
+        os.environ[key] = value
     token = uuid.uuid4().hex[:8]
     admin_dsn = os.environ["DATABASE_URL"]
     db_name = f"test_{token}"

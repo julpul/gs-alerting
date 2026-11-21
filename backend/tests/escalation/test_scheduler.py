@@ -53,14 +53,14 @@ async def test_fast_mode_critical_escalates_oncall_to_domain_root_to_master(seed
     assert {d["recipient_user_id"] for d in first} == {user("piotr@demo")}
     assert {d["channel"] for d in first} == {"phone", "sms"}
     remaining = (alert["ack_deadline"] - datetime.now(UTC)).total_seconds()
-    assert 0 < remaining <= 5  # 5 minutes became 5 seconds
+    assert 0 < remaining <= 30  # 5 minutes became 30 seconds (fast mode divides by 10)
 
     async with SseCollector(SETTLEMENTS) as sse:
         await make_due(seeded, alert["id"])
         assert await jobs.escalate_due(seeded, fake_rabbit) == 1
         level2 = await alert_row(seeded, alert["id"])
         assert (level2["escalation_level"], level2["status"]) == (2, "escalated")
-        assert 0 < (level2["ack_deadline"] - datetime.now(UTC)).total_seconds() <= 5
+        assert 0 < (level2["ack_deadline"] - datetime.now(UTC)).total_seconds() <= 30
         hard = await deliveries(seeded, alert["id"], kind="hard", notification_seq=2)
         assert {d["recipient_user_id"] for d in hard} == {user("root.settlements@demo")}
         assert {d["channel"] for d in hard} == {"phone", "sms"}
@@ -113,7 +113,7 @@ async def test_resolved_alerts_are_not_escalated_or_renotified(seeded, fast_mode
 async def test_renotify_repeats_hard_notification_until_ack(seeded, fast_mode, fake_rabbit):
     alert = await make_alert(seeded, await make_rule(seeded))
     armed = (await alert_row(seeded, alert["id"]))["next_renotify_at"]
-    assert 0 < (armed - datetime.now(UTC)).total_seconds() <= 2  # 2 minutes became 2 seconds
+    assert 0 < (armed - datetime.now(UTC)).total_seconds() <= 60  # reminders stay at least a minute apart
     before = len(await deliveries(seeded, alert["id"]))
 
     await make_due(seeded, alert["id"])
@@ -248,8 +248,12 @@ async def test_expire_approvals_marks_timeline_and_publishes(seeded, monkeypatch
     assert await jobs.expire_approvals(seeded) == 0
 
 
-async def test_scheduler_loop_escalates_in_real_time(seeded, rabbit, fast_mode):
+async def test_scheduler_loop_escalates_in_real_time(seeded, rabbit, fast_mode, monkeypatch):
     """The 1 s loop in fast mode, with team policy timeouts of one second per level."""
+    from app.escalation import policies
+
+    monkeypatch.setattr(policies, "FAST_FACTOR", 60)
+    monkeypatch.setattr(policies, "FAST_FLOOR_SECONDS", 1)
     levels = [
         {"level": 1, "target": "oncall", "channels": ["sms"], "ackTimeoutSeconds": 60},
         {"level": 2, "target": "domain_root", "channels": ["sms"], "ackTimeoutSeconds": 60},

@@ -238,14 +238,15 @@ async def test_policy_level_lookup_and_wire_conversion(seeded):
     assert dumped["origin"]["levels"] == "org" and dumped["levels"][0]["channels"] == ["phone", "sms"]
 
 
-def test_demo_fast_escalation_turns_minutes_into_seconds(monkeypatch):
+def test_demo_fast_escalation_shrinks_ten_times_with_floors(monkeypatch):
     from app.config import get_settings
 
     assert scaled_seconds(300) == 300
     monkeypatch.setenv("DEMO_FAST_ESCALATION", "true")
     get_settings.cache_clear()
     try:
-        assert scaled_seconds(300) == 5 and scaled_seconds(30) == 1
+        assert scaled_seconds(300) == 30 and scaled_seconds(30) == 15
+        assert scaled_seconds(120, renotify=True) == 60 and scaled_seconds(1800, renotify=True) == 180
     finally:
         monkeypatch.delenv("DEMO_FAST_ESCALATION")
         get_settings.cache_clear()

@@ -305,9 +305,9 @@ async def _arm_timers(
 ) -> None:
     if not hard or reason not in ("created", "escalated", "renotify"):
         return
-    renotify_at = (
-        now + timedelta(seconds=scaled_seconds(policy.renotify_seconds)) if policy.renotify_seconds else None
-    )
+    renotify_at = None
+    if policy.renotify_seconds:
+        renotify_at = now + timedelta(seconds=scaled_seconds(policy.renotify_seconds, renotify=True))
     if reason == "renotify":
         await conn.execute("UPDATE alerts SET next_renotify_at = $2 WHERE id = $1", alert["id"], renotify_at)
         return
