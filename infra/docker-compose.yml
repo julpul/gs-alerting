@@ -20,12 +20,12 @@ x-backend: &backend
     SMTP_PORT: "1025"
     MOCKGW_URL: http://mockgw:8090
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
-    JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+    JWT_SECRET: ${JWT_SECRET:-compose-demo-jwt-secret-not-for-production}
     APP_SECRET: ${APP_SECRET:-ZGV2LWFwcC1zZWNyZXQtMzItYnl0ZXMtbG9uZy1rZXkh}
     DEMO_FAST_ESCALATION: ${DEMO_FAST_ESCALATION:-false}
     ENVIRONMENT: local
-    # Sign-in (docs/SSO.md): demo | password | oidc. The OIDC defaults point at the demo Keycloak (profile `sso`).
-    AUTH_MODE: ${AUTH_MODE:-demo}
+    # Sign-in (docs/SSO.md): password (default here) | oidc | demo. The OIDC defaults point at the demo Keycloak (profile `sso`).
+    AUTH_MODE: ${AUTH_MODE:-password}
     DEMO_PASSWORD: ${DEMO_PASSWORD:-}
     OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8180/realms/vistula}
     OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/vistula/.well-known/openid-configuration}

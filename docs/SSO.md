@@ -36,7 +36,7 @@ access to Herald yet" and the attempt is audited as `login_denied`.
 
 ## Run each mode
 
-**Demo** (default): `make up`. Nothing to configure.
+**Demo** (pytest, local api on `make infra-up`): `AUTH_MODE=demo`, nothing else. The full compose stack (`make up`) defaults to **password** mode: sign in as `anna`, `piotr`, `master`, ... with the seed password (`demo`, or `DEMO_PASSWORD`). In signed-in modes "Viewing as" is gone; admins (`master`) get "Preview as level (testing)" in the avatar menu and "Sign out" is its last item.
 
 **Password**: set in `.env` (or the server's environment) and restart the api:
 
