@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-import types
-import uuid
-
 import pytest
 
-from app.core.ids import format_short_id, uuid7
+from app.core.ids import format_short_id
 from tests.escalation.helpers import SseCollector, make_alert, make_rule, team, user
 
 URL = "/v1/inbound/sms"
@@ -102,70 +98,11 @@ async def test_payload_validation(client):
     assert (await client.post(URL, json={"from": PIOTR})).status_code == 422
 
 
-@pytest.fixture
-def fake_approvals(monkeypatch):
-    """A stand-in for `app.runbooks.approvals` (built in parallel by P3-RUNBOOK)."""
-    calls: list[dict] = []
-
-    async def decide(conn, approval_id, *, decision, actor, comment):
-        calls.append({"id": approval_id, "decision": decision, "actor": actor, "comment": comment})
-        return {"status": "approved" if decision == "approve" else "rejected"}
-
-    package = types.ModuleType("app.runbooks")
-    package.__path__ = []
-    module = types.ModuleType("app.runbooks.approvals")
-    module.decide = decide
-    monkeypatch.setitem(sys.modules, "app.runbooks", package)
-    monkeypatch.setitem(sys.modules, "app.runbooks.approvals", module)
-    return calls
-
-
-async def make_approval(pool) -> tuple[uuid.UUID, int]:
-    approval_id = uuid7()
-    short = await pool.fetchval(
-        "INSERT INTO approvals (id, origin, action, expires_at) "
-        "VALUES ($1, 'runbook_step', 'restart_service', now() + interval '15 minutes') RETURNING short_id",
-        approval_id,
-    )
-    return approval_id, short
-
-
-async def test_approve_and_reject_call_decide_as_the_sender(seeded, client, fake_approvals):
-    _, short = await make_approval(seeded)
-    resp = await sms(client, PIOTR, f"APPROVE {short}")
-    assert resp.json() == {"reply": f"Approval {short} approved."}
-    _, other_short = await make_approval(seeded)
-    assert (await sms(client, PIOTR, f"reject {other_short}")).json()[
-        "reply"
-    ] == f"Approval {other_short} rejected."
-
-    assert [(c["id"], c["decision"]) for c in fake_approvals] == [
-        (str(short), "approve"),
-        (str(other_short), "reject"),
-    ]
-    actor = fake_approvals[0]["actor"]
-    assert actor["type"] == "user" and actor["id"] == str(user("piotr@demo"))
-    assert fake_approvals[0]["comment"] is None
-
-
-async def test_decide_errors_become_replies(seeded, client, monkeypatch, fake_approvals):
-    from app.core.errors import AppError
-
-    async def refuse(conn, approval_id, **kwargs):
-        raise AppError(403, "forbidden", "you are not an approver for this request")
-
-    monkeypatch.setattr(sys.modules["app.runbooks.approvals"], "decide", refuse)
-    _, short = await make_approval(seeded)
-    resp = await sms(client, PIOTR, f"APPROVE {short}")
+@pytest.mark.parametrize("text", ["APPROVE 4", "reject 4"])
+async def test_approval_codes_are_no_longer_understood(client, text):
+    resp = await sms(client, PIOTR, text)
     assert resp.status_code == 200
-    assert resp.json()["reply"] == "you are not an approver for this request"
-
-
-async def test_approvals_unavailable_without_the_runbook_module(seeded, client, monkeypatch):
-    monkeypatch.setitem(sys.modules, "app.runbooks.approvals", None)  # makes the import raise ImportError
-    resp = await sms(client, PIOTR, "APPROVE 1")
-    assert resp.status_code == 200
-    assert resp.json()["reply"] == "Approvals are unavailable right now."
+    assert resp.json()["reply"] == "Unknown command. Reply ACK <n> or RESOLVE <n>."
 
 
 async def test_shared_secret_required_when_configured(seeded, client, monkeypatch):

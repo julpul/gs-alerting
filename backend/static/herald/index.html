@@ -808,7 +808,7 @@ async function asLoad(){S.asTeams=null;if(OIDC()||!S.as)return;
     if(r.ok&&d){S.role=({admin:'lead',approver:'lead',editor:'editor'})[d.role]||(S.role==='editor'?'editor':'responder');S.asTeams=d.teams||[];S.asRole=d.role;
       const ok=Object.keys(TEAMS).filter(k=>S.asTeams.includes(k));if(ok.length&&!ok.includes(S.team))S.team=ok[0];}}catch(e){}}
 const asTeamKeys=()=>Object.keys(TEAMS).filter(k=>!TEAMS[k].personal&&(!S.asTeams||S.asTeams.includes(k)));
-async function viewAs(id,team){S.as=id;if(team&&TEAMS[team])S.team=team;await asLoad();HO.data={};HO.err={};HO.prefs=null;HO.pat=null;HO.team=null;HO.comment={};asSave();}
+async function viewAs(id,team){S.as=id;if(team&&TEAMS[team])S.team=team;await asLoad();HO.data={};HO.err={};HO.prefs=null;HO.pat=null;HO.team=null;asSave();}
 const me=()=>OIDC()?ME.user:ident()['X-Herald-User'];
 /* Single sign-on only. "step_up_required": this action needs a fresh sign-in, then you come back to the same alert.
    Any other 401: the session has ended, so sign in again and come back here. */
@@ -1259,7 +1259,7 @@ function aiBody(a){const s=AI.data,st=AI.state,open=a.status!=='resolved';
     +(s.confidence!=null&&!s.aiUnavailable?`<span class="note">Confidence ${pct(s.confidence)}${s.reusedFrom?' · same proposal as '+esc(s.reusedFrom):''}</span>`:'')
     +(decided?`<div>${loz(s.status==='accepted'?'Accepted':'Rejected',s.status==='accepted'?'success':'')}</div>`
       :s.aiUnavailable?'':`<div class="row"><button class="btn pri" data-act="aiAccept" ${AI.busy?'disabled':''}>${ic('checkmark','sm')}${run?'Accept and run step '+step.id:'Accept'}</button><button class="btn" data-act="aiReject" ${AI.busy?'disabled':''}>Reject</button>
-        ${run&&need?'<span class="note">This step needs a second person: accepting asks for approval, nothing runs before that.</span>':step&&!step.action?'<span class="note">Step '+step.id+' is done by a person: accepting highlights it.</span>':''}</div>`)
+        ${run&&need?'<span class="note">This step is risky: after accepting you confirm it before it runs.</span>':step&&!step.action?'<span class="note">Step '+step.id+' is done by a person: accepting highlights it.</span>':''}</div>`)
     +aiMemory('Fixed before',more(fixed),null,fixed.length)
     +aiMemory('Similar incidents',more(similar),x=>x.similarity!=null?` <span class="muted">· ${pct(x.similarity)} alike</span>`:'',similar.length)
     +(srcs?`<div class="stack" style="gap:4px"><span class="aisub">Based on</span><div class="row" style="gap:6px">${srcs}</div></div>`:'');}
@@ -1312,23 +1312,25 @@ function resultText(r){if(!r)return '';if(r.error)return r.error;const p=[];if(r
   if(r.simulated)p.push('simulated target');return p.join(' · ')||'Done.';}
 function runStepHtml(a,st,i){const rs=a.stepState[String(st.id)]||{};const state={done:'done',failed:'failed',awaiting_approval:'awaiting'}[rs.state]||'todo';
   const need=needsApproval(st);const ap=a.approvals.find(x=>x.step_id===st.id&&x.status==='pending');
-  const stateLab={todo:'To do',awaiting:'Waiting for approval',done:'Done',failed:'Did not work'}[state];
+  const stateLab={todo:'To do',awaiting:'Waiting for a person to confirm',done:'Done',failed:'Did not work'}[state];
   const ps=Object.keys(st.params||{}).map(k=>k+'='+(typeof st.params[k]==='object'?JSON.stringify(st.params[k]):st.params[k])).join(', ');
   let out='';
-  if(rs.result)out=`<div class="out ${rs.result.ok?'':'bad'}"><span class="simple-only">${rs.result.ok?'It worked.':'It did not work: '+esc(rs.result.error||'see the technical view')}</span><span class="tech-only">${esc(resultText(rs.result))}</span>${rs.approved_by?' Approved by '+esc(pname(rs.approved_by))+'.':''}</div>`;
+  if(rs.result)out=`<div class="out ${rs.result.ok?'':'bad'}"><span class="simple-only">${rs.result.ok?'It worked.':'It did not work: '+esc(rs.result.error||'see the technical view')}</span><span class="tech-only">${esc(resultText(rs.result))}</span>${rs.approved_by?' Confirmed by '+esc(pname(rs.approved_by))+'.':''}</div>`;
   else if(rs.state==='done')out=`<div class="out">Marked done by ${esc(pname(rs.by))}.</div>`;
-  else if(rs.state==='rejected')out=`<div class="out bad">${esc(pname(rs.rejected_by))} said no. Nothing was run.</div>`;
+  else if(rs.state==='rejected')out=`<div class="out bad">${esc(pname(rs.rejected_by))} cancelled it. Nothing was run.</div>`;
   let ctl='';
-  if(state==='awaiting'&&ap){const mine=ap.requested_by===me(),can=S.role==='lead'&&!mine;
-    ctl=`<div class="banner"><div>${ic('shield_checkmark','sm')} Waiting for ${ap.approver?'<b>'+esc(pname(ap.approver))+'</b>':'a second person'} to approve · asked by ${esc(pname(ap.requested_by))}</div>
-      <div class="row" style="margin-top:8px"><button class="btn sm pri" data-act="approve" data-id="${ap.id}" ${can?'':'disabled'}>Approve</button><button class="btn sm warn" data-act="reject" data-id="${ap.id}" ${can?'':'disabled'}>Reject</button></div>
-      ${can?'':`<div class="note" style="margin-top:6px">${mine?'You asked for this step, so someone else has to approve it.':'Only the team lead can approve this step.'}${S.role!=='lead'&&!OIDC()?' To try it, choose the team lead under “Viewing as” at the top.':''}</div>`}
-      ${ap.approver?`<div class="note" style="margin-top:6px">${esc(pname(ap.approver))} was texted a code and can also approve by replying to that text. <button class="btn link" data-act="openPhone" data-who="${esc(String(ap.approver).replace('person:',''))}">Open their phone</button></div>`:''}</div>`;}
-  else if(a.status!=='resolved'&&(state==='todo'||state==='failed')){const lab=need?'Ask for approval to run':!st.action?'Mark as done':st.kind==='wait'?'Start the timer':state==='failed'?'Try again':'Run this step';
-    ctl=`<div class="row"><button class="btn sm ${state==='failed'?'':'pri'}" data-act="runStep" data-id="${a.id}" data-i="${st.id}">${ic(need?'shield_checkmark':st.action?'play':'checkmark','sm')}${lab}</button>${need?'<span class="note">A second person has to agree before it runs.</span>':''}</div>`;}
+  const svc=esc((st.params&&st.params.service)||a.key);
+  if(state==='awaiting'&&ap){
+    ctl=`<div class="banner"><div>${ic('shield_checkmark','sm')} An agent asked to run <b class="mono">${esc(st.action)}</b> for ${svc}. It will not run unless a person confirms.</div>
+      <div class="row" style="margin-top:8px"><button class="btn sm pri" data-act="approve" data-id="${ap.id}">Confirm</button><button class="btn sm" data-act="reject" data-id="${ap.id}">Cancel</button></div></div>`;}
+  else if(a.status!=='resolved'&&need&&S.confirm===st.id&&(state==='todo'||state==='failed')){
+    ctl=`<div class="banner warn" role="alertdialog" aria-label="Confirm ${esc(st.action)}"><div>This will run <b class="mono">${esc(st.action)}()</b> for ${svc}. Run it?</div>
+      <div class="row" style="margin-top:8px"><button class="btn sm pri" data-act="confirmRun" data-id="${a.id}" data-i="${st.id}">Confirm</button><button class="btn sm" data-act="cancelRun">Cancel</button></div></div>`;}
+  else if(a.status!=='resolved'&&(state==='todo'||state==='failed')){const lab=need?'Run':!st.action?'Mark as done':st.kind==='wait'?'Start the timer':state==='failed'?'Try again':'Run this step';
+    ctl=`<div class="row"><button class="btn sm ${state==='failed'?'':'pri'}" data-act="runStep" data-id="${a.id}" data-i="${st.id}">${ic(need?'shield_checkmark':st.action?'play':'checkmark','sm')}${lab}</button>${need?'<span class="note">You will be asked to confirm first.</span>':''}</div>`;}
   return `<li class="step${AI.hiStep===st.id?' hi':''}" id="rbstep-${st.id}"><div class="sn ${state}" aria-hidden="true">${state==='done'?'✓':state==='failed'?'!':i+1}</div>
     <div class="sb"><div class="row"><b style="overflow-wrap:anywhere">${esc(st.text)}</b></div>
-      <div class="row"><span class="badge ${state==='done'?'ok':''}">${stateLab}</span><span class="badge">${{check:'Check',action:'Herald can do this',manual:'Done by a person',wait:'Wait'}[st.kind]||'Step'}</span>${need?`<span class="badge ap">${ic('shield_checkmark','sm')} Needs approval</span>`:''}${st.suggest&&!st.action?`<span class="badge tech-only">could be automated: ${esc(st.suggest)}</span>`:''}</div>
+      <div class="row"><span class="badge ${state==='done'?'ok':''}">${stateLab}</span><span class="badge">${{check:'Check',action:'Herald can do this',manual:'Done by a person',wait:'Wait'}[st.kind]||'Step'}</span>${need?`<span class="badge ap">${ic('shield_checkmark','sm')} Needs confirmation</span>`:''}${st.suggest&&!st.action?`<span class="badge tech-only">could be automated: ${esc(st.suggest)}</span>`:''}</div>
       ${st.condition?`<div class="note">Only if: ${esc(st.condition)}</div>`:''}
       ${st.action&&st.kind!=='wait'&&st.action!=='manual'?`<div class="note mono tech-only" style="overflow-wrap:anywhere">${esc(st.action)}(${esc(ps)})</div>`:''}
       ${out}${ctl}</div></li>`;}
@@ -1551,7 +1553,6 @@ function navHtml(){const mine=S.alerts.filter(a=>a.status!=='resolved'&&a.imRef=
   const item=(view,label,icon,extra,cur)=>`<button class="navb" data-act="nav" data-view="${view}" ${cur?'aria-current="page"':''}>${ic(icon)}<span class="nl">${label}</span>${extra||''}</button>`;
   return item('foryou','For you','person_circle',mine?`<span class="cnt">${mine}</span>`:'',forYou)
     +item('feed','Alerts','alert',open?`<span class="cnt red" title="${open} not acknowledged">${open}</span>`:'',S.view==='feed'&&!forYou)
-    +item('approvals','Approvals','shield_checkmark',(n=>n?`<span class="cnt" title="${n} waiting for a decision">${n}</span>`:'')((HO.data.approvals||[]).filter(apCan).length),S.view==='approvals')
     +`<div class="navrow">${item('platforms','Platforms','plug_connected','',S.view==='platforms'&&!S.platform)}<button class="iconbtn sm" data-act="platFold" aria-expanded="${S.platOpen}" title="${S.platOpen?'Hide':'Show'} the list of platforms" aria-label="${S.platOpen?'Hide':'Show'} the list of platforms">${ic(S.platOpen?'chevron_up':'chevron_down','sm')}</button><button class="iconbtn sm" data-act="connectOpen" title="${canEdit()?'Connect a platform':'Connecting a platform needs a rule editor or team lead'}" aria-label="Connect a platform" ${canEdit()?'':'disabled'}>${ic('add','sm')}</button></div>`
     +`<div class="navsub" ${S.platOpen?'':'hidden'}>${S.platforms.map(x=>{const n=x.firing+x.acked;return `<button class="navb" data-act="openPlatform" data-id="${esc(x.id)}" ${S.view==='platforms'&&S.platform===x.id?'aria-current="page"':''} title="${esc(x.name)}${n?': '+n+' open problem'+(n>1?'s':''):': no open problems'}">${ptile(x.id)}<span class="nl">${esc(x.name)}</span>${n?`<span class="cnt ${x.firing?'red':''}">${n}</span>`:''}</button>`;}).join('')}</div>`
     +item('logs','Logs','document_bullet_list','',S.view==='logs')
@@ -1687,8 +1688,8 @@ function viewLogs(){const d=lgData(),all=d.all,pq=d.pq,win=d.win,rows=d.rows;
 const LEVELS={L0:['Reporter','Anyone in the firm. Reports a problem in plain words.'],L1:['Support team','Small problems and reports from people. Brings in an engineer when needed.'],
   L2:['Engineering team','Every alert of the team, platforms, logs, runbooks. First to be called.'],L3:['Senior engineers','Also rules, escalation flows and approvals.'],L4:['Management','Sees everything. Is kept informed and is never called.']};
 const LV_VIEWS={L0:['report'],L1:['feed','report','knowledge','oncall','settings'],
-  L2:['feed','approvals','platforms','logs','runbooks','preferences','oncall','knowledge','agents','report','settings'],
-  L3:['feed','approvals','platforms','logs','rules','flows','runbooks','preferences','oncall','deliveries','metrics','knowledge','agents','report','settings'],L4:null};
+  L2:['feed','platforms','logs','runbooks','preferences','oncall','knowledge','agents','report','settings'],
+  L3:['feed','platforms','logs','rules','flows','runbooks','preferences','oncall','deliveries','metrics','knowledge','agents','report','settings'],L4:null};
 const roleLevel=()=>OIDC()?({viewer:'L0',responder:'L2',editor:'L3',approver:'L3',admin:'L4'}[ME.role]||'L2'):(S.as==='master'?'L4':S.role==='responder'?'L2':'L3');
 const level=()=>S.level||roleLevel();
 const lvCan=v=>{const a=LV_VIEWS[level()];return !a||a.includes(v==='foryou'?'feed':v);};
@@ -1723,12 +1724,6 @@ function callPanel(a){const t=T(),names=[...new Set([a.imRef&&pname(a.imRef),t&&
       <input class="in" id="callUrl" data-oni="callUrl" value="${esc(S.callUrl||'')}" placeholder="Paste the meeting link here" style="flex:1 1 260px" aria-label="Meeting link">
       <button class="btn" data-act="callShare" data-id="${a.id}">Share on this alert</button></div>
     <p class="help" style="margin:8px 0 0">The link is added to the alert's activity, where everyone working on it sees it. Herald does not create the meeting itself.</p></div>`;}
-
-/* ---- What an approval would change, and where the change lives. ---- */
-function hoChange(a){if(HO.open!==a.id)return '';const links=(a.links||[]).filter(l=>l&&/^https?:\/\//.test(l.url||''));
-  return `<div class="hochg">${a.changes?`<h3>What will change</h3><pre class="hodiff">${String(a.changes).split('\n').map(l=>`<span class="${l[0]==='+'?'add':l[0]==='-'?'del':''}">${esc(l)||' '}</span>`).join('')}</pre>`:'<p class="muted" style="margin:0">The request describes the change only through the values above.</p>'}
-    ${links.length?`<h3>Where it lives</h3><div class="row">${links.map(l=>`<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${ic('open','sm')}${esc(l.label||l.url)}</a>`).join('')}</div>`:''}
-    <dl class="kv"><dt>Asked</dt><dd>${ago(Date.parse(a.createdAt))} by ${esc(hoActor(a.requestedBy))}</dd><dt>Request number</dt><dd><code>${esc(a.shortId!=null?a.shortId:a.id)}</code></dd></dl></div>`;}
 
 /* ---- Escalation flows: who is told first, how long they have, and who is next. Drawn with the flow editor (ui/flow/herald-flow.js).
         The flows are kept in this browser. The service does not run them yet: today it repeats a notification and falls back to
@@ -1798,10 +1793,10 @@ function flMount(){const slot=$('flowSlot');
     onSelect:x=>{FL.sel=x?Object.assign({},x,{kind:((FL.ed?FL.ed.getFlow():cur.flow).nodes.find(n=>n.id===x.id)||{}).kind}):null;const p=document.querySelector('.flpanel');if(p)p.innerHTML=flPanel();}};  /* only the side panel is redrawn: redrawing the page would restart the board in the middle of a drag */
   opts.viewport=vp||{x:28,y:44,zoom:0.8};if(FL.sel)opts.selectedId=FL.sel.id;
   try{FL.ed=window.HeraldFlow.mount(slot,opts);}catch(e){FL.ed=null;slot.innerHTML='<p class="muted" style="padding:16px">The drawing board failed to start. The flow is listed in words below.</p>';}}
-/* ---- Screens from the UI handoff: approvals, on-call schedule, metrics, history and settings (escalation, my notifications,
+/* ---- Screens from the UI handoff: on-call schedule, metrics, history and settings (escalation, my notifications,
         trust levels, integrations, organisation). Each reads the public /v1 endpoint the handoff names, with a Bearer token for
         the current person (see v1Token). When a call fails the screen says so and offers to try again: it never shows invented data. ---- */
-const HO={data:{},err:{},tab:'escalation',team:null,comment:{},prefs:null,apTab:'pending',pat:null,patName:'claude-code',patBusy:false,
+const HO={data:{},err:{},tab:'escalation',team:null,prefs:null,pat:null,patName:'claude-code',patBusy:false,
   kn:{mode:'text',title:'',content:'',url:'',team:'',busy:false}};
 const HO_SEV=['critical','error','warning','info'],HO_CH=['ui','email','sms','phone'];
 const HO_CHN={ui:'In Herald',email:'Email',sms:'Text message',phone:'Phone call',webhook:'Webhook'};
@@ -1812,7 +1807,7 @@ function hoWeekStart(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDat
 async function hoGet(key,load,fresh){if(!fresh&&key in HO.data)return;try{HO.data[key]=await load();delete HO.err[key];}catch(e){if(!(key in HO.data))HO.data[key]=null;HO.err[key]=e.message||'The service did not answer.';}}
 /* The /v1 team of the team chosen under "Viewing as" (the directory gives both ids). */
 const hoMyTeam=()=>{const t=T(),teams=HO.data.teams||[];return (t&&t.uuid&&teams.find(x=>x.id===t.uuid))||(t&&teams.find(x=>x.name===t.name))||teams[0]||null;};
-async function loadHandoff(){const v=S.view,g=(k,p,fresh)=>hoGet(k,()=>api(p),fresh),jobs=[g('approvals','/v1/approvals',true)];
+async function loadHandoff(){const v=S.view,g=(k,p,fresh)=>hoGet(k,()=>api(p),fresh),jobs=[];
   if(['oncall','settings','knowledge','flows'].includes(v)){await Promise.all([g('teams','/v1/teams'),g('users','/v1/users')]);if(!HO.team||!(HO.data.teams||[]).some(t=>t.id===HO.team))HO.team=(hoMyTeam()||{}).id||null;}
   if(v==='oncall'&&HO.team)jobs.push(g('schedules','/v1/schedules?teamId='+encodeURIComponent(HO.team)),g('rotations','/v1/rotations?teamId='+encodeURIComponent(HO.team)),
     hoGet('oncallAll',async()=>{const out={};await Promise.all((HO.data.teams||[]).map(t=>api('/v1/teams/'+encodeURIComponent(t.id)+'/oncall').then(o=>{out[t.id]=o;},()=>{out[t.id]=null;})));return out;}));
@@ -1827,40 +1822,14 @@ async function loadHandoff(){const v=S.view,g=(k,p,fresh)=>hoGet(k,()=>api(p),fr
 const hoUser=id=>((HO.data.users||[]).find(u=>u.id===id)||{displayName:id}).displayName;
 const hoActor=a=>!a?'':a.kind==='agent'?'Agent '+a.displayName+(a.onBehalfOf?' on behalf of '+a.onBehalfOf:''):a.displayName;
 const hoMins=s=>s==null?'':s%3600===0&&s>=3600?(s/3600)+' h':Math.round(s/60)+' min';
-const hoMeId=()=>{const p=PEOPLE[String(me()||'').replace(/^person:/,'')];return p&&p.uuid||null;};
 function hoBanner(keys){const bad=keys.filter(k=>HO.err[k]);return bad.length?`<div class="banner warn"><b>Could not load this from the service.</b> ${esc(HO.err[bad[0]])} <button class="btn link" data-act="hoRetry">Try again</button></div>`:'';}
-const hoKv=o=>`<dl class="kv">${Object.keys(o||{}).map(k=>`<dt>${esc(k)}</dt><dd>${esc(typeof o[k]==='object'?JSON.stringify(o[k]):o[k])}</dd>`).join('')}</dl>`;
-const hoRisk=r=>loz((r==='high'?'High':r==='medium'?'Medium':'Low')+' risk',r==='high'?'danger':r==='medium'?'warning':'');
 const hoTeamSeg=act=>{const teams=HO.data.teams||[];return teams.length>1?`<span class="seg" role="group" aria-label="Team">${teams.map(t=>`<button data-act="${act||'hoTeam'}" data-v="${esc(t.id)}" aria-pressed="${t.id===HO.team}">${esc(t.name)}</button>`).join('')}</span>`:'';};
-/* Four eyes: nobody decides their own request (requestedByUserId is the human behind it, also when an agent asked).
-   canDecide comes from the service; without it the page falls back to "not my own request". */
-const apMine=a=>{const meId=hoMeId();return !!(meId&&((a.requestedByUserId&&a.requestedByUserId===meId)||(a.requestedBy&&a.requestedBy.id===meId)));};
-const apCan=a=>a.status==='pending'&&!apMine(a)&&a.canDecide!==false;
-const AP_TABS=[['pending','Waiting','','clock'],['approved','Approved','','checkmark_circle'],['rejected','Rejected','','dismiss_circle'],['expired','Expired','','timer']];
-function viewApprovals(){const list=HO.data.approvals||[],tab=HO.apTab,pending=list.filter(a=>a.status==='pending'),done=list.filter(a=>a.status===tab);
-  const left=a=>{const m=Math.round((Date.parse(a.expiresAt)-Date.now())/6e4);return m>0?'Expires in '+m+' min':'Expired';};
-  const num=a=>a.shortId!=null?a.shortId:a.id;
-  const head=pageHead({title:'Approvals',desc:'Risky actions wait here until a second person agrees. Requests come from runbook steps and from AI agents; nobody approves their own request.'})
-    +hoBanner(['approvals'])+tabsHtml('apTab',tab,AP_TABS.map(t=>[t[0],t[1],list.filter(a=>a.status===t[0]).length||'',t[3]]));
-  if(tab!=='pending')return head+(done.length?`<div class="tablewrap"><table><thead><tr><th>Action</th><th>Asked by</th><th>Decided by</th><th>Comment</th><th>When</th><th>Alert</th></tr></thead><tbody>${done.map(a=>`<tr><td><code>${esc(a.action)}</code> ${hoRisk(a.risk)}</td><td>${esc(hoActor(a.requestedBy))}</td><td>${esc(hoActor(a.decidedBy)||(a.status==='expired'?'Nobody in time':'Nobody'))}</td><td>${esc(a.comment||'')}</td><td class="num">${a.createdAt?ago(Date.parse(a.createdAt)):''}</td><td>${a.alertId?`<button class="btn link" data-act="hoAlert" data-id="${esc(a.alertId)}">Open</button>`:''}</td></tr>`).join('')}</tbody></table></div>`
-      :emptyState('shield_checkmark','Nothing '+AP_TABS.find(t=>t[0]===tab)[1].toLowerCase()+' yet','Decided requests stay here with who decided and why.',''));
-  return head
-    +(pending.length?`<div class="stack" style="gap:12px">${pending.map(a=>{const mine=apMine(a),can=apCan(a);return `<section class="card hoap">
-        <div class="row"><h2 class="grow">${esc(hoActor(a.requestedBy))} asks to run <code>${esc(a.action)}</code></h2>${loz(a.origin==='agent_request'?'Agent request':'Runbook step',a.origin==='agent_request'?'new':'')}${hoRisk(a.risk)}<span class="muted num">${left(a)}</span></div>
-        <p style="margin:0">${esc(a.reason||'')}</p>${hoKv(a.parameters)}${hoChange(a)}
-        <p class="help" style="margin:0">Who can approve: ${esc((a.approvers||[]).filter(x=>!(a.requestedBy&&x.id===a.requestedBy.id)).map(hoActor).join(', ')||'an approver of this team')}. They can also reply <code>APPROVE ${esc(num(a))}</code> to the text message they received.</p>
-        ${can?`<label class="field"><span>Comment (optional, kept with the decision)</span><input class="in" id="hoc-${esc(a.id)}" data-oni="hoComment" data-id="${esc(a.id)}" value="${esc(HO.comment[a.id]||'')}" placeholder="Why you approve or reject"></label>`:''}
-        <div class="row"><button class="btn" data-act="hoOpen" data-id="${esc(a.id)}" aria-expanded="${HO.open===a.id}">${HO.open===a.id?'Hide the details':'Details'}</button>${a.alertId?`<button class="btn" data-act="hoAlert" data-id="${esc(a.alertId)}">Open the alert</button>`:''}<span class="grow"></span>
-          ${mine?'<span class="loz">Waiting for another approver</span><span class="muted">You asked for this, so someone else has to decide.</span>'
-            :!can?'<span class="loz">Not yours to decide</span><span class="muted">Only the approvers listed above can decide this one.</span>'
-            :`<button class="btn" data-act="hoDecide" data-id="${esc(a.id)}" data-v="reject">Reject</button><button class="btn pri" data-act="hoDecide" data-id="${esc(a.id)}" data-v="approve">Approve</button>`}</div></section>`;}).join('')}</div>`
-      :HO.err.approvals?'':emptyState('shield_checkmark','Nothing is waiting for you','When a runbook step or an agent needs a second person, the request appears here and on your phone.',''));}
 /* Agents & MCP: a personal access token (shown once), the command that connects Claude Code, and what an agent may do.
    Tokens: GET/POST /v1/tokens, DELETE /v1/tokens/{id}. The list of tools is the MCP server's own (backend/app/mcp). */
 const MCP_TOOLS=[['list_alerts','Lists alerts you can see, by status or team.'],['get_alert','One alert with its runbook, latest AI suggestion, deliveries and timeline.'],
   ['ack_alert','Acknowledges an alert as you (needs member or higher on the team).'],['comment_alert','Adds a comment to the alert timeline.'],
-  ['raise_alert','Raises a typed alert through the same pipeline as POST /v1/alerts/raise.'],['request_approval','Asks a person to approve an action and waits (up to 5 minutes) for the answer.'],
-  ['get_approval_status','Checks whether an approval was granted, rejected or expired.'],['run_runbook_step','Runs a low-risk, trusted step; anything riskier becomes an approval request.'],
+  ['raise_alert','Raises a typed alert through the same pipeline as POST /v1/alerts/raise.'],['request_approval','Asks a person to confirm an action on the alert and waits (up to 5 minutes) for the answer.'],
+  ['get_approval_status','Checks whether a request was confirmed, cancelled or expired.'],['run_runbook_step','Runs a low-risk, trusted step; anything riskier shows on the alert as “An agent asked to run …” for a person to confirm.'],
   ['propose_rule','Drafts a rule from plain words (never saved).'],['test_rule','Dry-runs a rule against recent events (never saved).'],
   ['propose_schema_mapping','Drafts how a source’s fields map to severity, service, title… (never saved).'],['propose_runbook','Turns runbook text into structured steps (never saved).'],
   ['get_integration_guide','A guide with curl and Python examples, plus the API contract as a resource.']];
@@ -1956,7 +1925,7 @@ function viewSettings(){const d=HO.data,tab=HO.tab,teams=d.teams||[],tn=id=>((d.
       <h2>Teams</h2><div class="tablewrap"><table><thead><tr><th>Team</th><th>Domains</th><th>Members</th></tr></thead><tbody>${teams.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc((t.domainIds||[]).map(dn).join(', '))}${(t.domainIds||[]).length>1?' '+loz('Cross-domain','info'):''}</td><td>${esc((t.memberIds||[]).map(hoUser).join(', '))}</td></tr>`).join('')}</tbody></table></div>
       <h2>People</h2><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>${(d.users||[]).map(u=>`<tr><td><span class="user">${avatar(u.displayName,true)}${esc(u.displayName)}</span></td><td>${esc(u.email||'')}</td><td>${esc(u.phone||'')}</td></tr>`).join('')}</tbody></table></div>`;}
   return pageHead({title:'Settings'})+tabsHtml('hoTab',tab,[['escalation','Escalation','','alert_urgent'],['notifications','My notifications','','alert'],['trust','Trust levels','','shield_checkmark'],['integrations','Integrations','','plug_connected'],['org','Organisation','','building_bank']])+body;}
-const VIEWS={feed:viewFeed,platforms:viewPlatforms,logs:viewLogs,approvals:viewApprovals,agents:viewAgents,oncall:viewOncall,metrics:viewMetrics,knowledge:viewKnowledge,settings:viewSettings,report:viewReport,flows:viewFlows,rules:viewRules,runbooks:viewRunbooks,deliveries:viewDeliveries,preferences:viewPreferences,audit:viewAudit};
+const VIEWS={feed:viewFeed,platforms:viewPlatforms,logs:viewLogs,agents:viewAgents,oncall:viewOncall,metrics:viewMetrics,knowledge:viewKnowledge,settings:viewSettings,report:viewReport,flows:viewFlows,rules:viewRules,runbooks:viewRunbooks,deliveries:viewDeliveries,preferences:viewPreferences,audit:viewAudit};
 function render(){
   const a=document.activeElement,fid=a&&a.id;let ss=null,se=null;try{ss=a.selectionStart;se=a.selectionEnd;}catch(e){}
   if(OIDC())accountMenu();else{
@@ -2000,7 +1969,6 @@ const ACT={
   callOpen(el){S.callFor=S.callFor===String(el.dataset.id)?null:String(el.dataset.id);},
   callShare(el){const u=(S.callUrl||'').trim();if(!/^https:\/\/\S+$/.test(u)){toast('Paste a link that starts with https://');return;}
     act(()=>api('/api/alerts/'+el.dataset.id+'/notes',{body:{text:'Call: '+u}}),'The call link is on the alert.');S.callUrl='';S.callFor=null;},
-  hoOpen(el){HO.open=HO.open===el.dataset.id?null:el.dataset.id;},
   flTab(el){flSync();FL.tab=el.dataset.v;const f=FL.flows.find(x=>x.problem===FL.tab);if(f){FL.cur=f.id;FL.sel=null;}},
   flPick(el){flSync();FL.cur=el.dataset.id;FL.sel=null;},
   flAdd(el){if(!FL.ed)return;const k=el.dataset.v,d=k==='inform'?{level:'L4',who:'Management',note:'Sees everything. Is not called.'}:{level:'L2',who:'Engineer on call',channels:['call'],respondMinutes:10};const id=FL.ed.addNode(k,d);flSync();FL.sel={type:'node',id:id,kind:k,data:d};},
@@ -2011,7 +1979,6 @@ const ACT={
   flNew(){const id='flow-'+Date.now().toString(36),name=(FL.tab==='bug'?'New bug':'New vulnerability')+' flow';flSync();FL.flows.push({id:id,name:name,problem:FL.tab,severity:'high',flow:flChain(name,FL.tab,'high',[['L2','Engineer on call',['call'],10]])});flSave();FL.cur=id;FL.sel=null;},
   platFold(){S.platOpen=!S.platOpen;try{localStorage.setItem('herald.platOpen',S.platOpen?'1':'0');}catch(e){}},
   hoTab(el){HO.tab=el.dataset.v;},
-  apTab(el){HO.apTab=el.dataset.v;},
   teamPolicy(){HO.tab='escalation';go('settings');window.scrollTo(0,0);loadView().then(render,e=>toast(e.message));},
   knMode(el){HO.kn.mode=el.dataset.v;},
   knAdd(){const k=HO.kn,link=k.mode==='link',url=k.url.trim(),content=k.content.trim();if(k.busy)return;
@@ -2029,9 +1996,6 @@ const ACT={
   hoRetry(){HO.data={};HO.err={};HO.prefs=null;loadHandoff().then(render,e=>toast(e.message));},
   hoTeam(el){HO.team=el.dataset.v;['schedules','rotations','esc'].forEach(k=>{delete HO.data[k];delete HO.err[k];});loadHandoff().then(render,e=>toast(e.message));},
   hoAlert(el){api('/v1/alerts/'+encodeURIComponent(el.dataset.id)).then(a=>{const m=/^A-(\d+)$/.exec(a.shortId||'');if(!m)return;go('feed');S.platform=null;S.f.resolved=true;ACT.openAlert({dataset:{id:m[1]}});render();},e=>toast(e.message));},
-  hoDecide(el){const a=(HO.data.approvals||[]).find(x=>x.id===el.dataset.id),yes=el.dataset.v==='approve';if(!a)return;const comment=(HO.comment[a.id]||'').trim();
-    api('/v1/approvals/'+encodeURIComponent(a.id)+'/decision',{body:comment?{decision:yes?'approve':'reject',comment:comment}:{decision:yes?'approve':'reject'}})
-      .then(()=>{delete HO.comment[a.id];toast(yes?'Approved.':'Rejected.');return loadHandoff();}).then(render,e=>{toast(e.status===403?'You cannot decide this one: '+e.message:e.message);});},
   hoPref(el){const p=HO.prefs;if(!p)return;const list=p.bySeverity[el.dataset.s]||(p.bySeverity[el.dataset.s]=[]),i=list.indexOf(el.dataset.c);if(i<0)list.push(el.dataset.c);else list.splice(i,1);},
   hoPrefReset(){HO.prefs=null;},
   myPrefs(){HO.tab='notifications';go('settings');window.scrollTo(0,0);loadView().then(render,e=>toast(e.message));},
@@ -2058,7 +2022,7 @@ const ACT={
   filter(el){S.f[el.dataset.k]=el.dataset.v;},
   filterReset(){S.f.platform='';S.f.assignee='';S.q='';const g=$('gq');if(g)g.value='';},
   testEvent(){const x=SIMS.find(q=>q.team===S.team)||SIMS[0];ACT.openPlatform({dataset:{id:x.src}});S.ptab='send';ACT.plExample({dataset:{k:x.k}});},
-  openAlert(el){const id=String(el.dataset.id);S.drawer={kind:'alert',id:id};S.detail=null;S.docText=null;S.noteText='';S.rsv=null;S.handFor=null;aiReset(id);
+  openAlert(el){const id=String(el.dataset.id);S.confirm=null;S.drawer={kind:'alert',id:id};S.detail=null;S.docText=null;S.noteText='';S.rsv=null;S.handFor=null;aiReset(id);
     loadDetail().then(render);aiLoad().then(paintAi);},
   aiMore(){AI.more=true;},
   aiStep(el){AI.hiStep=+el.dataset.i;setTimeout(()=>{const n=$('rbstep-'+el.dataset.i);if(n)n.scrollIntoView({block:'center',behavior:'smooth'});},0);},
@@ -2068,8 +2032,9 @@ const ACT={
     AI.busy=null;const st=aiStepOf(a,s);
     if(!st){toast('Accepted. It is recorded on the alert.');await refresh();return;}
     AI.hiStep=st.id;const rs=a.stepState[String(st.id)]||{},todo=!rs.state||rs.state==='failed';
-    if(st.action&&todo&&a.status!=='resolved')await act(()=>api('/api/alerts/'+a.id+'/steps/'+st.id+'/run',{method:'POST'}),
-      r=>r.state==='awaiting_approval'?'Accepted. Step '+st.id+' waits for a second person'+(r.approver?': a code was texted to '+pname(r.approver):'')+'.':r.state==='failed'?'Accepted, but step '+st.id+' did not work. See the step below.':'Accepted. Step '+st.id+' has run.');
+    if(st.action&&todo&&a.status!=='resolved'&&needsApproval(st)){S.confirm=st.id;toast('Accepted. Confirm step '+st.id+' below to run it.');await refresh();}
+    else if(st.action&&todo&&a.status!=='resolved')await act(()=>api('/api/alerts/'+a.id+'/steps/'+st.id+'/run',{method:'POST'}),
+      r=>r.state==='failed'?'Accepted, but step '+st.id+' did not work. See the step below.':'Accepted. Step '+st.id+' has run.');
     else{toast(st.action?'Accepted. Step '+st.id+' is highlighted below.':'Accepted. Step '+st.id+' is highlighted below: do it, then mark it done.');await refresh();}
     ACT.aiStep({dataset:{i:String(st.id)}});},
   async aiReject(){const a=S.detail,s=AI.data;if(!a||!s||AI.busy)return;AI.busy='reject';paintAi();
@@ -2097,13 +2062,15 @@ const ACT={
   gotoTeam(el){if(canSwitchTo(el.dataset.id)){S.team=el.dataset.id;go('feed');reloadFor();}},
   openEvent(el){S.drawer={kind:'event',id:el.dataset.id};S.evExplain=null;const ev=evById(el.dataset.id);
     if(ev)api('/api/events/explain',{body:{event:ev.raw,source:ev.source}}).then(r=>{S.evExplain=r;render();},e=>toast(e.message));},
-  closeDrawer(){S.drawer=null;S.detail=null;S.rsv=null;S.handFor=null;clearTimeout(aiTimer);AI.for=null;},
+  closeDrawer(){S.confirm=null;S.drawer=null;S.detail=null;S.rsv=null;S.handFor=null;clearTimeout(aiTimer);AI.for=null;},
   ack(el){act(()=>api('/api/alerts/'+el.dataset.id+'/ack',{method:'POST'}));},
-  runStep(el){act(()=>api('/api/alerts/'+el.dataset.id+'/steps/'+el.dataset.i+'/run',{method:'POST'}),
-    r=>r.state==='awaiting_approval'?'Sent for approval'+(r.approver?': a code was texted to '+pname(r.approver):''):null);},
-  approve(el){act(()=>api('/api/approvals/'+el.dataset.id+'/decide',{body:{approve:true}}),'Approved.');},
-  reject(el){act(()=>api('/api/approvals/'+el.dataset.id+'/decide',{body:{approve:false}}),'Rejected. Nothing was run.');},
-  openPhone(el){S.phoneWho=el.dataset.who;S.drawer=null;S.detail=null;go('deliveries');loadView().then(render);},
+  runStep(el){const st=((S.detail&&S.detail.runbook&&S.detail.runbook.steps)||[]).find(x=>String(x.id)===el.dataset.i);
+    if(st&&st.action&&needsApproval(st)){S.confirm=st.id;return;}
+    act(()=>api('/api/alerts/'+el.dataset.id+'/steps/'+el.dataset.i+'/run',{method:'POST'}));},
+  cancelRun(){S.confirm=null;},
+  confirmRun(el){S.confirm=null;act(()=>api('/api/alerts/'+el.dataset.id+'/steps/'+el.dataset.i+'/run',{body:{confirmed:true}}),'Confirmed and ran.');},
+  approve(el){act(()=>api('/api/approvals/'+el.dataset.id+'/decide',{body:{approve:true}}),'Confirmed and ran.');},
+  reject(el){act(()=>api('/api/approvals/'+el.dataset.id+'/decide',{body:{approve:false}}),'Cancelled. Nothing was run.');},
   addNote(el){const t=S.noteText.trim();if(!t)return;S.noteText='';act(()=>api('/api/alerts/'+el.dataset.id+'/notes',{body:{text:t}}));},
   statusUpdate(el){api('/api/alerts/'+el.dataset.id+'/status-update').then(r=>{S.docText={title:'Status update, ready to edit and send',text:r.text};render();},e=>toast(e.message));},
   postmortem(el){api('/api/alerts/'+el.dataset.id+'/postmortem').then(r=>{S.docText={title:'Postmortem draft from the audit trail (roles, not names)',text:r.markdown};render();},e=>toast(e.message));},
@@ -2187,7 +2154,6 @@ const ACT={
 };
 async function reloadKeepDraft(){const d=S.draft,n=S.draftNew;try{await loadAll();}catch(e){}S.draft=d;S.draftNew=n;render();connect();}
 const ONI={
-  hoComment(el){HO.comment[el.dataset.id]=el.value;return false;},
   aiQ(el){if(AI.ask)AI.ask.q=el.value;return false;},
   rsvNote(el){if(S.rsv)S.rsv.note=el.value;return false;},
   nlText(el){if(S.edAi)S.edAi.text=el.value;return false;},

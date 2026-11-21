@@ -1,11 +1,11 @@
-"""`POST /v1/alerts/{alertId}/runbook/steps/{stepId}/run`: run an action step, or get an approval request."""
+"""`POST /v1/alerts/{alertId}/runbook/steps/{stepId}/run`: run a step; a risky one needs `?confirmed=true`."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.api.deps import CurrentScope, CurrentUser, Pool, RabbitDep
 from app.core.audit import user_actor
@@ -27,7 +27,13 @@ router = APIRouter(prefix="/v1/alerts", tags=["runbooks"])
     response_model_exclude_none=True,
 )
 async def run_runbook_step(
-    alert_id: str, step_id: str, scope: CurrentScope, user: CurrentUser, pool: Pool, rabbit: RabbitDep
+    alert_id: str,
+    step_id: str,
+    scope: CurrentScope,
+    user: CurrentUser,
+    pool: Pool,
+    rabbit: RabbitDep,
+    confirmed: Annotated[bool, Query()] = False,
 ) -> Any:
     async with pool.acquire() as conn:
         row = await repo.find_alert(conn, alert_id, scope, detail=True)
@@ -35,7 +41,9 @@ async def run_runbook_step(
             raise not_found("alert")
         await actions.require_actor_role(conn, scope, row)
         await approvals.expire_due(conn)
-        outcome = await run_step(conn, dict(row), step_id, user_actor(user.id, user.display_name))
+        outcome = await run_step(
+            conn, dict(row), step_id, user_actor(user.id, user.display_name), confirmed=confirmed
+        )
     try:
         await publish_outbox_rows(pool, rabbit, outcome.outbox_ids)
     except Exception:

@@ -257,8 +257,7 @@ def step_state_out(view: Any, refs: dict[UUID, str], approvals: dict[str, Any]) 
 
 
 def approval_out(row: Any, refs: dict[UUID, str], step_order: int | None) -> dict[str, Any]:
-    """`approvals` row -> Herald `Approval` (`id` = short id). A person's own request never lists them
-    as an approver (four-eyes); `requested_by_user` is the human behind it (the agent's user too)."""
+    """`approvals` row -> Herald `Approval` (`id` = short id); `requested_by_user` is the human behind it."""
     requester = actor_ref(row["requested_by"], refs)
     approvers = [refs[u] for u in row["approver_user_ids"] if u in refs and refs[u] != requester]
     approver = approvers[0] if approvers else None

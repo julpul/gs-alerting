@@ -106,7 +106,7 @@ async def test_request_approval_validation_and_visibility(make_pat, connect, see
         )
 
 
-async def test_run_runbook_step_runs_or_asks_for_approval(make_pat, connect, seeded):
+async def test_run_runbook_step_runs_or_waits_for_a_person(make_pat, connect, seeded):
     alert = await make_runbook_alert(seeded)
     pat = await make_pat("piotr@demo", f"runner-{uuid4().hex[:6]}")
     async with connect(pat.token) as agent:
@@ -116,11 +116,24 @@ async def test_run_runbook_step_runs_or_asks_for_approval(make_pat, connect, see
         assert outcome["step"]["state"] == "pending_approval"
         assert outcome["approval"]["origin"] == "runbook_step"
         assert outcome["approval"]["requestedBy"]["kind"] == "agent"
+        ran = await seeded.fetchval(
+            "SELECT count(*) FROM step_runs WHERE alert_id = $1 AND step_id = 's3' AND state = 'succeeded'",
+            alert["id"],
+        )
+        assert ran == 0  # an agent never runs a risky step alone
+        texts = [
+            r["text"]
+            for r in await seeded.fetch("SELECT text FROM timeline WHERE alert_id = $1", alert["id"])
+        ]
+        assert "An agent asked to run escalate (low risk)" in texts
         assert "not_found" in await call_error(
             agent, "run_runbook_step", {"alert_id": str(alert["id"]), "step_id": "nope"}
         )
         again = await call(agent, "run_runbook_step", {"alert_id": str(alert["id"]), "step_id": "s3"})
         assert again["approval"]["id"] == outcome["approval"]["id"]  # one pending approval per step
+        await decide_as(seeded, UUID(outcome["approval"]["id"]), "piotr@demo", "Piotr Wisniewski")
+        done = await call(agent, "get_alert", {"id": str(alert["id"])})
+        assert done["runbook"]["steps"][2]["state"] == "succeeded"  # runs once a person confirmed
 
     other = await make_pat("anna@demo", f"runner-{uuid4().hex[:6]}")
     async with connect(other.token) as agent:

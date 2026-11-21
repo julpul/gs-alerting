@@ -57,8 +57,9 @@ The same call is the MCP tool `raise_alert`.
 
 ## 3. Ask a human before a risky action
 
-MCP tool `request_approval(action, parameters, reason, risk, alert_id?)` notifies the on-call humans and waits
-for `approved` / `rejected` / `expired` (or returns `pending` + `approvalId`: poll `get_approval_status`).
+MCP tool `request_approval(action, parameters, reason, risk, alert_id?)` shows "An agent asked to run ..." on
+the alert and waits for a human to confirm or cancel: `approved` / `rejected` / `expired` (or returns
+`pending` + `approvalId`: poll `get_approval_status`).
 
 ## 4. Connect an MCP client
 

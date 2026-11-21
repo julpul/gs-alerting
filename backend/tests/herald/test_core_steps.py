@@ -1,11 +1,12 @@
-"""Runbook steps via /api/alerts/{id}/steps/{step}/run and /api/approvals/{id}/decide."""
+"""Runbook steps via /api/alerts/{id}/steps/{step}/run (inline confirm); agent requests via /api/approvals."""
 
 from __future__ import annotations
 
 import pytest_asyncio
 
+from app.runbooks.runner import run_step
 from tests.delivery.conftest import gw, mockgw_server  # noqa: F401  (re-exported fixtures)
-from tests.runbooks.helpers import make_alert
+from tests.runbooks.helpers import make_alert, user
 
 from .core_helpers import as_person
 
@@ -14,6 +15,20 @@ from .core_helpers import as_person
 async def default_trust(seeded):
     await seeded.execute("DELETE FROM action_trust")
     yield
+
+
+AGENT = {
+    "type": "agent",
+    "id": "claude-code",
+    "name": "Claude Code",
+    "onBehalfOf": "Piotr Wisniewski",
+    "userId": str(user("piotr@demo")),
+}
+
+
+async def agent_run(pool, alert, step_id):
+    async with pool.acquire() as conn:
+        return await run_step(conn, alert, step_id, AGENT)
 
 
 async def _detail(client, short_id, person="piotr"):
@@ -52,58 +67,66 @@ async def test_runbook_steps_shape_and_safe_action(client, seeded, gw):  # noqa:
     assert any(t["action"] == "action_run" and t["detail"]["step"] == 1 for t in d["timeline"])
 
 
-async def test_step_needing_approval_then_approved_runs(client, seeded, gw):  # noqa: F811
+async def test_risky_step_needs_the_inline_confirm_then_runs(client, seeded, gw):  # noqa: F811
     alert = await make_alert(seeded)
-    r = await _run(client, alert["short_id"], "3")
+    refused = await _run(client, alert["short_id"], "3")
+    assert refused.status_code == 409 and "confirm" in refused.json()["detail"]
+    d = await _detail(client, alert["short_id"])
+    assert "3" not in d["step_state"] and d["approvals"] == []
+
+    r = await client.post(
+        f"/api/alerts/{alert['short_id']}/steps/3/run", headers=as_person("piotr"), json={"confirmed": True}
+    )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["state"] == "awaiting_approval" and isinstance(body["approval"], int)
-    assert body["approver"] == "person:root.settlements"
+    assert body["state"] == "done" and body["result"]["ok"] is True and "paged" in body["result"]["message"]
 
+    d = await _detail(client, alert["short_id"])
+    assert d["step_state"]["3"]["state"] == "done" and d["approvals"] == []
+    confirmed = [t for t in d["timeline"] if t["detail"].get("text", "").startswith("confirmed and ran")]
+    assert confirmed and "escalate by Piotr Wisniewski" in confirmed[0]["detail"]["text"]
+
+
+async def test_agent_request_shows_on_the_alert_and_a_person_confirms(client, seeded, gw):  # noqa: F811
+    alert = await make_alert(seeded)
+    await agent_run(seeded, alert, "s3")
     d = await _detail(client, alert["short_id"])
     assert d["step_state"]["3"]["state"] == "awaiting_approval"
     (ap,) = d["approvals"]
-    assert ap["id"] == body["approval"] and ap["step_id"] == 3 and ap["status"] == "pending"
-    assert ap["action"] == "escalate" and ap["requested_by"] == "person:piotr"
-    assert ap["approver"] == "person:root.settlements" and isinstance(ap["expires_at"], str)
-    assert any(t["action"] == "approval_requested" and t["detail"]["step"] == 3 for t in d["timeline"])
+    assert ap["step_id"] == 3 and ap["status"] == "pending" and ap["action"] == "escalate"
+    assert ap["requested_by"].startswith("agent:") or "claude" in ap["requested_by"].lower()
 
-    # someone outside the alert's teams cannot even see the approval
+    # someone outside the alert's teams cannot even see the request
     other = await client.post(
         f"/api/approvals/{ap['id']}/decide", headers=as_person("anna"), json={"approve": True}
     )
     assert other.status_code == 404
-    bad = await client.post(
-        f"/api/approvals/{ap['id']}/decide", headers=as_person("root.settlements"), json={}
-    )
+    bad = await client.post(f"/api/approvals/{ap['id']}/decide", headers=as_person("piotr"), json={})
     assert bad.status_code == 422
 
     r = await client.post(
-        f"/api/approvals/{ap['id']}/decide", headers=as_person("root.settlements"), json={"approve": True}
+        f"/api/approvals/{ap['id']}/decide", headers=as_person("piotr"), json={"approve": True}
     )
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["status"] == "approved" and out["result"]["ok"] is True and "paged" in out["result"]["message"]
     again = await client.post(
-        f"/api/approvals/{ap['id']}/decide", headers=as_person("root.settlements"), json={"approve": True}
+        f"/api/approvals/{ap['id']}/decide", headers=as_person("piotr"), json={"approve": True}
     )
     assert again.status_code == 409
 
     d = await _detail(client, alert["short_id"])
     state = d["step_state"]["3"]
-    assert state["state"] == "done" and state["approved_by"] == "person:root.settlements"
-    assert state["result"]["ok"] is True
+    assert state["state"] == "done" and state["approved_by"] == "person:piotr"
     assert d["approvals"][0]["status"] == "approved"
-    assert d["approvals"][0]["decided_by"] == "person:root.settlements"
-    actions = [t["action"] for t in d["timeline"]]
-    assert "approved" in actions and actions.count("approval_requested") == 1
 
 
-async def test_step_rejected_and_unknown(client, seeded, gw):  # noqa: F811
+async def test_agent_request_cancelled_and_unknown_steps(client, seeded, gw):  # noqa: F811
     alert = await make_alert(seeded)
-    body = (await _run(client, alert["short_id"], 3)).json()
+    await agent_run(seeded, alert, "s3")
+    (ap,) = (await _detail(client, alert["short_id"]))["approvals"]
     r = await client.post(
-        f"/api/approvals/{body['approval']}/decide",
+        f"/api/approvals/{ap['id']}/decide",
         headers=as_person("root.settlements"),
         json={"decision": "reject", "comment": "not now"},
     )
@@ -111,7 +134,6 @@ async def test_step_rejected_and_unknown(client, seeded, gw):  # noqa: F811
     d = await _detail(client, alert["short_id"])
     assert d["step_state"]["3"]["state"] == "rejected"
     assert d["step_state"]["3"]["rejected_by"] == "person:root.settlements"
-    assert "rejected" in [t["action"] for t in d["timeline"]]
 
     assert (await _run(client, alert["short_id"], 9)).status_code == 404
     assert (await _run(client, alert["short_id"], 1, person="anna")).status_code == 404

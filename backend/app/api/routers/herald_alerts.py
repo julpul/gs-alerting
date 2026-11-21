@@ -26,7 +26,6 @@ from app.herald.detail import alert_detail
 from app.herald.identity import Actor, HeraldActor
 from app.herald.ids import (
     our_statuses,
-    people_refs,
     short_from_ref,
     source_id_by_name,
     team_for_owner,
@@ -54,6 +53,10 @@ class ResolveBody(BaseModel):
 
 class AssignBody(BaseModel):
     to: str | None = None
+
+
+class RunBody(BaseModel):
+    confirmed: bool = False
 
 
 class NoteBody(BaseModel):
@@ -240,8 +243,10 @@ async def add_note(alert_id: str, body: NoteBody, who: Actor, pool: Pool) -> dic
 
 
 @router.post("/{alert_id}/steps/{step_id}/run")
-async def run_step(alert_id: str, step_id: str, who: Actor, pool: Pool, rabbit: RabbitDep) -> dict[str, Any]:
-    """Tick a manual step, run a safe action, or ask for approval (Herald response shapes)."""
+async def run_step(
+    alert_id: str, step_id: str, who: Actor, pool: Pool, rabbit: RabbitDep, body: RunBody | None = None
+) -> dict[str, Any]:
+    """Tick a manual step or run an action; a risky one needs `{confirmed: true}` (409 otherwise)."""
     async with pool.acquire() as conn:
         row = await _find(conn, alert_id, who, detail=True)
         await actions.require_actor_role(conn, who.scope, row)
@@ -252,17 +257,12 @@ async def run_step(alert_id: str, step_id: str, who: Actor, pool: Pool, rabbit: 
         )
         if step is None:
             raise AppError(404, "not_found", "no such step")
-        outcome = await run(conn, dict(row), step.id, who.actor)
-        approver = None
-        if outcome.approval:
-            approver = await _approver_ref(conn, outcome.approval, who)
+        outcome = await run(conn, dict(row), step.id, who.actor, confirmed=bool(body and body.confirmed))
     try:
         await publish_outbox_rows(pool, rabbit, outcome.outbox_ids)
     except Exception:
         log.exception("outbox publish failed; relay will retry")
     state = outcome.step.state.value if outcome.step.state else "not_started"
-    if outcome.approval:
-        return {"state": "awaiting_approval", "approval": outcome.approval["shortId"], "approver": approver}
     if not outcome.step.action:
         return {"state": "done"}
     output = outcome.step.lastRun.output if outcome.step.lastRun else ""
@@ -271,13 +271,6 @@ async def run_step(alert_id: str, step_id: str, who: Actor, pool: Pool, rabbit: 
         "state": "done" if ok else "failed",
         "result": {"ok": ok, "message": output, "error": None if ok else output},
     }
-
-
-async def _approver_ref(conn: asyncpg.Connection, approval: dict[str, Any], who: HeraldActor) -> str | None:
-    ids = [UUID(a["id"]) for a in approval.get("approvers") or []]
-    refs = await people_refs(conn, ids)
-    picks = [refs[i] for i in ids if i in refs]
-    return next((p for p in picks if p != who.ref), picks[0] if picks else None)
 
 
 async def _ai_summary(conn: asyncpg.Connection, row: asyncpg.Record) -> str | None:

@@ -92,10 +92,11 @@ async def request_approval(
         int, Field(ge=0, le=MAX_WAIT_S, description="how long to wait (0 = don't)")
     ] = (DEFAULT_WAIT_S),
 ) -> dict:
-    """Ask the on-call humans to approve an action, then wait for their decision.
+    """Ask a human to confirm an action, then wait for their decision.
 
-    Approvers are notified (SMS/email "Reply APPROVE <n>", UI inbox). Returns `{status: approved | rejected |
-    expired, decidedBy, comment, approvalId}`; when nobody decided within `timeout_seconds` it returns
+    The request shows on the alert ("An agent asked to run ...") with Confirm / Cancel. Returns
+    `{status: approved | rejected | expired, decidedBy, comment, approvalId}`; when nobody decided within
+    `timeout_seconds` it returns
     `{status: "pending", approvalId}`: poll with `get_approval_status`. Never run the action unless approved.
     """
     if risk not in RISKS:
@@ -140,8 +141,8 @@ async def get_approval_status(tc: ToolContext, approval_id: str) -> dict:
 async def run_runbook_step(
     tc: ToolContext, alert_id: str, step_id: Annotated[str, Field(description="step id from get_alert")]
 ) -> dict:
-    """Run one runbook step of an alert: executes at once when it is low risk and trusted, otherwise an
-    approval is requested from the on-call humans (returned as `approval`)."""
+    """Run one runbook step of an alert: executes at once when it is low risk and trusted, otherwise a
+    request for a human to confirm shows on the alert (returned as `approval`); you never run it alone."""
     async with tc.pool.acquire() as conn:
         row = await repo.find_alert(conn, alert_id, tc.scope, detail=True)
         if row is None:

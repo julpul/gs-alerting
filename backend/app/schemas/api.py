@@ -258,7 +258,7 @@ class Risk(StrEnum):
 class Approval(BaseModel):
     id: str | None = None
     shortId: Annotated[
-        int | None, Field(description='Number used in SMS replies: APPROVE <shortId>')
+        int | None, Field(description='Short number of the request')
     ] = None
     status: Status2 | None = None
     origin: Origin | None = None
@@ -271,7 +271,7 @@ class Approval(BaseModel):
     approvers: Annotated[
         list[Actor] | None,
         Field(
-            description='Who may decide; never the person who requested it (four-eyes). An agent request keeps the human it acts for'
+            description='Who may confirm; any person who may act on the alert'
         ),
     ] = None
     requestedByUserId: Annotated[
@@ -283,7 +283,7 @@ class Approval(BaseModel):
     canDecide: Annotated[
         bool | None,
         Field(
-            description='In GET /v1/approvals: whether the caller may decide it now (pending, not their own request, an approver / Domain Root / master)'
+            description='In GET /v1/approvals: whether the caller may decide it now (pending, and the caller may act on the alert)'
         ),
     ] = None
     decidedBy: Actor | None = None

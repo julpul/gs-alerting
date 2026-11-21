@@ -292,7 +292,7 @@ audit_log(id bigserial pk, at timestamptz, actor jsonb, action text, target_type
 - `POST /v1/ingest/{sourceKey}` — any JSON. Key in path because tools like Alertmanager can't set headers. Also accepts header `X-Api-Key` with `sourceKey = _`.
 - `POST /v1/ingest/{sourceKey}/batch` — up to 1000 events; one confirm round-trip for the batch (used by k6 for throughput).
 - `POST /v1/alerts/raise` (header `X-Api-Key`) — typed public alert API: `{type, severity, title, description?, dedupKey?, attributes?}`. Types `security.*` default to domain Security, hard. Same pipeline; the envelope is pre-normalized.
-- `POST /v1/inbound/sms` — replies from mockgw: `ACK <shortId>`, `RESOLVE <shortId>`, `APPROVE <approvalShortId>`, `REJECT <approvalShortId>`; sender phone → user.
+- `POST /v1/inbound/sms` — replies from mockgw: `ACK <shortId>`, `RESOLVE <shortId>`; sender phone → user.
 
 ### 5.2 Source types and presets
 
@@ -535,8 +535,8 @@ New action = new file + `@register`. Risk `high` or `approval: required` → app
 
 ### 11.4 Approvals
 
-- Created for risky runbook steps and for agent `request_approval`. Approvers = on-call of the alert's team + their Domain Root (hard notification with "Reply APPROVE 12" in SMS) + UI inbox.
-- Decide via UI (`POST /v1/approvals/{id}/decision`), SMS reply, or MCP (if the deciding human is authenticated).
+- **Human, risky step:** one inline confirmation in the alert drawer. `POST .../steps/{id}/run?confirmed=true` runs the action at once; without `confirmed` the call is refused (409 `confirmation_required`) and nothing runs. Any person who may act on the alert can confirm, including the one who clicked Run: no second person, no inbox, no SMS code. Recorded as "confirmed and ran <action> by <name>" (`step_runs`, timeline, `audit_log` `runbook.step.confirmed`).
+- **Agent (MCP `request_approval`, or `run_runbook_step` on a risky step):** never runs alone. A pending request shows on the alert ("An agent asked to run X") and any person who may act on it confirms or cancels (`POST /v1/approvals/{id}/decision`); confirming runs the action. No SMS/email is sent.
 - Expiry default 15 min → `expired` → agent gets "rejected: expired".
 - Every run/decision → `step_runs` + timeline + `audit_log` with actor (`user` or `agent on behalf of user`).
 
@@ -627,7 +627,7 @@ Mounted at `/mcp` (streamable HTTP) in the `api` process. Auth: `Authorization: 
 | `list_alerts(status?, team?)`, `get_alert(id)` | Scoped read | — |
 | `ack_alert(id)`, `comment_alert(id, text)` | As the user | direct |
 | `raise_alert(type, severity, title, attributes?, dedup_key?)` | Same as `/v1/alerts/raise`, source = the agent's service account | direct |
-| `request_approval(action, parameters, reason, risk, alert_id?)` | Creates approval (`origin=agent_request`), notifies approvers (hard + UI inbox), long-polls up to 120 s on `appr:wait:{id}` → `{status, decidedBy, comment}`; if still pending returns `{status: pending, approvalId}` | approval |
+| `request_approval(action, parameters, reason, risk, alert_id?)` | Creates a request for a human to confirm (`origin=agent_request`, shown on the alert), long-polls up to 120 s on `appr:wait:{id}` → `{status, decidedBy, comment}`; if still pending returns `{status: pending, approvalId}` | approval |
 | `get_approval_status(approval_id)` | Poll | — |
 | `propose_rule(text, team)` / `test_rule(rule)` | Rule copilot / dry-run | draft |
 | `propose_schema_mapping(source_id, sample)` | Mapping draft | draft |

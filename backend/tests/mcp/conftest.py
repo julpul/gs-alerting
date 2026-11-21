@@ -107,16 +107,6 @@ async def connect(server_url):
     return _connect
 
 
-@pytest.fixture(autouse=True)
-def quiet_approval_notifications(monkeypatch):
-    """Approver SMS/email go through channel adapters (covered in tests/runbooks); not needed here."""
-
-    async def send(conn, row, alert, person):
-        return None
-
-    monkeypatch.setattr("app.runbooks.approvals._send", send)
-
-
 @pytest_asyncio.fixture(loop_scope="session")
 async def start_worker(seeded, redis, rabbit):
     """`await start_worker()` -> a real worker (real rule index and templates) on `events.in`."""
