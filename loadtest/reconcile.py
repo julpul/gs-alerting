@@ -12,7 +12,7 @@
 `chaos` waits for the queues to drain, then checks three independent things and prints ``LOST = N``
 (exit code 1 if N > 0):
 
-  A. deliveries  created = delivered + dead-lettered(with a delivered fallback) + suppressed_digest
+  A. deliveries  created = delivered + dead-lettered(with a delivered fallback) + suppressed_digest (incl. digested)
   B. alerts      every accepted, matching, unique-key event of this run produced an alert
   C. counters    accepted events = sum of alerting_events_outcome_total (Prometheus, needs PROM_URL)
 
@@ -42,7 +42,7 @@ OUTCOMES = ("alerted_new", "deduplicated", "grouped", "unrouted", "invalid")
 SQL_DELIVERY_SUMMARY = """
 SELECT count(*)::int AS total,
        count(*) FILTER (WHERE d.status = ANY($3::text[]))::int AS ok,
-       count(*) FILTER (WHERE d.status = 'suppressed_digest')::int AS suppressed,
+       count(*) FILTER (WHERE d.status IN ('suppressed_digest', 'digested'))::int AS suppressed,
        count(*) FILTER (WHERE d.status = 'dead_lettered')::int AS dead_lettered,
        count(*) FILTER (WHERE d.status = 'dead_lettered' AND EXISTS (
            SELECT 1 FROM deliveries f

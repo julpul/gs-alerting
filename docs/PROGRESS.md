@@ -24,7 +24,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P2-RULES | done | implementer / task/P2-RULES | 2026-11-21 | 2026-11-21 | ≥ 90 % | 5 seeded rules + custody source; regex guard = pattern cap + nested-quantifier reject + input truncation |
 | P2-DELIVERY | done | implementer / task/P2-DELIVERY | 2026-11-21 | 2026-11-21 | ≥ 90 % | DLQ after 3 attempts (5 s, 30 s); empty hard list → domain roots; digest sender not built yet |
 | P2-ALERTSAPI | done | implementer / task/P2-ALERTSAPI | 2026-11-21 | 2026-11-21 | 91–100 % | contract additions (shortId, escalatesAt, MetricsSummary fields); ack/resolve idempotent; informed = read+comment |
-| P3-ESCAL | in_progress | implementer / task/P3-ESCAL | 2026-11-21 | | | |
+| P3-ESCAL | done | implementer / task/P3-ESCAL | 2026-11-21 | 2026-11-21 | 96–100 % | scheduler (escalate/renotify/relay/expiry/shifts/digest) SKIP LOCKED-safe; inbound SMS ACK/RESOLVE/APPROVE; `digested` status |
 | P3-RUNBOOK | done | implementer / task/P3-RUNBOOK | 2026-11-21 | 2026-11-21 | 85–100 % | 6 formats (YAML/MD/text/link/checklist/JSON); guards advisory; approver SMS sent directly via adapters |
 | P3-AI | done | implementer / task/P3-AI | 2026-11-21 | 2026-11-21 | 91–100 % | LiteLLM router + fallback, redaction, untrusted_event, L1+L2 hybrid retrieval (fastembed + pgvector + FTS), degraded mode; context.py (GitHub/Datadog) skipped (wave 3) |
 | P3-LOAD | review | implementer / task/P3-LOAD | 2026-11-21 | merged | 25 tests | merged; not yet run against real backend (after P2) |
@@ -59,7 +59,9 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 
 ## Open issues / requests between owners
 
-- Metrics HTTP server (port 9101) for non-api roles must be started once in `app/main.py` (orchestrator wiring after P2).
+- ~~Metrics HTTP server 9101~~ done.
+- openapi additions from P3-ESCAL to document: `from`/`to` on GET /v1/schedules, `domainId` on effective policy, `Shift.userName` (P5-DOCS).
+- `/v1/inbound/sms` unauthenticated (contract `security: []`) → add shared-secret header from mockgw (P5).
 - ~~Load-test Makefile include + monitoring compose~~ done.
 - **GitHub Actions does not start on this account (even a minimal workflow → startup_failure).** Account-level (billing/minutes for private repos). Needs user: check billing or make repo public.
 - P3-ORG part B: org loader from `simulator/org_data/org_full.yaml`, `90_history`, knowledge docs, 5th rule security-typed-alerts, `demo-key-custody` source.
