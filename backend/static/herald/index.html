@@ -670,13 +670,14 @@ body[data-level="L0"] .navfoot,body[data-level="L1"] .navfoot{display:none}
 .hochg{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px} .hochg h3{margin:0}
 .hodiff{margin:0;font:12px/1.6 var(--font-mono);background:var(--sunk);border-radius:6px;padding:10px 12px;overflow-x:auto}
 .hodiff span{display:block} .hodiff .add{background:#dcfff1;color:#164b35} .hodiff .del{background:#ffeceb;color:#8c2217}
-.flgrid{display:grid;grid-template-columns:264px minmax(0,1fr);gap:16px;align-items:start}
-.flside{display:flex;flex-direction:column;gap:12px} .fllist{display:flex;flex-direction:column;gap:2px} .fllist .navb{width:100%;border:0;background:none;cursor:pointer;display:flex}
-.fllist .navb[aria-current="page"]{background:#DDE2F8}
-.fllevels{display:flex;flex-direction:column;gap:6px;font-size:13px;border-top:1px solid var(--line);padding-top:12px}
-.flslot{height:540px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f7f8f9} .flowhost{width:100%;height:100%}
-.flpanel{border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:#fff} .flpanel h3{margin:0}
-.flwords{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+/* Escalation flows */
+.flbar{align-items:flex-end;gap:12px;margin-bottom:12px;flex-wrap:wrap} .flteam{width:240px}
+.flgrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.flside{display:flex;flex-direction:column;gap:12px}
+.flslot{height:68vh;min-height:60vh;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f7f8f9}
+.flpanel{border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:#fff;max-height:68vh;overflow:auto} .flpanel h3{margin:0}
+.flwholist{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px}
+.flwho{display:flex;gap:8px;align-items:flex-start;padding:5px 6px;border-radius:4px;cursor:pointer} .flwho:hover{background:var(--sunk)} .flwho span{display:flex;flex-direction:column}
 @media (max-width:1000px){ .flgrid{grid-template-columns:minmax(0,1fr)} }
 /* AI inside the screens people already use: the proposed solution in the alert drawer, the assistant in the rule
    editor, "Write with AI" for runbooks. Always labelled with where the text came from (the model, or a heuristic). */
@@ -1732,74 +1733,69 @@ function hoChange(a){if(HO.open!==a.id)return '';const links=(a.links||[]).filte
     ${links.length?`<h3>Where it lives</h3><div class="row">${links.map(l=>`<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${ic('open','sm')}${esc(l.label||l.url)}</a>`).join('')}</div>`:''}
     <dl class="kv"><dt>Asked</dt><dd>${ago(Date.parse(a.createdAt))} by ${esc(hoActor(a.requestedBy))}</dd><dt>Request number</dt><dd><code>${esc(a.shortId!=null?a.shortId:a.id)}</code></dd></dl></div>`;}
 
-/* ---- Escalation flows: who is told first, how long they have, and who is next. Drawn with the flow editor (ui/flow/herald-flow.js).
-        The flows are kept in this browser. The service does not run them yet: today it repeats a notification and falls back to
-        another channel; stepping up to the next person on a timer is designed here, not built. ---- */
-const FL={flows:null,cur:null,sel:null,host:null,ed:null,edFor:null,tab:'bug'};
-const FL_CH={call:'Call',sms:'Text message',email:'Email',teams:'Teams',ui:'In Herald'};
-const FL_SEV=['critical','high','medium','low'];
-const flSev=s=>loz(cap(s),s==='critical'||s==='high'?'danger':s==='medium'?'warning':'info');
-function flChain(title,problem,severity,steps,informWho){const n=(id,kind,x,y,data)=>({id,kind,position:{x,y},data}),e=(id,s,t,minutes,always)=>({id,source:s,target:t,data:{minutes:minutes==null?null:minutes,always:!!always}});
-  const nodes=[n('t','trigger',0,60,{title,problem,severity})],edges=[];
-  steps.forEach((s,i)=>{nodes.push(n('n'+i,'notify',380+i*380,60,{level:s[0],who:s[1],channels:s[2],respondMinutes:s[3]}));edges.push(e('e'+i,i?'n'+(i-1):'t','n'+i,i?steps[i-1][3]:null));});
-  nodes.push(n('m','inform',380,330,{level:'L4',who:informWho||'Management',note:'Sees everything. Is not called.'}));edges.push(e('em','t','m',null,true));return {nodes,edges};}
-function flDefaults(){const f=(id,name,problem,severity,steps,who)=>({id,name,problem,severity,flow:flChain(name,problem,severity,steps,who)});return [
-  f('bug-critical','Critical bug','bug','critical',[['L2','Software engineer on call',['call','teams'],5],['L3','Team lead',['call'],10],['L4','Head of engineering',['call','sms'],15]]),
-  f('bug-high','High bug','bug','high',[['L2','Software engineer on call',['call'],10],['L3','Senior engineer',['call','sms'],20]]),
-  f('bug-medium','Medium bug','bug','medium',[['L2','Engineering team',['teams','email'],60]]),
-  f('bug-low','Low bug','bug','low',[['L1','Support team',['ui','email'],240]]),
-  f('vuln-critical','Critical vulnerability','vulnerability','critical',[['L2','Blue team on call',['call','teams'],5],['L3','Security lead',['call'],10],['L4','Head of cybersecurity',['call','sms'],15]],'Management and the risk office'),
-  f('vuln-high','High vulnerability','vulnerability','high',[['L2','Blue team on call',['call'],15],['L3','Security lead',['call','sms'],30]])];}
-function flLoad(){if(FL.flows)return;try{FL.flows=JSON.parse(localStorage.getItem('herald.flows')||'null');}catch(e){}
-  if(!Array.isArray(FL.flows)||!FL.flows.length)FL.flows=flDefaults();FL.cur=FL.flows[0].id;FL.tab=FL.flows[0].problem;}
-const flSave=()=>{try{localStorage.setItem('herald.flows',JSON.stringify(FL.flows));}catch(e){}};
-const flCur=()=>FL.flows.find(f=>f.id===FL.cur)||FL.flows[0];
+/* ---- Escalation flows: the REAL escalation policy of one team, edited on the board (ui/flow/herald-flow.js, read-only canvas).
+        Levels come from GET /v1/escalation-policies/effective (rule > team > domain > org); Save writes a team-level policy with
+        PUT /v1/escalation-policies. Each node is one level: who is told, how, and how long they have before the next level. ---- */
+const FL={sev:'critical',sel:-1,draft:null,key:'',busy:false,ed:null};
+const FL_CHB={phone:'call',sms:'sms',email:'email',ui:'ui'};
+const FL_SEVB={critical:'critical',error:'high',warning:'medium',info:'low'};
 const flCanEdit=()=>['L3','L4'].includes(level());
-function flWords(flow){const by={};flow.nodes.forEach(n=>{by[n.id]=n;});const out=[],seen={};let id=(flow.nodes.find(n=>n.kind==='trigger')||{}).id,first=true;
-  while(id&&!seen[id]){seen[id]=1;const e=flow.edges.find(x=>x.source===id&&by[x.target]&&by[x.target].kind==='notify');if(!e)break;const n=by[e.target],d=n.data||{};
-    out.push(`<li><b>${first||!(e.data&&e.data.minutes)?'At once':'After '+e.data.minutes+' min without a response'}:</b> ${esc(d.who||'Someone')} (${esc(d.level||'')}) by ${esc((d.channels||[]).map(c=>FL_CH[c]||c).join(' and ').toLowerCase()||'no channel yet')}.${d.respondMinutes?' Has '+d.respondMinutes+' min to take the ticket.':''}</li>`);first=false;id=n.id;}
-  flow.nodes.filter(n=>n.kind==='inform').forEach(n=>out.push(`<li><b>Always:</b> ${esc(n.data.who||'Management')} (${esc(n.data.level||'L4')}) is kept informed. ${esc(n.data.note||'')}</li>`));
-  return out.join('')||'<li class="muted">Nobody is told yet. Add a step and connect it to the start.</li>';}
-function flPanel(){const s=FL.sel,cur=flCur(),ro=!flCanEdit(),dis=ro?'disabled':'';
-  const txt=(k,label,v)=>`<label class="field"><span>${label}</span><input class="in" id="fl-${k}" data-onc="flSet" data-k="${k}" value="${esc(v==null?'':v)}" ${dis}></label>`;
-  const num=(k,label,v,help)=>`<label class="field"><span>${label}</span><input class="in" id="fl-${k}" type="number" min="0" max="1440" data-onc="flSet" data-k="${k}" value="${esc(v==null?'':v)}" ${dis}>${help?`<small class="muted">${help}</small>`:''}</label>`;
-  const sel=(k,label,v,opts)=>`<label class="field"><span>${label}</span><select class="in" id="fl-${k}" data-onc="flSet" data-k="${k}" style="width:100%" ${dis}>${opts.map(o=>opt(o[0],o[1],v)).join('')}</select></label>`;
-  if(!s)return `<h3>${esc(cur.name)}</h3><p class="muted" style="margin:0">Click a box or a line on the board to change it. Drag from the dot on a box's right edge to another box to connect them.</p>
-    ${ro?'<p class="help" style="margin:0">Senior engineers and management can change flows. You can read them.</p>':`<div class="stack" style="gap:6px"><button class="btn" data-act="flAdd" data-v="notify">${ic('add','sm')}Add a person to tell</button><button class="btn" data-act="flAdd" data-v="inform">${ic('add','sm')}Add someone to keep informed</button><button class="btn subtle" data-act="flFit">Fit the board to the screen</button></div>`}`;
-  const d=s.data||{};let body='';
-  if(s.type==='edge')body=`<h3>Connection</h3>${num('minutes','Minutes to wait before telling the next person',d.minutes,'0 means at once.')}<label class="row" style="gap:8px"><input type="checkbox" data-onc="flSet" data-k="always" ${d.always?'checked':''} ${dis}><span>Always, at the same time as the start</span></label>`;
-  else if(s.kind==='trigger')body=`<h3>Start</h3>${txt('title','Name',d.title)}${sel('problem','Kind of problem',d.problem,[['bug','Bug'],['vulnerability','Vulnerability']])}${sel('severity','Severity',d.severity,FL_SEV.map(x=>[x,cap(x)]))}`;
-  else if(s.kind==='inform')body=`<h3>Kept informed</h3>${txt('who','Who',d.who)}${txt('note','Note',d.note)}`;
-  else body=`<h3>Person to tell</h3>${sel('level','Level',d.level,Object.keys(LEVELS).slice(1).map(k=>[k,k+' '+LEVELS[k][0]]))}${txt('who','Who',d.who)}
-    <div class="field"><span class="flabel">How they are told</span>${Object.keys(FL_CH).map(c=>`<label class="row" style="gap:8px"><input type="checkbox" data-onc="flSet" data-k="channel" value="${c}" ${(d.channels||[]).includes(c)?'checked':''} ${dis}><span>${FL_CH[c]}</span></label>`).join('')}</div>
-    ${num('respondMinutes','Minutes to take the ticket',d.respondMinutes,'After that the next person is told.')}`;
-  return body+(ro?'':`<div class="row"><button class="btn warn" data-act="flDel">${ic('delete','sm')}Remove</button><span class="grow"></span><button class="btn subtle" data-act="flUnsel">Done</button></div>`);}
-function viewFlows(){flLoad();const cur=flCur(),ro=!flCanEdit(),list=FL.flows.filter(f=>f.problem===FL.tab);
-  return pageHead({title:'Escalation flows',desc:'Who is told first when something breaks, how long they have to take the ticket, and who is told next. One flow per kind of problem and severity, so a critical vulnerability can go to the blue team while a low bug waits for support.',
-      right:ro?'':`<button class="btn" data-act="flNew">${ic('add','sm')}New flow</button><button class="btn subtle" data-act="flReset" title="Throw away your changes and bring back the six starting flows">Reset</button>`})
-    +`<div class="banner info"><b>A drawing board, saved in this browser.</b> The boards below are for planning and are not sent to the service. What the service actually runs for ${esc((hoMyTeam()||{name:'your team'}).name)} is the escalation ladder at the bottom of this page: when nobody acknowledges, it repeats the notification and then tells the next level on a timer (on-call person, Domain Root, Master).</div>`
-    +`<div class="flgrid"><aside class="flside"><span class="seg" role="group" aria-label="Kind of problem"><button data-act="flTab" data-v="bug" aria-pressed="${FL.tab==='bug'}">Bugs</button><button data-act="flTab" data-v="vulnerability" aria-pressed="${FL.tab==='vulnerability'}">Vulnerabilities</button></span>
-        <div class="fllist">${list.map(f=>`<button class="navb" data-act="flPick" data-id="${esc(f.id)}" ${f.id===cur.id?'aria-current="page"':''}><span class="nl">${esc(f.name)}</span>${flSev(f.severity)}</button>`).join('')||'<p class="muted">No flow of this kind yet.</p>'}</div>
-        <div class="flpanel">${flPanel()}</div>
-        <div class="fllevels"><span class="flabel">Levels</span>${Object.keys(LEVELS).map(k=>`<div><span class="cnt">${k}</span> ${LEVELS[k][0]}</div>`).join('')}</div></aside>
-      <div class="stack"><div class="flslot" id="flowSlot"></div>
-        <section class="card"><h2>The same flow in words</h2><ol class="flwords" id="flWords">${flWords(cur.flow)}</ol></section></div></div>
-    <div class="row" style="margin-top:20px"><h2 class="grow">What the service runs for ${esc((HO.data.teams||[]).concat([]).filter(t=>t.id===HO.team).map(t=>t.name)[0]||'this team')}</h2>${hoTeamSeg()}</div>`+hoBanner(['teams','esc'])+hoLadders();}
-/* The page is redrawn often and the board's element is replaced each time, so the board is started again after every redraw.
-   Before that, whatever was dragged or connected is read back from the old board, and the view and the selection are carried over. */
-const flSync=()=>{if(!FL.ed)return;try{const c=flCur();if(FL.edFor===c.id){c.flow=FL.ed.getFlow();flSave();}}catch(e){}};
-function flMount(){const slot=$('flowSlot');
-  if(!slot){if(FL.ed){flSync();try{FL.ed.destroy();}catch(e){}FL.ed=null;FL.edFor=null;}return;}
-  if(!window.HeraldFlow){slot.innerHTML='<p class="muted" style="padding:16px">The drawing board could not be loaded (ui/flow/herald-flow.js). The flow is listed in words below.</p>';return;}
-  const cur=flCur();let vp=null;
-  if(FL.ed){if(FL.edFor===cur.id){flSync();try{vp=FL.ed.getViewport();}catch(e){}}try{FL.ed.destroy();}catch(e){}FL.ed=null;}
-  if(vp&&!(isFinite(vp.x)&&isFinite(vp.y)&&vp.zoom>0))vp=null;
-  FL.edFor=cur.id;
-  const opts={flow:cur.flow,readOnly:!flCanEdit(),
-    onChange:f=>{const c=flCur();if(FL.edFor!==c.id)return;c.flow=f;flSave();const w=$('flWords');if(w)w.innerHTML=flWords(f);},
-    onSelect:x=>{FL.sel=x?Object.assign({},x,{kind:((FL.ed?FL.ed.getFlow():cur.flow).nodes.find(n=>n.id===x.id)||{}).kind}):null;const p=document.querySelector('.flpanel');if(p)p.innerHTML=flPanel();}};  /* only the side panel is redrawn: redrawing the page would restart the board in the middle of a drag */
-  opts.viewport=vp||{x:28,y:44,zoom:0.8};if(FL.sel)opts.selectedId=FL.sel.id;
-  try{FL.ed=window.HeraldFlow.mount(slot,opts);}catch(e){FL.ed=null;slot.innerHTML='<p class="muted" style="padding:16px">The drawing board failed to start. The flow is listed in words below.</p>';}}
+const flKey=()=>(HO.team||'')+'|'+FL.sev;
+const flSrc=()=>(HO.data.esc||[]).find(p=>p&&p.severity===FL.sev)||null;
+const flProj=p=>({levels:p.levels||[],renotifySeconds:p.renotifySeconds==null?null:p.renotifySeconds,softChannels:p.softChannels||[],softDigestMinutes:p.softDigestMinutes==null?null:p.softDigestMinutes});
+function flDraft(){const src=flSrc();if(!src)return null;if(FL.key!==flKey()||!FL.draft){FL.key=flKey();FL.draft=clone(flProj(src));FL.sel=-1;}return FL.draft;}
+const flDirty=()=>{const s=flSrc();return !!(s&&FL.draft&&FL.key===flKey()&&JSON.stringify(FL.draft)!==JSON.stringify(flProj(s)));};
+const flTeam=()=>(HO.data.teams||[]).find(t=>t.id===HO.team)||null;
+const flOnId=()=>{const o=HO.data.flOn;return o&&o.now?o.now.userId:null;};
+const flRootIds=()=>{const t=flTeam(),ids=[];((t&&t.domainIds)||[]).forEach(id=>{const d=(HO.data.domains||[]).find(x=>x.id===id);((d&&d.rootUserIds)||[]).forEach(u=>{if(!ids.includes(u))ids.push(u);});});return ids;};
+function flRoles(uid){const r=[],t=flTeam();if(uid===flOnId())r.push('on call');if(flRootIds().includes(uid))r.push('domain lead');if(t&&(t.memberIds||[]).includes(uid))r.push('team member');return r;}
+const flPerson=uid=>{const r=flRoles(uid);return hoUser(uid)+(r.length?' · '+r.join(', '):'');};
+function flWho(l){if(l.target==='oncall')return flOnId()?hoUser(flOnId())+' · on call':'The person on call';
+  if(l.target==='domain_root'){const ids=flRootIds();return ids.length?ids.map(hoUser).join(', ')+' · domain lead':'The domain lead';}
+  if(l.target==='master')return 'The Master · head of the organisation';
+  return (l.recipients||[]).map(r=>r.kind==='user'?flPerson(r.id):cap(r.kind)+' '+r.id).join(', ')||'Nobody chosen';}
+const flChans=l=>(l.channels||[]).map(c=>(HO_CHN[c]||c).toLowerCase()).join(' and ')||'no channel';
+const flMin=s=>s?Math.max(1,Math.round(s/60)):0;
+function flWords(levels){return levels.map((l,i)=>{const p=levels[i-1],wait=i&&p&&p.ackTimeoutSeconds?'After '+hoMins(p.ackTimeoutSeconds)+' without acknowledgement':'At once';
+  return `${wait}: ${flWho(l)} is told by ${flChans(l)}.${l.ackTimeoutSeconds?' They have '+hoMins(l.ackTimeoutSeconds)+' to acknowledge before the next level.':' Nobody is told after this level.'}`;});}
+function flBoard(d){const n=(id,kind,x,y,data)=>({id,kind,position:{x,y},data}),nodes=[n('t','trigger',0,60,{title:cap(FL.sev)+' alert · '+((flTeam()||{}).name||'team'),severity:FL_SEVB[FL.sev]})],edges=[];
+  d.levels.forEach((l,i)=>{nodes.push(n('n'+i,'notify',380+i*380,60,{level:'Level '+l.level,who:flWho(l),channels:(l.channels||[]).map(c=>FL_CHB[c]).filter(Boolean),respondMinutes:flMin(l.ackTimeoutSeconds)}));
+    const p=d.levels[i-1];edges.push({id:'e'+i,source:i?'n'+(i-1):'t',target:'n'+i,data:{minutes:i&&p?flMin(p.ackTimeoutSeconds):null,always:false}});});
+  if((d.softChannels||[]).length){nodes.push(n('m','inform',380,330,{level:'',who:'Kept informed',note:d.softChannels.map(c=>HO_CHN[c]||c).join(', ')+(d.softDigestMinutes?', one summary every '+d.softDigestMinutes+' min':', at once')}));edges.push({id:'em',source:'t',target:'m',data:{minutes:null,always:true}});}
+  return {nodes,edges};}
+function flPeople(){const seen={},out=[];(HO.data.users||[]).forEach(u=>{if(!seen[u.id]){seen[u.id]=1;out.push(u);}});
+  return out.sort((a,b)=>flRoles(b.id).length-flRoles(a.id).length||String(a.displayName).localeCompare(b.displayName));}
+function flPanel(){const d=flDraft(),dis=flCanEdit()&&!FL.busy?'':'disabled';if(!d)return '';
+  const l=d.levels[FL.sel];let body;
+  if(!l)body=`<h3>Click a level</h3><p class="muted" style="margin:0">Click a level on the board to choose who is told, how, and how long they have.</p>${dis?'':`<button class="btn" data-act="flAdd">${ic('add','sm')}Add a level</button>`}`;
+  else{const cur=l.target==='custom'&&(l.recipients||[]).length===1&&l.recipients[0].kind==='user'?'user:'+l.recipients[0].id:l.target;
+    const radio=(v,label,sub)=>`<label class="flwho"><input type="radio" name="flwho" data-onc="flWho" value="${esc(v)}" ${cur===v?'checked':''} ${dis}><span><b>${esc(label)}</b><small class="muted">${esc(sub)}</small></span></label>`;
+    const known=['oncall','domain_root','master'].includes(cur)||cur.indexOf('user:')===0;
+    body=`<h3>Level ${l.level}</h3><div class="field"><span class="flabel">Who is told</span><div class="flwholist" role="radiogroup" aria-label="Who is told">
+      ${radio('oncall','On call now',flOnId()?hoUser(flOnId()):'Whoever the schedule says')}${radio('domain_root','Domain lead',flRootIds().map(hoUser).join(', ')||'The domain Root')}${radio('master','The Master','Head of the organisation')}
+      ${known?'':`<label class="flwho"><input type="radio" checked disabled><span><b>Named people</b><small class="muted">${esc(flWho(l))}</small></span></label>`}
+      ${flPeople().map(u=>radio('user:'+u.id,u.displayName,flRoles(u.id).join(', ')||'Person')).join('')}</div></div>
+      <div class="field"><span class="flabel">How they are told</span>${HO_CH.map(c=>`<label class="row" style="gap:8px"><input type="checkbox" data-onc="flCh" value="${c}" ${(l.channels||[]).includes(c)?'checked':''} ${dis}><span>${HO_CHN[c]}</span></label>`).join('')}</div>
+      <label class="field"><span>Minutes before the next level</span><input class="in" type="number" min="0" max="1440" data-onc="flWait" value="${l.ackTimeoutSeconds?flMin(l.ackTimeoutSeconds):''}" ${dis}><small class="muted">Empty or 0: the last level, nobody is told after it.</small></label>
+      ${dis?'':`<div class="row"><button class="btn warn" data-act="flDel">${ic('delete','sm')}Remove level</button><button class="btn subtle" data-act="flAdd">${ic('add','sm')}Add a level</button></div>`}`;}
+  return `<div class="flpanel">${body}</div>`;}
+function viewFlows(){const d=flDraft(),teams=HO.data.teams||[],src=flSrc(),ro=!flCanEdit(),dirty=flDirty(),why=src&&src.origin&&src.origin.levels;
+  const note=ro?'You can read this policy. Domain Roots and the Master change it.':dirty?'You have changes that are not saved.':why==='team'?'Set for this team.':src?'Inherited'+(why?' '+(HO_ORIGIN[why]||''):'')+'. Saving makes it this team’s own.':'';
+  const bar=`<div class="row flbar"><label class="field flteam"><span>Team</span><select class="in" id="flTeam" data-onc="flTeam" style="width:100%">${teams.map(t=>opt(t.id,t.name,HO.team)).join('')}</select></label>
+    <span class="seg" role="group" aria-label="Severity">${HO_SEV.map(s=>`<button data-act="flSev" data-v="${s}" aria-pressed="${s===FL.sev}">${SEVS[s].label}</button>`).join('')}</span><span class="grow"></span>
+    <span class="muted">${esc(note)}</span>${ro?'':`<button class="btn subtle" data-act="flUndo" ${dirty&&!FL.busy?'':'disabled'}>Undo changes</button><button class="btn pri" data-act="flSave" ${dirty&&!FL.busy?'':'disabled'}>Save</button>`}</div>`;
+  return pageHead({title:'Escalation flows'})+hoBanner(['teams','esc'])+bar
+    +(d?`<div class="flgrid"><div class="flslot" id="flowSlot"></div><aside class="flside" id="flPanel">${flPanel()}</aside></div>`:HO.err.esc?'':'<p class="muted">Loading…</p>');}
+/* The page is redrawn after every click, so the board is started again each time. A click inside the board redraws only the side panel. */
+function flMount(){const slot=$('flowSlot'),d=FL.draft;
+  if(FL.ed){try{FL.ed.destroy();}catch(e){}FL.ed=null;}
+  if(!slot||!d)return;
+  if(!window.HeraldFlow){slot.innerHTML='<p class="muted" style="padding:16px">The board could not be loaded (herald-flow.js).</p>';return;}
+  const tips={t:'An alert of this severity arrives for the team.',m:'Kept informed, not called.'};flWords(d.levels).forEach((w,i)=>{tips['n'+i]=w;});
+  slot.addEventListener('mouseover',e=>{const nd=e.target.closest&&e.target.closest('.react-flow__node');if(nd&&tips[nd.dataset.id]&&nd.title!==tips[nd.dataset.id])nd.title=tips[nd.dataset.id];});
+  const opts={flow:flBoard(d),readOnly:true,onSelect:x=>{const m=x&&x.type==='node'&&/^n(\d+)$/.exec(x.id);FL.sel=m?+m[1]:-1;const p=$('flPanel');if(p)p.innerHTML=flPanel();}};
+  if(FL.sel>=0)opts.selectedId='n'+FL.sel;
+  try{FL.ed=window.HeraldFlow.mount(slot,opts);}catch(e){FL.ed=null;slot.innerHTML='<p class="muted" style="padding:16px">The board failed to start.</p>';}}
 /* ---- Screens from the UI handoff: approvals, on-call schedule, metrics, history and settings (escalation, my notifications,
         trust levels, integrations, organisation). Each reads the public /v1 endpoint the handoff names, with a Bearer token for
         the current person (see v1Token). When a call fails the screen says so and offers to try again: it never shows invented data. ---- */
@@ -1821,6 +1817,7 @@ async function loadHandoff(){const v=S.view,g=(k,p,fresh)=>hoGet(k,()=>api(p),fr
   if(v==='knowledge')jobs.push(g('knowledge','/v1/knowledge'),hoGet('resolved',()=>api('/v1/alerts?status=resolved&limit=50').then(r=>r.items||[])));
   if(v==='settings')jobs.push(g('domains','/v1/domains'),g('prefs','/v1/preferences/me'),g('trust','/v1/action-trust'),g('integrations','/v1/integrations'));
   if((v==='settings'||v==='flows')&&HO.team)jobs.push(hoGet('esc',()=>Promise.all(HO_SEV.map(s=>api('/v1/escalation-policies/effective?severity='+s+'&teamId='+encodeURIComponent(HO.team))))));
+  if(v==='flows'&&HO.team)jobs.push(g('domains','/v1/domains'),hoGet('flOn',()=>api('/v1/teams/'+encodeURIComponent(HO.team)+'/oncall')));
   if(v==='metrics'){delete HO.data.metrics;delete HO.partial;jobs.push(hoGet('metrics',()=>api('/v1/metrics/summary')));}
   if(v==='agents')jobs.push(g('tokens','/v1/tokens',true));
   await Promise.all(jobs);
@@ -2003,14 +2000,14 @@ const ACT={
   callShare(el){const u=(S.callUrl||'').trim();if(!/^https:\/\/\S+$/.test(u)){toast('Paste a link that starts with https://');return;}
     act(()=>api('/api/alerts/'+el.dataset.id+'/notes',{body:{text:'Call: '+u}}),'The call link is on the alert.');S.callUrl='';S.callFor=null;},
   hoOpen(el){HO.open=HO.open===el.dataset.id?null:el.dataset.id;},
-  flTab(el){flSync();FL.tab=el.dataset.v;const f=FL.flows.find(x=>x.problem===FL.tab);if(f){FL.cur=f.id;FL.sel=null;}},
-  flPick(el){flSync();FL.cur=el.dataset.id;FL.sel=null;},
-  flAdd(el){if(!FL.ed)return;const k=el.dataset.v,d=k==='inform'?{level:'L4',who:'Management',note:'Sees everything. Is not called.'}:{level:'L2',who:'Engineer on call',channels:['call'],respondMinutes:10};const id=FL.ed.addNode(k,d);flSync();FL.sel={type:'node',id:id,kind:k,data:d};},
-  flDel(){if(FL.ed){FL.ed.removeSelected();flSync();}FL.sel=null;},
-  flUnsel(){if(FL.ed)FL.ed.select(null);FL.sel=null;},
-  flFit(){if(FL.ed)FL.ed.fitView();},
-  flReset(){FL.flows=flDefaults();flSave();FL.cur=FL.flows[0].id;FL.tab=FL.flows[0].problem;FL.sel=null;FL.edFor=null;if(FL.ed){try{FL.ed.destroy();}catch(e){}FL.ed=null;}},
-  flNew(){const id='flow-'+Date.now().toString(36),name=(FL.tab==='bug'?'New bug':'New vulnerability')+' flow';flSync();FL.flows.push({id:id,name:name,problem:FL.tab,severity:'high',flow:flChain(name,FL.tab,'high',[['L2','Engineer on call',['call'],10]])});flSave();FL.cur=id;FL.sel=null;},
+  flTeam(el){if(flDirty()&&!confirm('Discard your unsaved changes?'))return;HO.team=el.value;['schedules','rotations','esc','flOn'].forEach(k=>{delete HO.data[k];delete HO.err[k];});FL.key='';loadHandoff().then(render,e=>toast(e.message));},
+  flSev(el){if(flDirty()&&!confirm('Discard your unsaved changes?'))return;FL.sev=el.dataset.v;FL.key='';},
+  flAdd(){const d=FL.draft;if(!d||!flCanEdit())return;const last=d.levels[d.levels.length-1];if(last&&!last.ackTimeoutSeconds)last.ackTimeoutSeconds=900;d.levels.push({level:d.levels.length+1,target:'oncall',channels:['ui'],ackTimeoutSeconds:null});FL.sel=d.levels.length-1;},
+  flDel(){const d=FL.draft;if(!d||!flCanEdit()||FL.sel<0)return;d.levels.splice(FL.sel,1);d.levels.forEach((l,i)=>{l.level=i+1;});FL.sel=-1;},
+  flUndo(){FL.key='';},
+  flSave(){const d=FL.draft,t=flTeam();if(!d||!t||FL.busy||!flCanEdit())return;const bad=d.levels.findIndex(l=>!(l.channels||[]).length);if(bad>=0){FL.sel=bad;toast('Level '+(bad+1)+' needs at least one way to tell people.');return;}
+    FL.busy=true;api('/v1/escalation-policies',{method:'PUT',body:Object.assign({scopeType:'team',scopeId:t.id,severity:FL.sev},d)})
+      .then(()=>{toast('Saved for '+t.name+'.');delete HO.data.esc;FL.key='';return loadHandoff();},e=>toast('Not saved: '+e.message)).then(()=>{FL.busy=false;render();});},
   platFold(){S.platOpen=!S.platOpen;try{localStorage.setItem('herald.platOpen',S.platOpen?'1':'0');}catch(e){}},
   hoTab(el){HO.tab=el.dataset.v;},
   apTab(el){HO.apTab=el.dataset.v;},
@@ -2223,11 +2220,9 @@ const ONC={
   hoWhOn(el){const p=HO.prefs;if(!p)return;p.workingHours=el.checked?{from:'08:00',to:'18:00',timezone:(PEOPLE[String(me()).replace(/^person:/,'')]||{}).tz||'Europe/Warsaw'}:null;},
   hoWh(el){const p=HO.prefs;if(!p||!p.workingHours)return;p.workingHours[el.dataset.k]=el.value;},
   rpSys(el){RP.sys=el.value;},
-  flSet(el){const s=FL.sel;if(!s||!FL.ed)return;const k=el.dataset.k;s.data=s.data||{};
-    if(k==='channel'){const list=(s.data.channels||[]).slice(),i=list.indexOf(el.value);if(el.checked&&i<0)list.push(el.value);if(!el.checked&&i>=0)list.splice(i,1);s.data.channels=list;FL.ed.updateNode(s.id,{channels:list});flSync();return;}
-    const v=el.type==='checkbox'?el.checked:el.type==='number'?Math.max(0,Math.min(1440,Math.round(+el.value||0))):el.value;s.data[k]=v;
-    if(s.type==='edge')FL.ed.updateEdge(s.id,{[k]:v});else FL.ed.updateNode(s.id,{[k]:v});flSync();
-    if(s.type==='node'&&s.kind==='trigger'){const c=flCur();if(k==='title')c.name=v;else if(k==='problem'||k==='severity')c[k]=v;if(k==='problem')FL.tab=v;flSave();}},
+  flWho(el){const l=FL.draft&&FL.draft.levels[FL.sel];if(!l)return;delete l.recipients;if(el.value.indexOf('user:')===0){l.target='custom';l.recipients=[{kind:'user',id:el.value.slice(5)}];}else l.target=el.value;},
+  flCh(el){const l=FL.draft&&FL.draft.levels[FL.sel];if(!l)return;const c=(l.channels||[]).filter(x=>x!==el.value);if(el.checked)c.push(el.value);l.channels=HO_CH.filter(x=>c.includes(x));},
+  flWait(el){const l=FL.draft&&FL.draft.levels[FL.sel];if(!l)return;const m=Math.max(0,Math.min(1440,Math.round(+el.value||0)));l.ackTimeoutSeconds=m?m*60:null;},
   lgRange(el){if(el.value){S.lg.range=el.value;S.lg.win=null;}},
   persona(el){if(OIDC())return;const p=el.value.split('|');const sameTeam=p[0]===S.team;S.team=p[0];S.role=p[1];if(sameTeam)reloadKeepDraft();else reloadFor();},
   ruleToggle(el){const r=ruleById(el.dataset.id);if(!r||!canEdit())return;const next=Object.assign({},r,{enabled:el.checked});
