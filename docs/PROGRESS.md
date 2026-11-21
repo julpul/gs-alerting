@@ -26,7 +26,7 @@ Plan and task definitions: `docs/IMPLEMENTATION_PLAN.md`.
 | P2-ALERTSAPI | done | implementer / task/P2-ALERTSAPI | 2026-11-21 | 2026-11-21 | 91–100 % | contract additions (shortId, escalatesAt, MetricsSummary fields); ack/resolve idempotent; informed = read+comment |
 | P3-ESCAL | in_progress | implementer / task/P3-ESCAL | 2026-11-21 | | | |
 | P3-RUNBOOK | done | implementer / task/P3-RUNBOOK | 2026-11-21 | 2026-11-21 | 85–100 % | 6 formats (YAML/MD/text/link/checklist/JSON); guards advisory; approver SMS sent directly via adapters |
-| P3-AI | in_progress | implementer / task/P3-AI | 2026-11-21 | | | |
+| P3-AI | done | implementer / task/P3-AI | 2026-11-21 | 2026-11-21 | 91–100 % | LiteLLM router + fallback, redaction, untrusted_event, L1+L2 hybrid retrieval (fastembed + pgvector + FTS), degraded mode; context.py (GitHub/Datadog) skipped (wave 3) |
 | P3-LOAD | review | implementer / task/P3-LOAD | 2026-11-21 | merged | 25 tests | merged; not yet run against real backend (after P2) |
 | P3-ORG | done | implementer / task/P3-ORG-sim + task/P3-ORG-B | 2026-11-21 | 2026-11-21 | sim 99.6 %, seed 97 % | part A merged (simulator, org_full.yaml 25 users, 40-incident history, 6 knowledge docs); part B = seed loaders + 5th rule `security-typed-alerts` after P2 |
 | P4-MCP | todo | | | | | |
