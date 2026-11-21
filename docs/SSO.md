@@ -6,7 +6,7 @@ The Herald web UI has three sign-in modes, chosen by `AUTH_MODE`:
 | --- | --- | --- |
 | `demo` (default) | Whoever you pick under "Viewing as" (`X-Herald-User` header). No login page. | Local dev, tests, the hackathon demo |
 | `password` | The user you sign in as, with username + password from our `users` table | A server without an identity provider |
-| `oidc` | The user the identity provider says you are ("Continue with SSO"); the password form stays as the emergency way in | Production with Entra ID, Keycloak, ... |
+| `oidc` | The user the identity provider says you are ("Continue with SSO"); the password form stays as the emergency way in | Vistula ID (demo); production with Entra ID, Okta, ... |
 
 In `password` and `oidc` mode identity comes **only** from a server-side session: an `HttpOnly`, `SameSite=Lax`
 cookie (`Secure` when the site is served over https) holding a random token; Redis holds the session for 8 hours
@@ -36,44 +36,46 @@ access to Herald yet" and the attempt is audited as `login_denied`.
 
 ## Run each mode
 
-**Demo** (pytest, local api on `make infra-up`): `AUTH_MODE=demo`, nothing else. The full compose stack (`make up`) defaults to **password** mode: sign in as `anna`, `piotr`, `master`, ... with the seed password (`demo`, or `DEMO_PASSWORD`). In signed-in modes "Viewing as" is gone; admins (`master`) get "Preview as level (testing)" in the avatar menu and "Sign out" is its last item.
+**Demo** (pytest, local api on `make infra-up`): `AUTH_MODE=demo`, nothing else.
 
-**Password**: set in `.env` (or the server's environment) and restart the api:
+**SSO with Vistula ID: the default of the compose stack (`make up` / `make rebuild`) and of the Railway demo.**
+Vistula ID (`sso/`) is our own small OpenID Connect provider, standing in for the corporate one. It implements the real
+protocol: discovery, authorization code with PKCE (S256), RS256-signed ID tokens with a JWKS, userinfo and
+end-session. It also has an account picker ("Pick an account") once you are signed in, which is what makes it single
+sign-on. It looks like the company sign-in of our demo organisation, Vistula Capital. Herald does not know it is a demo:
+replacing it with Entra ID or Okta is configuration only (below).
+
+| | Local | Railway |
+| --- | --- | --- |
+| Herald | http://localhost:8080 → "Sign in with Vistula ID" | https://api-production-d033bedd.up.railway.app |
+| Vistula ID | http://localhost:8180 (browser), `sso:8180` (api, `OIDC_DISCOVERY_URL`) | https://sso-production-b4223540.up.railway.app |
+
+- **Accounts:** `sso/users.json`, the same people as the seed (`anna`, `piotr`, `master`, `root.*`, `manager`, …), with e-mail `<username>@demo`. Herald matches them by e-mail.
+- **Password:** one demo password for every account: `SSO_PASSWORD`, or `DEMO_PASSWORD` when that is unset. It is never in the repo: locally it lives in `.env`, the list of logins is in `LOGINS.local.md` (git-ignored), and on Railway it is a service variable.
+- **Shared client secret:** `OIDC_CLIENT_SECRET` on the api is the same value as `SSO_CLIENT_SECRET` on the provider.
+- **Provider variables:**
+  - `SSO_ISSUER` (public URL)
+  - `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET`
+  - `SSO_REDIRECT_URIS` (comma list of exact callback URLs)
+  - `SSO_PASSWORD`
+  - `SSO_SESSION_SECRET`
+  - `SSO_PRIVATE_KEY` (PEM; without it a key is generated at start and the api fetches the new JWKS by itself)
+- **Tests:** `cd backend && uv run pytest ../sso/tests`.
+
+**Password only** (no SSO button): `AUTH_MODE=password`. In both signed-in modes the username + password form on
+`/login` stays as the emergency way in, for when the identity provider is down. It uses the same seed password,
+rate limited and audited.
 
 ```
-AUTH_MODE=password
+AUTH_MODE=oidc | password
 APP_SECRET=<random, at least 32 characters>
 JWT_SECRET=<random>
-DEMO_PASSWORD=<one password for every seeded demo user>   # optional, used by the seed only
+DEMO_PASSWORD=<one password for every seeded demo user>   # the seed (make seed / make seed-prod) applies it
 ```
 
-The api refuses to start in `password`/`oidc` mode with the built-in secrets. Re-run the seed (`make seed`) after
-setting `DEMO_PASSWORD`; it then replaces every demo user's password (without it they keep `demo`).
-
-**SSO with the local Keycloak** (the demo "SSO mockup"):
-
-```
-AUTH_MODE=oidc APP_SECRET=<32+ chars> JWT_SECRET=<random> \
-  docker compose -f infra/docker-compose.yml --profile sso up -d --build
-```
-
-Keycloak runs on <http://localhost:8180> (admin console login: `admin`, password in
-`infra/docker-compose.yml` as `KEYCLOAK_ADMIN_PASSWORD`). It imports realm `vistula` from
-`infra/keycloak/vistula-realm.json`, with client `herald` (redirect `http://localhost:8080/auth/callback`).
-Open <http://localhost:8080>, press "Continue with SSO", sign in as one of the users below. The api reaches
-Keycloak as `keycloak:8080` (`OIDC_DISCOVERY_URL`) while browsers use `localhost:8180` (`OIDC_ISSUER`).
-
-Demo users (username; e-mail `<username>@demo` = our `users.email`). **Their throwaway passwords are in
-`infra/keycloak/vistula-realm.json`** (`<username>-vistula-demo`); they exist only in that local Keycloak.
-
-| Username | Role in Herald |
-| --- | --- |
-| `master` | Master: every team, every domain |
-| `root.payments`, `root.settlements`, `root.security`, `root.markets` | Domain Root (approver) |
-| `anna` | Responder, team Payments |
-| `piotr` | Responder, team Settlements |
-| `manager` | Informed |
-| `marta.nowak`, `tomasz.kaminski`, `ewa.wisniewska`, `james.hartley` | Members of seeded teams |
+The api refuses to start in `password`/`oidc` mode with the built-in secrets. In the signed-in modes "Viewing as" is
+gone. Admins (`master`) get "Preview as level (testing)" in the avatar menu, and "Sign out" is its last item: it ends
+the Herald session and the Vistula ID session, then returns to `/login`.
 
 **Entra ID (or any OIDC provider)** is configuration only:
 

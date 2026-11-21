@@ -13,7 +13,13 @@ Stan: 2026-11-21. Jedno UI: klasyczny **The Herald** pod `/`. Stare `/ads/` prze
 | SMS / telefon (mockgw) | http://localhost:8090 | https://mockgw-production.up.railway.app |
 | Symulator Vistula Capital | http://localhost:8095 | https://simulator-production-ae5fd2bb.up.railway.app |
 
-Logowanie: strona **Sign in**, login `anna` albo `anna@demo` i hasło demo. Hasło nie jest w repo: lokalnie jest w `.env` (`DEMO_PASSWORD`), lista kont w `LOGINS.local.md` (plik spoza gita), na Railway w zmiennych serwisu `api`. Wylogowanie: avatar w prawym górnym rogu → **Sign out**. Dla administratora (`master`) jest tam też podgląd poziomów uprawnień (*Preview as level… (testing)*).
+Logowanie: na stronie **Sign in** kliknij **Sign in with Vistula ID** (nasze SSO), wpisz login `anna` albo `anna@demo` i hasło demo. Przy kolejnym logowaniu Vistula ID pokaże „Pick an account”, czyli SSO bez ponownego hasła. Pod przyciskiem jest awaryjny formularz z loginem i hasłem.
+
+Hasło nie jest w repo: lokalnie jest w `.env` (`DEMO_PASSWORD`), lista kont w `LOGINS.local.md` (plik spoza gita), na Railway w zmiennych.
+
+Vistula ID: lokalnie http://localhost:8180, produkcja https://sso-production-b4223540.up.railway.app.
+
+Wylogowanie: avatar w prawym górnym rogu → **Sign out**. Kończy sesję w Herald i w Vistula ID. Dla administratora (`master`) jest tam też *Preview as level… (testing)*.
 
 Osoby:
 - `anna`: Payments, na dyżurze;

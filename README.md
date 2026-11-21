@@ -235,12 +235,12 @@ The in-app copilot (`POST /v1/agent/chat`, SSE) uses the same tool implementatio
 | | SMS and phone calls (`mockgw`) | one adapter class (e.g. Twilio) + env, see channels README |
 | | Workflow retry, service restart, failover, rollback, tickets (`mockgw`) | new / changed action class calling the real API |
 | LLM calls (OpenAI / Anthropic / OpenRouter), local embeddings | | |
-| JWT + personal access tokens, server-side sign-in sessions, username + password, OpenID Connect code flow with PKCE | `AUTH_MODE=demo` (default): no login, "Viewing as" picker | `AUTH_MODE=password` / `oidc`, see [docs/SSO.md](docs/SSO.md) |
-| | Keycloak (`--profile sso`) stands in for the corporate IdP | `OIDC_ISSUER` + client id/secret of Entra ID etc. |
+| JWT + personal access tokens, server-side sign-in sessions, username + password, OpenID Connect code flow with PKCE | `AUTH_MODE=demo`: no login, "Viewing as" picker | `AUTH_MODE=password` / `oidc`, see [docs/SSO.md](docs/SSO.md) |
+| | Vistula ID (`sso/`, our OpenID Connect provider) stands in for the corporate IdP | `OIDC_ISSUER` + client id/secret of Entra ID etc. |
 | | Customer systems (`simulator`, fictional "Vistula Capital") | real sources via webhook / RabbitMQ |
 | **Not built** | Jira / Confluence live connectors (links are stored, not fetched live), GitHub / Datadog context in suggestions, KEDA / Kubernetes manifests, Rust hot-path | |
 
-**Sign-in.** Demo mode (`AUTH_MODE=demo`, the default) is the mock: no login, you pick who you are under "Viewing as". Password and SSO modes are real code paths (server-side sessions in Redis, bcrypt passwords with rate limiting, OpenID Connect with PKCE and ID-token verification); the local Keycloak with our demo people is only a stand-in for the corporate identity provider. See [docs/SSO.md](docs/SSO.md).
+**Sign-in.** The stack and the Railway demo sign in through **Vistula ID**, our own OpenID Connect provider (`sso/`) that plays the company SSO, with a username + password form as the emergency way in. The Herald side is the real code path (server-side sessions in Redis, OpenID Connect with PKCE and ID-token verification, bcrypt passwords with rate limiting); only the identity provider is a stand-in and is swapped for Entra ID / Okta by configuration. `AUTH_MODE=demo` (pytest, or on request) has no login and a "Viewing as" picker. See [docs/SSO.md](docs/SSO.md).
 
 ## Tests & CI/CD
 

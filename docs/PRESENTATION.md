@@ -65,7 +65,7 @@ Route 53 → ALB (HTTPS, WAF) → ECS Fargate: api 2–20 ─┐
 
 ## Slide: Sign-in and security
 
-- **Single sign-on (OpenID Connect).** The company identity provider (Entra ID, Okta, Keycloak) signs people in, and Herald keeps no passwords. In the demo, a local **Keycloak** stands in for the corporate provider.
+- **Single sign-on (OpenID Connect).** The company identity provider (Entra ID, Okta, Keycloak) signs people in, and Herald keeps no passwords. In the demo, **Vistula ID**, our own OpenID Connect provider with PKCE, signed tokens and an account picker, stands in for the corporate one; swapping in Entra ID is configuration only.
 - **Emergency login** with username and password, for when the identity provider is down during an incident. It is rate-limited and audited.
 - **Sessions are server-side** (HttpOnly cookie, 8 h). In production, identity headers from clients are ignored.
 - **Least privilege by scope.** Every query is filtered by the person's domain and team.
