@@ -37,8 +37,7 @@ scale:
 	$(COMPOSE_FULL) up -d --scale worker=$(N) --scale delivery=$(N)
 
 demo-events:
-	@echo "demo-events: added in P2 (scripts/demo_events.py)"
+	cd backend && uv run python scripts/demo_events.py
 
 # --- loadtest ---
-t1 t2 t4 t5 t6 report:
-	@echo "$@: load tests are added in P3 (loadtest/)"
+include loadtest/loadtest.mk

@@ -1,0 +1,27 @@
+# Paste into infra/docker-compose.yml (services:). Not a standalone compose file.
+#
+# CUSTOMER_AMQP_URL points at the RabbitMQ the "customer" (Vistula Capital) owns. In the demo stack this is
+# the same broker as ours; the simulator declares the durable queue `vistula.trade-gateway` itself and the
+# connector role consumes it (source `trade-gateway`, config.url = this URL, config.queue = that queue).
+# Remove CUSTOMER_AMQP_URL to fall back to the webhook path (POST /v1/ingest/demo-key-trade-gateway).
+services:
+  simulator:
+    build: ../simulator
+    image: gs-alerting-simulator
+    ports:
+      - "8095:8095"
+    environment:
+      PORT: "8095"
+      TARGET_API_URL: http://api:8080
+      CUSTOMER_AMQP_URL: amqp://guest:guest@rabbitmq:5672/
+      BASE_RATE: "2"
+      AUTO_INCIDENTS: "true"      # set to "false" while recording the video
+      INCIDENTS_PER_HOUR: "2"
+      # SCENARIO_SPEED: "1"       # >1 plays scenarios faster (e.g. 10 = storm_500 in 6 s)
+      # PROMETHEUS_FORMAT: alertmanager   # or "single" (one alert document per request)
+    depends_on:
+      api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped

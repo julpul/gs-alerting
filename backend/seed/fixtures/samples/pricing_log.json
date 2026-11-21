@@ -1,0 +1,7 @@
+{
+  "level": "ERROR",
+  "logger": "pricing-engine-3",
+  "instrument": "EURUSD",
+  "latencyMs": 1850,
+  "message": "Quote latency above SLO (1850 ms)"
+}

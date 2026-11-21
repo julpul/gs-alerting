@@ -184,8 +184,12 @@ paths:
     post:
       tags: [alerts]
       parameters: [ { $ref: '#/components/parameters/AlertId' } ]
+      description: Idempotent (acknowledging an acknowledged alert returns 200). Needs member or higher on the alert's team; informed gets 403. 409 when the alert is resolved.
       responses:
         '200': { description: Acknowledged, content: { application/json: { schema: { $ref: '#/components/schemas/AlertSummary' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /v1/alerts/{alertId}/resolve:
     post:
       tags: [alerts]
@@ -198,7 +202,9 @@ paths:
               properties:
                 resolutionNote: { type: string, description: 'How it was fixed; saved to knowledge base' }
       responses:
-        '200': { description: Resolved, content: { application/json: { schema: { $ref: '#/components/schemas/AlertSummary' } } } }
+        '200': { description: Resolved (idempotent), content: { application/json: { schema: { $ref: '#/components/schemas/AlertSummary' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /v1/alerts/{alertId}/assign:
     post:
       tags: [alerts]
@@ -209,7 +215,10 @@ paths:
           application/json:
             schema: { type: object, required: [userId], properties: { userId: { type: string } } }
       responses:
-        '200': { description: Assigned }
+        '200': { description: Assigned, content: { application/json: { schema: { $ref: '#/components/schemas/AlertSummary' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /v1/alerts/{alertId}/comments:
     post:
       tags: [alerts]
@@ -689,8 +698,9 @@ paths:
       security: []
       parameters:
         - { name: access_token, in: query, required: true, schema: { type: string } }
-        - { name: teamId, in: query, schema: { type: string } }
+        - { name: teamId, in: query, description: 'Must be in the caller scope (403 otherwise)', schema: { type: string } }
       responses:
+        '403': { $ref: '#/components/responses/Error' }
         '200':
           description: 'text/event-stream; each message has event: <StreamEvent.type> and data: <StreamEvent JSON>'
           content:
@@ -700,6 +710,8 @@ paths:
     get:
       tags: [metrics]
       summary: Numbers for the demo metrics page
+      parameters:
+        - { name: windowMinutes, in: query, schema: { type: integer, default: 15, minimum: 1, maximum: 1440 }, description: 'Window of the latency percentiles' }
       responses:
         '200': { description: Summary, content: { application/json: { schema: { $ref: '#/components/schemas/MetricsSummary' } } } }
 
@@ -767,6 +779,7 @@ components:
       required: [id, title, severity, status, count, firstSeenAt, lastSeenAt]
       properties:
         id: { type: string }
+        shortId: { type: string, example: A-1234, description: 'Human friendly id; every {alertId} path parameter accepts it or the uuid' }
         title: { type: string, description: 'Rendered from rule presentation.titleTemplate' }
         severity: { $ref: '#/components/schemas/Severity' }
         color: { type: [string, 'null'] }
@@ -783,6 +796,7 @@ components:
         assignee: { oneOf: [ { $ref: '#/components/schemas/Actor' }, { type: 'null' } ] }
         escalationLevel: { type: integer, description: '1 = on-call, 2 = domain root, 3 = master' }
         ackDeadline: { type: [string, 'null'], format: date-time }
+        escalatesAt: { type: [string, 'null'], format: date-time, description: 'Same value as ackDeadline: when the alert escalates if nobody acknowledges' }
         flags:
           type: array
           items: { type: string, enum: [suspicious_content, from_agent, grouped] }
@@ -805,6 +819,10 @@ components:
             runbook: { oneOf: [ { $ref: '#/components/schemas/Runbook' }, { type: 'null' } ] }
             deliveries: { type: array, items: { $ref: '#/components/schemas/Delivery' } }
             timeline: { type: array, items: { $ref: '#/components/schemas/TimelineEntry' } }
+            suggestion: { oneOf: [ { $ref: '#/components/schemas/Suggestion' }, { type: 'null' } ], description: 'Latest AI suggestion, null until ready' }
+            ackedAt: { type: [string, 'null'], format: date-time }
+            resolvedAt: { type: [string, 'null'], format: date-time }
+            nextRenotifyAt: { type: [string, 'null'], format: date-time }
 
     Delivery:
       type: object
@@ -814,7 +832,7 @@ components:
         recipient: { $ref: '#/components/schemas/Actor' }
         channel: { $ref: '#/components/schemas/Channel' }
         kind: { type: string, enum: [hard, soft] }
-        status: { type: string, enum: [pending, sent, retrying, failed, delivered, acked, dead_lettered] }
+        status: { type: string, enum: [pending, sent, retrying, failed, delivered, acked, dead_lettered, suppressed_digest] }
         attempts: { type: integer }
         updatedAt: { type: string, format: date-time }
 
@@ -1224,10 +1242,22 @@ components:
       type: object
       properties:
         eventsPerSecond: { type: number }
-        latencyP50Ms: { type: number }
-        latencyP99Ms: { type: number }
-        queueDepth: { type: integer }
+        latencyP50Ms: { type: [number, 'null'], description: 'Delivery latency (delivered_at - event_received_at) over windowMinutes, all channels; null without samples' }
+        latencyP99Ms: { type: [number, 'null'] }
+        queueDepth: { type: [integer, 'null'], description: 'Messages waiting in events/deliveries/ai queues; null when RabbitMQ management API is unreachable' }
         eventsIngested: { type: integer }
         notificationsDelivered: { type: integer }
         inDeadLetter: { type: integer }
-        lost: { type: integer, description: 'ingested - (delivered + dead-lettered + suppressed by dedup/rules); must be 0' }
+        lost: { type: [integer, 'null'], description: 'ingested - processed outcomes - events still in the events queue; must be 0. null when outcome counters are unavailable' }
+        windowMinutes: { type: integer }
+        outcomes: { type: object, additionalProperties: { type: integer }, description: 'alerted_new, deduplicated, grouped, unrouted, invalid' }
+        queues: { type: [object, 'null'], additionalProperties: { type: integer }, description: 'Messages per queue; null when the RabbitMQ management API is unreachable' }
+        processingLatencyMs: { oneOf: [ { $ref: '#/components/schemas/LatencyPercentiles' }, { type: 'null' } ], description: 'alert created - first event received, over windowMinutes' }
+        deliveryLatencyMs: { type: object, additionalProperties: { $ref: '#/components/schemas/LatencyPercentiles' }, description: 'per channel: delivered_at - event_received_at, over windowMinutes' }
+
+    LatencyPercentiles:
+      type: object
+      properties:
+        p50: { type: [number, 'null'] }
+        p99: { type: [number, 'null'] }
+        count: { type: integer }

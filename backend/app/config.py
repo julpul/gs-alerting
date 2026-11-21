@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     # runtime
     app_role: str = "api"
     port: int = 8080
+    metrics_port: int = 9101
+    stats_flush_seconds: float = 1.0
     environment: str = "local"
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
