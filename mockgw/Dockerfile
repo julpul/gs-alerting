@@ -3,7 +3,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-COPY main.py .
+COPY *.py .
 RUN useradd -m app
 USER app
 EXPOSE 8090
