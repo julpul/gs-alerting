@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # Links the Herald UI shows to the demo's fake outside world (browser-facing URLs).
     public_mailpit_url: str = "http://localhost:8025"
     public_mockgw_url: str = "http://localhost:8090"
+    # Mailpit's HTTP API for the Herald demo tools (empty = http://<SMTP_HOST>:8025).
+    mailpit_api_url: str = ""
 
     # secrets (dev defaults; override in .env / Railway)
     jwt_secret: str = "dev-jwt-secret-change-me"
@@ -58,6 +60,10 @@ class Settings(BaseSettings):
     # test isolation / multi-tenant prefixes
     mq_prefix: str = ""
     redis_prefix: str = ""
+
+    @property
+    def mailpit_api(self) -> str:
+        return (self.mailpit_api_url or f"http://{self.smtp_host}:8025").rstrip("/")
 
     @property
     def cors_origin_list(self) -> list[str]:
