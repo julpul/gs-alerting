@@ -34,6 +34,8 @@ from app.pipeline.alert_writer import UpsertResult, alert_summary, upsert_alert
 from app.pipeline.envelope import parse_received_at
 from app.pipeline.normalize import normalize
 from app.pipeline.present import Renderer, build_alert
+from app.pipeline.presets import RESOLVE, get_preset
+from app.pipeline.presets.autoresolve import resolve_from_source
 from app.pipeline.ruleview import cfg
 
 log = logging.getLogger(__name__)
@@ -205,6 +207,10 @@ class Worker:
         ev = normalize(envelope, source)
         envelope["_meta"] = ev.meta
 
+        preset = get_preset(source.get("preset"))
+        if preset and preset.on_event and preset.on_event(ev.raw) == RESOLVE:
+            return await self._auto_resolve(preset, ev, envelope, source, source_id)
+
         started = time.perf_counter()
         matched = []
         for candidate in self.index.candidates(ev):
@@ -220,6 +226,29 @@ class Worker:
             result = await self._write(candidate, ev, envelope, source)
             outcome = self._merge_outcome(outcome, result, cfg(candidate.rule, "grouping.by_field"))
         return await self._finish(envelope, source_id, outcome, ev)
+
+    async def _auto_resolve(
+        self, preset: Any, ev: Any, envelope: dict[str, Any], source: dict[str, Any], source_id: UUID
+    ) -> str:
+        """A preset's "resolved" notification: resolve the matching open alerts, never create one."""
+        matched = []
+        for candidate in self.index.candidates(ev):
+            try:
+                if candidate.matches(ev):
+                    matched.append(candidate)
+            except Exception:
+                log.exception("rule evaluation failed", extra={"rule_id": str(cfg(candidate.rule, "id"))})
+        resolved = await resolve_from_source(
+            self.pool,
+            self.rabbit,
+            matched,
+            ev,
+            envelope,
+            domain_id=source["domain_id"],
+            render=self.render,
+            note=preset.resolve_note,
+        )
+        return await self._finish(envelope, source_id, "auto_resolved" if resolved else "unrouted", ev)
 
     @staticmethod
     def _merge_outcome(current: str, result: UpsertResult, grouping: Any) -> str:

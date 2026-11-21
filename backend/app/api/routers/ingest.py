@@ -19,6 +19,7 @@ from app.core.metrics import INGESTED
 from app.core.rabbit import EVENTS_EXCHANGE, EVENTS_QUEUE, Rabbit
 from app.core.security import hash_token
 from app.pipeline.envelope import MAX_EVENT_BYTES, build_envelope, priority_for
+from app.pipeline.presets import split_events
 from app.schemas.api import RaiseAlertRequest
 
 log = logging.getLogger(__name__)
@@ -56,7 +57,8 @@ class SourceKeyCache:
             self._items.move_to_end(digest)
             return hit[1]
         row = await pool.fetchrow(
-            "SELECT id, name, team_id, domain_id, default_severity FROM sources WHERE key_hash = $1", digest
+            "SELECT id, name, team_id, domain_id, default_severity, preset FROM sources WHERE key_hash = $1",
+            digest,
         )
         source = dict(row) if row else None
         self._items[digest] = (now + (self.ttl if source else self.negative_ttl), source)
@@ -131,10 +133,13 @@ async def ingest_event(
     if not isinstance(raw, dict):
         raise AppError(422, "validation_error", "body must be a JSON object")
     priority = priority_for(source["default_severity"])
-    envelope = build_envelope(source_id=source["id"], raw=raw, priority=priority)
-    await _publish(rabbit, [envelope], priority)
-    INGESTED.labels(source=source["name"]).inc()
-    return _accepted(envelope)
+    envelopes = [
+        build_envelope(source_id=source["id"], raw=event, priority=priority)
+        for event in split_events(source.get("preset"), raw)
+    ]
+    await _publish(rabbit, envelopes, priority)
+    INGESTED.labels(source=source["name"]).inc(len(envelopes))
+    return _accepted(envelopes[0])
 
 
 @router.post("/v1/ingest/{sourceKey}/batch", status_code=202)
@@ -152,7 +157,12 @@ async def ingest_batch(
     if len(events) > MAX_BATCH:
         raise AppError(422, "validation_error", f"at most {MAX_BATCH} events per batch")
     priority = priority_for(source["default_severity"])
-    envelopes = [build_envelope(source_id=source["id"], raw=e, priority=priority) for e in events]
+    preset = source.get("preset")
+    envelopes = [
+        build_envelope(source_id=source["id"], raw=part, priority=priority)
+        for event in events
+        for part in split_events(preset, event)
+    ]
     if envelopes:
         await _publish(rabbit, envelopes, priority)
         INGESTED.labels(source=source["name"]).inc(len(envelopes))
