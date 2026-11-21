@@ -12,7 +12,7 @@ from uuid import UUID
 
 import orjson
 
-from app.core.ids import format_short_id
+from app.core.ids import format_short_id, parse_uuid
 from app.herald.ids import actor_ref, herald_status, owner_ref
 from app.pipeline.fields import MISSING, EventView
 from app.pipeline.rules.compiler import _compile_condition
@@ -239,10 +239,15 @@ def step_state_out(view: Any, refs: dict[UUID, str], approvals: dict[str, Any]) 
 
 
 def approval_out(row: Any, refs: dict[UUID, str], step_order: int | None) -> dict[str, Any]:
-    """`approvals` row -> Herald `Approval` (`id` = short id)."""
-    approvers = [refs[u] for u in row["approver_user_ids"] if u in refs]
+    """`approvals` row -> Herald `Approval` (`id` = short id). A person's own request never lists them
+    as an approver (four-eyes); `requested_by_user` is the human behind it (the agent's user too)."""
     requester = actor_ref(row["requested_by"], refs)
-    approver = next((a for a in approvers if a != requester), approvers[0] if approvers else None)
+    approvers = [refs[u] for u in row["approver_user_ids"] if u in refs and refs[u] != requester]
+    approver = approvers[0] if approvers else None
+    stored = row["requested_by"] or {}
+    human = stored.get("userId") or (stored.get("id") if stored.get("type") == "user" else None)
+    human_id = parse_uuid(str(human or ""))
+    human_ref = refs.get(human_id) if human_id else None
     return {
         "id": row["short_id"],
         "uuid": str(row["id"]),
@@ -253,6 +258,7 @@ def approval_out(row: Any, refs: dict[UUID, str], step_order: int | None) -> dic
         "risk": row["risk"],
         "reason": row["reason"],
         "requested_by": requester,
+        "requested_by_user": human_ref,
         "approver": approver,
         "approvers": approvers,
         "status": row["status"],

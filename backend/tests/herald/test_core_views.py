@@ -116,3 +116,34 @@ def test_report_text_branches():
     )
     assert "Herald (automatic) | escalated: L2" in md and "an agent" in md and "the team lead" in md
     assert "AI draft from the timeline (check it): It was DNS" in md and "Time to acknowledge: 30 s" in md
+
+
+def _approval_row(requested_by: dict, approvers: list) -> dict:
+    return {
+        "id": uuid4(),
+        "short_id": 7,
+        "action": "restart_service",
+        "parameters": {},
+        "risk": "high",
+        "reason": "r",
+        "requested_by": requested_by,
+        "approver_user_ids": approvers,
+        "status": "pending",
+        "decided_by": None,
+        "comment": None,
+        "expires_at": datetime(2026, 11, 21, tzinfo=UTC),
+    }
+
+
+def test_approval_out_never_lists_the_requesting_person():
+    anna, root = uuid4(), uuid4()
+    refs = {anna: "person:anna", root: "person:root.payments"}
+    own = views.approval_out(
+        _approval_row({"type": "user", "id": str(anna), "name": "Anna"}, [anna, root]), refs, 3
+    )
+    assert own["approvers"] == ["person:root.payments"] and own["approver"] == "person:root.payments"
+    assert own["requested_by"] == own["requested_by_user"] == "person:anna"
+    agent = {"type": "agent", "id": "claude", "name": "Claude", "userId": str(anna)}
+    by_agent = views.approval_out(_approval_row(agent, [anna, root]), refs, None)
+    assert by_agent["approvers"] == ["person:anna", "person:root.payments"]  # acts for anna: she may approve
+    assert by_agent["requested_by"] == "agent:Claude" and by_agent["requested_by_user"] == "person:anna"

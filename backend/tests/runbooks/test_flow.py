@@ -83,7 +83,7 @@ async def test_settlement_runbook_check_retry_then_escalate_with_approval(client
     assert row["status"] == "pending" and row["origin"] == "runbook_step" and row["action"] == "escalate"
     assert round((row["expires_at"] - row["created_at"]).total_seconds()) == 900
     assert user("root.settlements@demo") in row["approver_user_ids"]
-    assert user("piotr@demo") in row["approver_user_ids"]
+    assert user("piotr@demo") not in row["approver_user_ids"]  # four-eyes: the requester (on call)
 
     sms = (await gw.get("/admin/state")).json()["sms"]
     root_sms = next(m for m in sms if m["to"] == "+48500100120")
@@ -93,7 +93,7 @@ async def test_settlement_runbook_check_retry_then_escalate_with_approval(client
             "SELECT count(*) FROM deliveries WHERE alert_id = $1 AND idempotency_key LIKE 'appr:%'",
             alert["id"],
         )
-        >= 2
+        >= 1  # the Domain Root; the requester is not asked to approve their own step
     )
 
     # asking again does not create a second approval

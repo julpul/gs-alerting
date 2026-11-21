@@ -61,11 +61,34 @@ def actor_wire(actor: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def requester_person(requested_by: dict[str, Any] | None) -> UUID | None:
+    """The user behind a person's own request (four-eyes excludes them); None for agents and systems,
+    whose requests are meant to be approved by the human they act for."""
+    requested = requested_by or {}
+    if (requested.get("type") or requested.get("kind")) != "user":
+        return None
+    return parse_uuid(str(requested.get("id") or requested.get("userId") or ""))
+
+
+def requester_user_id(requested_by: dict[str, Any] | None) -> UUID | None:
+    """The human behind a request: the person, or the user an agent acts for (`userId`)."""
+    requested = requested_by or {}
+    return requester_person(requested) or parse_uuid(str(requested.get("userId") or ""))
+
+
+def visible_approvers(row: asyncpg.Record) -> list[UUID]:
+    """Listed approvers minus the requesting person (rows created before the four-eyes filter too)."""
+    own = requester_person(row["requested_by"])
+    return [u for u in row["approver_user_ids"] if u != own]
+
+
 async def approvers_for(
     conn: asyncpg.Connection, alert: asyncpg.Record | None, requested_by: dict[str, Any]
 ) -> list[UUID]:
     """On-call of the alert's team plus the Domain Roots of its domains; for requests without an alert the
-    roots of the requester's domains (masters if there are none)."""
+    roots of the requester's domains (masters if there are none). A person never approves their own
+    request (four-eyes); an agent's request keeps the human it acts for."""
+    own = requester_person(requested_by)
     people: dict[UUID, Person] = {}
     if alert is not None:
         for uid in await current_oncall(conn, alert["team_id"]):
@@ -78,9 +101,11 @@ async def approvers_for(
     for domain_id in domains:
         for person in await domain_roots(conn, domain_id):
             people.setdefault(person.id, person)
+    people.pop(own, None)
     if not people:
         for person in await masters(conn):
             people.setdefault(person.id, person)
+        people.pop(own, None)
     return list(people)
 
 
@@ -94,10 +119,21 @@ async def _users(conn: asyncpg.Connection, ids: list[UUID]) -> dict[UUID, dict[s
     }
 
 
-async def approvals_wire(conn: asyncpg.Connection, rows: list[asyncpg.Record]) -> list[dict[str, Any]]:
-    users = await _users(conn, sorted({u for r in rows for u in r["approver_user_ids"]}))
+async def approvals_wire(
+    conn: asyncpg.Connection, rows: list[asyncpg.Record], viewer: UUID | None = None
+) -> list[dict[str, Any]]:
+    """Wire `Approval`s; with `viewer`, `canDecide` says whether that user may decide each one now."""
+    users = await _users(conn, sorted({u for r in rows for u in visible_approvers(r)}))
     out = []
     for r in rows:
+        human = requester_user_id(r["requested_by"])
+        decidable = None
+        if viewer is not None:
+            decidable = (
+                r["status"] == "pending"
+                and not _is_own_request(r, viewer)
+                and await can_decide(conn, r, viewer)
+            )
         out.append(
             {
                 "id": str(r["id"]),
@@ -110,7 +146,9 @@ async def approvals_wire(conn: asyncpg.Connection, rows: list[asyncpg.Record]) -
                 "parameters": r["parameters"] or {},
                 "risk": r["risk"] or "medium",
                 "reason": r["reason"] or "",
-                "approvers": [users[u] for u in r["approver_user_ids"] if u in users],
+                "approvers": [users[u] for u in visible_approvers(r) if u in users],
+                "requestedByUserId": str(human) if human else None,
+                "canDecide": decidable,
                 "decidedBy": actor_wire(r["decided_by"]) if r["decided_by"] else None,
                 "comment": r["comment"],
                 "expiresAt": r["expires_at"],
@@ -258,15 +296,12 @@ async def _safe_sse(event: str, data: dict[str, Any], team_ids: list[UUID], user
 def _is_own_request(row: asyncpg.Record, user_id: UUID) -> bool:
     """Four-eyes: a person cannot approve a risky action they requested themselves. An agent's request
     (MCP `request_approval`) is meant to be approved by the human it acts for, so it is allowed."""
-    requested = row["requested_by"] or {}
-    if requested.get("type") != "user":
-        return False
-    return parse_uuid(str(requested.get("id") or requested.get("userId") or "")) == user_id
+    return requester_person(row["requested_by"]) == user_id
 
 
 async def can_decide(conn: asyncpg.Connection, row: asyncpg.Record, user_id: UUID) -> bool:
     """Listed approvers, the Domain Root of the alert's domains, and masters."""
-    if user_id in row["approver_user_ids"]:
+    if user_id in visible_approvers(row):
         return True
     scope = await load_scope(conn, user_id)
     if scope.is_master:
@@ -356,8 +391,8 @@ async def decide_with_effects(
             raise AppError(409, "conflict", f"approval is already {row['status']}")
         elif decision == "approve" and _is_own_request(row, user_id):
             raise forbidden("four-eyes rule: someone other than the requester must approve this")
-        elif not await can_decide(conn, row, user_id):
-            raise forbidden("you are not an approver of this request")
+        elif not _is_own_request(row, user_id) and not await can_decide(conn, row, user_id):
+            raise forbidden("you are not an approver of this request")  # the requester may withdraw
         else:
             status = "approved" if decision == "approve" else "rejected"
             row = await conn.fetchrow(
@@ -416,4 +451,4 @@ async def list_approvals(conn: asyncpg.Connection, scope: Scope, status: str | N
         f"WHERE {' AND '.join(where)} ORDER BY a.created_at DESC LIMIT 200",
         *args,
     )
-    return await approvals_wire(conn, rows)
+    return await approvals_wire(conn, rows, viewer=scope.user_id)
