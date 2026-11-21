@@ -66,6 +66,36 @@ async def test_knowledge_multipart_file_and_url(client, auth_headers, monkeypatc
     ).status_code == 422
 
 
+async def test_knowledge_title_from_front_matter_heading_or_filename(client, auth_headers):
+    anna = await auth_headers("anna@demo")
+
+    async def upload(name: str, body: bytes, title: str | None = None) -> str:
+        data = {"teamId": "team-payments", **({"title": title} if title else {})}
+        resp = await client.post(
+            "/v1/knowledge", data=data, files={"file": (name, body, "text/markdown")}, headers=anna
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["title"]
+
+    front = b'---\ntitle: "FX cache storms"\nowner: pricing\n---\n# Other heading\nRestart the cache.'
+    assert await upload("x.md", front) == "FX cache storms"
+    assert await upload("x.md", b"Intro line\n## Sub\n# Main heading\ntext") == "Main heading"
+    assert await upload("x.md", b"---\nowner: pricing\n---\n## Only a sub heading\ntext") == "Only a sub heading"
+    assert await upload("disk-full_runbook.md", b"no heading at all") == "disk full runbook"
+    assert await upload("x.md", front, title="Given title") == "Given title"
+    plain = await upload_json(client, anna, content="just text, no heading", teamId="team-payments")
+    assert plain.json()["title"] == "Untitled document"
+
+
+def test_title_from_unit():
+    from app.api.routers.knowledge import title_from
+
+    assert title_from("---\ntitle: 'Quoted'\n---\nbody") == "Quoted"
+    assert title_from("---\ntitle:\n---\n# H1 after empty title") == "H1 after empty title"
+    assert title_from("# Title #\n") == "Title"
+    assert title_from("plain") is None
+
+
 async def test_knowledge_validation_and_permissions(client, auth_headers):
     anna = await auth_headers("anna@demo")
     assert (await upload_json(client, anna, teamId="team-payments")).status_code == 422  # nothing to index
