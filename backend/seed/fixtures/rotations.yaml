@@ -1,0 +1,7 @@
+# One weekly rotation per team that has members (members rotate in e-mail order, the first one is on call
+# now). The rotation starts at 00:00 UTC on the day of the first seed; shifts are materialised 14 days
+# ahead here and by the scheduler afterwards. Existing rotations are never touched.
+rotation:
+  name: Weekly primary
+  shiftHours: 168
+  timezone: Europe/Warsaw
