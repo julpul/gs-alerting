@@ -123,8 +123,6 @@ async def test_ack_resolve_assign_notes_change_state_and_timeline(client, seeded
     assert r.status_code == 200 and r.json() == {"assignee": "person:root.payments"}
     bad = await client.post(f"{url}/assign", headers=anna, json={"to": "person:ghost"})
     assert bad.status_code == 422 and bad.json()["detail"] == "choose a person to hand this to"
-    released = await client.post(f"{url}/assign", headers=anna, json={"to": None})
-    assert released.status_code == 200 and released.json() == {"assignee": None}
 
     # informed people may comment but not act
     r = await client.post(f"{url}/notes", headers=as_person("manager"), json={"text": "Customers notice"})
@@ -137,7 +135,7 @@ async def test_ack_resolve_assign_notes_change_state_and_timeline(client, seeded
 
     d = (await client.get(url, headers=anna)).json()
     assert d["status"] == "resolved" and d["acked_by"] == "person:anna"
-    assert d["resolved_by"] == "person:anna" and d["incident_manager"] is None  # released above
+    assert d["resolved_by"] == "person:anna" and d["incident_manager"] == "person:root.payments"
     actions = [(t["action"], t["actor"]) for t in d["timeline"]]
     assert ("ack", "person:anna") in actions and ("resolve", "person:anna") in actions
     assert ("note", "person:manager") in actions and ("assigned", "person:anna") in actions
@@ -189,3 +187,18 @@ async def test_validation_errors_use_the_detail_shape_for_the_ui(client):
     )
     if resp.status_code == 422:
         assert "detail" in resp.json()
+
+
+async def test_unassign_with_null(client, seeded):
+    row = await seeded.fetchrow(
+        "SELECT short_id, team_id FROM alerts WHERE status <> 'resolved' AND team_id = "
+        "(SELECT id FROM teams WHERE slug = 'team-payments') LIMIT 1"
+    )
+    if row is None:
+        return
+    url = f"/api/alerts/{row['short_id']}"
+    anna = {"X-Herald-User": "person:anna"}
+    assert (await client.post(f"{url}/assign", headers=anna, json={"to": "person:anna"})).status_code == 200
+    released = await client.post(f"{url}/assign", headers=anna, json={"to": None})
+    assert released.status_code == 200 and released.json() == {"assignee": None}
+    assert (await client.get(url, headers=anna)).json()["incident_manager"] is None
