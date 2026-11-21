@@ -119,7 +119,7 @@ async def test_firing_then_resolved_resolves_the_alert_and_creates_no_new_one(
     timeline = await worker_env.pool.fetch(
         "SELECT type, text, actor FROM timeline WHERE alert_id = $1 ORDER BY at", alert["id"]
     )
-    assert [t["type"] for t in timeline] == ["created", "resolved"]
+    assert [t["type"] for t in timeline] == ["created", "assigned", "resolved"]
     assert timeline[-1]["text"] == "Resolved by source (Alertmanager status=resolved)"
     assert timeline[-1]["actor"]["type"] == "system"
     audit = await worker_env.pool.fetchrow(

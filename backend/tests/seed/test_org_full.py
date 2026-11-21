@@ -7,6 +7,7 @@ from app.core.ids import ORG_ID, stable_id
 from app.core.scope import load_scope
 from app.core.security import verify_password
 from app.delivery.channel_select import _from_prefs
+from app.escalation.oncall import oncall_from_shifts
 from seed.seed import load_fixtures, run_seed
 
 ORIGINAL = {
@@ -173,3 +174,42 @@ async def test_fixture_has_no_unknown_scope_references():
         assert not user.get("manager") or user["manager"] in emails
         for role in user["roles"]:
             assert role["scope"] in (teams | domains | {None})
+
+
+async def test_fixture_rotation_order_puts_anna_and_piotr_on_call_now(full_pool):
+    async with full_pool.acquire() as conn:
+        for slug, email in (("team-payments", "anna@demo"), ("team-settlements", "piotr@demo")):
+            assert await oncall_from_shifts(conn, stable_id("team", slug)) == [stable_id("user", email)]
+
+
+async def test_reseed_moves_a_rotation_left_in_email_order_once(full_pool):
+    team_id = stable_id("team", "team-payments")
+    rotation_id = stable_id("rotation", "team-payments")
+    legacy = [
+        r["id"]
+        for r in await full_pool.fetch(
+            "SELECT u.id FROM team_members m JOIN users u ON u.id = m.user_id WHERE m.team_id = $1 "
+            "ORDER BY u.email",
+            team_id,
+        )
+    ]
+    await full_pool.execute("DELETE FROM shifts WHERE rotation_id = $1", rotation_id)
+    await full_pool.execute("UPDATE rotations SET member_ids = $2 WHERE id = $1", rotation_id, legacy)
+    await full_pool.execute(
+        "INSERT INTO shifts (id, team_id, user_id, start_at, end_at, kind, rotation_id) "
+        "VALUES ($1, $2, $3, now() - interval '1 day', now() + interval '6 days', 'rotation', $4)",
+        stable_id("shift", "legacy"),
+        team_id,
+        legacy[0],
+        rotation_id,
+    )
+    async with full_pool.acquire() as conn:
+        assert await oncall_from_shifts(conn, team_id) == [stable_id("user", "agnieszka.krol@demo")]
+    await run_seed(full_pool)
+    shifts = await full_pool.fetchval("SELECT count(*) FROM shifts WHERE rotation_id = $1", rotation_id)
+    async with full_pool.acquire() as conn:
+        assert await oncall_from_shifts(conn, team_id) == [stable_id("user", "anna@demo")]
+    await run_seed(full_pool)
+    assert (
+        await full_pool.fetchval("SELECT count(*) FROM shifts WHERE rotation_id = $1", rotation_id) == shifts
+    )

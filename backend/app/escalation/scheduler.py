@@ -1,9 +1,10 @@
 """Scheduler role (spec 10.2): a 1 s loop over short, lock-skipping jobs.
 
 Every second: escalation, renotify, approval expiry, outbox relay. Slower jobs: shift materialisation
-(60 s) and digests (`DIGEST_INTERVAL_SECONDS`, default 300 s). Each job is isolated: a failing job is
-logged and retried on the next tick. Several schedulers may run side by side (rows are claimed with
-`FOR UPDATE SKIP LOCKED`).
+(60 s) and digests (`DIGEST_INTERVAL_SECONDS`, default 300 s). At start-up, open alerts nobody ever
+assigned get their automatic incident manager (`auto_assign.backfill_open`). Each job is isolated: a
+failing job is logged and retried on the next tick. Several schedulers may run side by side (rows are
+claimed with `FOR UPDATE SKIP LOCKED`).
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from app.core.outbox_relay import relay_once
 from app.core.rabbit import Rabbit
 from app.core.redis import close_redis
 from app.escalation import jobs
+from app.escalation.auto_assign import backfill_open
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +93,10 @@ async def run(stop: asyncio.Event) -> None:
     await rabbit.declare_topology()
     log.info("scheduler started (digest every %.0f s)", digest_interval())
     try:
+        try:
+            await backfill_open(pool)
+        except Exception:
+            log.exception("automatic assignment of open alerts failed")
         await Scheduler(pool, rabbit).run(stop)
     finally:
         await rabbit.close()
