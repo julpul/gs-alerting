@@ -95,7 +95,10 @@ paths:
     post:
       tags: [ingest]
       summary: Reply from mock SMS gateway ("ACK 123", "APPROVE 456")
+      description: 'No bearer token. When the server sets INBOUND_SMS_SECRET the gateway must send the same value in X-Inbound-Secret, otherwise 401.'
       security: []
+      parameters:
+        - { name: X-Inbound-Secret, in: header, required: false, schema: { type: string } }
       requestBody:
         required: true
         content:
@@ -108,6 +111,7 @@ paths:
                 text: { type: string, example: 'ACK 123' }
       responses:
         '200': { description: Processed }
+        '401': { description: 'Missing or wrong X-Inbound-Secret (only when the server configures one)' }
 
   # ---------------- Auth ----------------
   /v1/auth/login:
@@ -540,7 +544,11 @@ paths:
   /v1/schedules:
     get:
       tags: [schedules]
-      parameters: [ { name: teamId, in: query, required: true, schema: { type: string } } ]
+      summary: Shifts of a team overlapping a window (default window around now)
+      parameters:
+        - { name: teamId, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time }, description: 'Window start (inclusive); default now minus a few days' }
+        - { name: to, in: query, schema: { type: string, format: date-time }, description: 'Window end (exclusive); default now plus a few weeks' }
       responses:
         '200': { description: Shifts, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Shift' } } } } }
     post:
@@ -601,6 +609,7 @@ paths:
         - { name: severity, in: query, required: true, schema: { $ref: '#/components/schemas/Severity' } }
         - { name: ruleId, in: query, schema: { type: string } }
         - { name: teamId, in: query, schema: { type: string } }
+        - { name: domainId, in: query, schema: { type: string }, description: 'Which domain of a cross-domain team to inherit from; default the first domain of the team' }
       responses:
         '200': { description: Effective policy, content: { application/json: { schema: { $ref: '#/components/schemas/EffectiveEscalationPolicy' } } } }
   /v1/action-trust:
@@ -898,7 +907,7 @@ components:
         recipient: { $ref: '#/components/schemas/Actor' }
         channel: { $ref: '#/components/schemas/Channel' }
         kind: { type: string, enum: [hard, soft] }
-        status: { type: string, enum: [pending, sent, retrying, failed, delivered, acked, dead_lettered, suppressed_digest] }
+        status: { type: string, enum: [pending, sent, retrying, failed, delivered, acked, dead_lettered, suppressed_digest, digested] }
         attempts: { type: integer }
         updatedAt: { type: string, format: date-time }
 
@@ -923,6 +932,7 @@ components:
         diagnosis: { type: string }
         nextStep: { type: string }
         nextStepId: { type: [string, 'null'], description: 'Id of an existing runbook step the assistant points at (never invented)' }
+        reusedFrom: { type: string, description: 'Short id (A-123) of the sibling alert whose suggestion was reused (storm guard: same rule and knowledge key within 120 s); absent for fresh suggestions' }
         aiUnavailable: { type: boolean, description: 'True when only the deterministic part (fixed-before, similar incidents) could be produced' }
         confidence: { type: number, minimum: 0, maximum: 1 }
         fixedBefore:
@@ -1229,6 +1239,7 @@ components:
         id: { type: string }
         teamId: { type: string }
         userId: { type: string }
+        userName: { type: [string, 'null'], readOnly: true, description: 'Display name of userId (response only)' }
         start: { type: string, format: date-time }
         end: { type: string, format: date-time }
         kind: { type: string, enum: [rotation, override, manual], description: 'override beats rotation and manual' }
@@ -1344,7 +1355,7 @@ components:
         inDeadLetter: { type: integer }
         lost: { type: [integer, 'null'], description: 'ingested - processed outcomes - events still in the events queue; must be 0. null when outcome counters are unavailable' }
         windowMinutes: { type: integer }
-        outcomes: { type: object, additionalProperties: { type: integer }, description: 'alerted_new, deduplicated, grouped, unrouted, invalid' }
+        outcomes: { type: object, additionalProperties: { type: integer }, description: 'alerted_new, deduplicated, grouped, unrouted, invalid, auto_resolved' }
         queues: { type: [object, 'null'], additionalProperties: { type: integer }, description: 'Messages per queue; null when the RabbitMQ management API is unreachable' }
         processingLatencyMs: { oneOf: [ { $ref: '#/components/schemas/LatencyPercentiles' }, { type: 'null' } ], description: 'alert created - first event received, over windowMinutes' }
         deliveryLatencyMs: { type: object, additionalProperties: { $ref: '#/components/schemas/LatencyPercentiles' }, description: 'per channel: delivered_at - event_received_at, over windowMinutes' }

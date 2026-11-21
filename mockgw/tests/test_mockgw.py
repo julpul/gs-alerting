@@ -148,6 +148,20 @@ def test_reply_is_forwarded_to_backend_inbound(client, monkeypatch):
     assert client.get("/admin/state").json()["replies"][0]["text"] == "ACK 1234"
 
 
+def test_reply_forwards_inbound_secret_header_when_configured(client, monkeypatch):
+    monkeypatch.setenv("INBOUND_SMS_SECRET", "s3cret")
+    seen = _backend(monkeypatch, lambda r: httpx.Response(200, json={}))
+    client.post("/reply", json={"from": "+48500100200", "text": "ACK 1"})
+    assert seen[0].headers["x-inbound-secret"] == "s3cret"
+
+
+def test_reply_sends_no_secret_header_by_default(client, monkeypatch):
+    monkeypatch.delenv("INBOUND_SMS_SECRET", raising=False)
+    seen = _backend(monkeypatch, lambda r: httpx.Response(200, json={}))
+    client.post("/reply", json={"from": "+48500100200", "text": "ACK 1"})
+    assert "x-inbound-secret" not in seen[0].headers
+
+
 def test_reply_backend_down_is_502(client, monkeypatch):
     def boom(request):
         raise httpx.ConnectError("down")

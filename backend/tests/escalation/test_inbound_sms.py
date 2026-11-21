@@ -166,3 +166,30 @@ async def test_approvals_unavailable_without_the_runbook_module(seeded, client, 
     resp = await sms(client, PIOTR, "APPROVE 1")
     assert resp.status_code == 200
     assert resp.json()["reply"] == "Approvals are unavailable right now."
+
+
+async def test_shared_secret_required_when_configured(seeded, client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("INBOUND_SMS_SECRET", "s3cret")
+    get_settings.cache_clear()
+    try:
+        alert = await make_alert(seeded, None, plan=False)
+        body = {"from": PIOTR, "text": f"ACK {alert['short_id']}"}
+        assert (await client.post(URL, json=body)).status_code == 401
+        wrong = await client.post(URL, json=body, headers={"X-Inbound-Secret": "nope"})
+        assert wrong.status_code == 401
+        assert await alert_status(seeded, alert["id"]) == "open"
+        ok = await client.post(URL, json=body, headers={"X-Inbound-Secret": "s3cret"})
+        assert ok.status_code == 200 and "acknowledged" in ok.json()["reply"]
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
+
+
+async def test_no_secret_configured_accepts_any_caller(seeded, client):
+    alert = await make_alert(seeded, None, plan=False)
+    resp = await client.post(
+        URL, json={"from": PIOTR, "text": f"ACK {alert['short_id']}"}, headers={"X-Inbound-Secret": "ignored"}
+    )
+    assert resp.status_code == 200
