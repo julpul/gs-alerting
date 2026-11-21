@@ -24,6 +24,8 @@ ACTOR_KINDS = {"user", "agent", "system"}
 SUGGESTION_KEYS = (
     "diagnosis",
     "nextStep",
+    "nextStepId",
+    "aiUnavailable",
     "confidence",
     "fixedBefore",
     "similarIncidents",

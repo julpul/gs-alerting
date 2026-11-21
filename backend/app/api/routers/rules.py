@@ -135,7 +135,7 @@ async def rule_from_text(body: FromTextRequest, pool: Pool, redis: RedisDep, sco
         if team_id is None or not scope.can_see_team(team_id):
             raise forbidden("team not in your scope")
         try:
-            draft, explanation = await draft_rule(body.text, scope, conn)
+            draft, explanation = await draft_rule(body.text, scope, conn, team_id=team_id)
         except AppError:
             raise
         except Exception as exc:

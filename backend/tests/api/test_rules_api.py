@@ -376,7 +376,7 @@ async def test_from_text_degrades_to_503_without_the_ai_module(client, auth_head
 async def test_from_text_uses_the_copilot_and_dry_runs_the_draft(client, auth_headers, monkeypatch):
     calls = []
 
-    async def draft_rule(text, scope, conn):
+    async def draft_rule(text, scope, conn, team_id=None):
         calls.append(text)
         return parse_rule(body(team=PAYMENTS)), "because"
 
@@ -395,7 +395,7 @@ async def test_from_text_uses_the_copilot_and_dry_runs_the_draft(client, auth_he
     denied = await client.post("/v1/rules/from-text", json={"text": "x", "teamId": "team-rates"}, headers=h)
     assert denied.status_code == 403
 
-    async def broken(text, scope, conn):
+    async def broken(text, scope, conn, team_id=None):
         raise RuntimeError("provider down")
 
     fake.draft_rule = broken
