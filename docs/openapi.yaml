@@ -230,6 +230,23 @@ paths:
             schema: { type: object, required: [text], properties: { text: { type: string } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TimelineEntry' } } } }
+  /v1/alerts/{alertId}/resolution-note-draft:
+    get:
+      tags: [alerts]
+      summary: AI draft of the resolution note from the alert timeline (the user edits it before resolving)
+      parameters: [ { $ref: '#/components/parameters/AlertId' } ]
+      responses:
+        '200':
+          description: Draft (aiUnavailable true = deterministic summary of the timeline)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note: { type: string }
+                  aiUnavailable: { type: boolean }
+                  model: { type: [string, 'null'] }
+        '404': { $ref: '#/components/responses/Error' }
   /v1/alerts/{alertId}/suggestion:
     get:
       tags: [alerts]
@@ -635,8 +652,22 @@ paths:
                 file: { type: string, format: binary }
                 url: { type: string }
                 teamId: { type: string }
+                domainId: { type: string, description: 'Required when the team belongs to several domains or no team is given' }
+                title: { type: string }
+          application/json:
+            schema:
+              type: object
+              description: 'Markdown / plain text body or a URL (fetched, 1 MB cap)'
+              properties:
+                content: { type: string }
+                url: { type: string }
+                title: { type: string }
+                teamId: { type: string }
+                domainId: { type: string }
       responses:
-        '201': { description: Indexed (async) }
+        '201': { description: Indexed, content: { application/json: { schema: { $ref: '#/components/schemas/KnowledgeDoc' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /v1/integrations:
     get:
       tags: [integrations]
@@ -656,7 +687,9 @@ paths:
                 scopeDomainId: { type: string }
                 config: { type: object, additionalProperties: true, description: 'Tokens are write-only; never returned' }
       responses:
-        '200': { description: Saved }
+        '200': { description: Saved (secrets are write-only and never returned), content: { application/json: { schema: { $ref: '#/components/schemas/Integration' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 
   # ---------------- In-app agent ----------------
   /v1/agent/chat:
@@ -856,6 +889,8 @@ components:
         status: { type: string, enum: [draft, accepted, rejected] }
         diagnosis: { type: string }
         nextStep: { type: string }
+        nextStepId: { type: [string, 'null'], description: 'Id of an existing runbook step the assistant points at (never invented)' }
+        aiUnavailable: { type: boolean, description: 'True when only the deterministic part (fixed-before, similar incidents) could be produced' }
         confidence: { type: number, minimum: 0, maximum: 1 }
         fixedBefore:
           type: array
