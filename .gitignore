@@ -17,3 +17,4 @@ dist/
 .claude/worktrees/
 loadtest/results/raw/
 *.log
+.playwright-mcp/

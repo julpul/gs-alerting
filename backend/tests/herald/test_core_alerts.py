@@ -137,7 +137,7 @@ async def test_ack_resolve_assign_notes_change_state_and_timeline(client, seeded
 
     d = (await client.get(url, headers=anna)).json()
     assert d["status"] == "resolved" and d["acked_by"] == "person:anna"
-    assert d["resolved_by"] == "person:anna" and d["incident_manager"] == "person:root.payments"
+    assert d["resolved_by"] == "person:anna" and d["incident_manager"] is None  # released above
     actions = [(t["action"], t["actor"]) for t in d["timeline"]]
     assert ("ack", "person:anna") in actions and ("resolve", "person:anna") in actions
     assert ("note", "person:manager") in actions and ("assigned", "person:anna") in actions
