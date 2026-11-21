@@ -1,54 +1,64 @@
-# Przewodnik testów e2e (manualnych) — po integracji z UI
+# Przewodnik testów e2e (manualnych)
 
-Stan: 2026-11-21 ~05:35. Backend + UI zintegrowane, 1017 testów zielonych, QA gate przeszedł (patrz `docs/CHECKLIST.md`).
+Stan: 2026-11-21. Jedno UI: klasyczny **The Herald** pod `/`. Stare `/ads/` przekierowuje na `/`. AI jest wbudowane w ekrany. Każdy nowy alert od razu dostaje właściciela.
 
 ## Gdzie testować
 
-| | Lokalnie (`make up`, baza świeżo zresetowana + seed) | Produkcja (Railway) |
+| | Lokalnie (`make up`) | Produkcja (Railway) |
 | --- | --- | --- |
-| UI klasyczne | http://localhost:8080/ | https://api-production-d033bedd.up.railway.app/ |
-| UI Atlaskit (+ nowe ekrany) | http://localhost:8080/ads/ | https://api-production-d033bedd.up.railway.app/ads/ |
+| Herald UI | http://localhost:8080/ | https://api-production-d033bedd.up.railway.app/ |
 | Test lab | http://localhost:8080/lab.html | …/lab.html |
 | Swagger | http://localhost:8080/docs | …/docs |
 | Email (Mailpit) | http://localhost:8025 | https://mailpit-production-69850428.up.railway.app |
 | SMS / telefon (mockgw) | http://localhost:8090 | https://mockgw-production.up.railway.app |
 | Symulator Vistula Capital | http://localhost:8095 | https://simulator-production-ae5fd2bb.up.railway.app |
 
-Logowanie: brak — **Viewing as** w menu profilu (prawy górny róg). Osoby: `master`, `anna` (Payments on-call), `piotr` (Settlements), `root.settlements`, `root.payments`, `manager` (informed) + reszta Vistula Capital (`docs/DEMO_ORG.md`).
+Logowanie: menu profilu (prawy górny róg) → **Viewing as**. Osoby:
+- `anna`: Payments, na dyżurze;
+- `piotr`: Settlements, na dyżurze;
+- `root.payments`, `root.settlements`: liderzy domen;
+- `master`;
+- `manager`: tylko informowany.
 
-## 0. Przed testami AI (Twój krok)
-Klucz LLM: `docs/MANUAL_STEPS.md` §2 (lokalnie `.env` + `make up`; Railway: zmienne w `api` **i** `workers`). Bez klucza wszystko działa, a AI pokazuje „Heuristic draft” / „AI unavailable”.
+Pozostałe osoby: `docs/DEMO_ORG.md`.
 
-## 1. Scenariusze (oczekiwany wynik)
+## A. Główny scenariusz: jedna osoba, od zdarzenia do maila (≈ 5 min)
+
+| # | Krok | Co powinieneś zobaczyć |
+| --- | --- | --- |
+| 1 | Viewing as **anna**. Otwórz **Alerts** (tablica Open / Acknowledged / Resolved). | Tablica zespołu Payments. |
+| 2 | Test lab (lub `make demo-events`): wyślij zdarzenie `payments-api` HighErrorRate. | Karta pojawia się sama, bez odświeżania. Na karcie widać właściciela (imię i znacznik „auto”). |
+| 3 | Otwórz alert. | Na górze karta **AI proposed solution**: „Claude · claude-haiku-5-5”, diagnoza i następny krok z runbooka. Przez pierwsze sekundy karta może pokazywać ładowanie. Niżej **Fixed before** (A-n i notatka) i podobne incydenty. |
+| 4 | Linia właściciela. | „In charge: Anna Kowalska · assigned automatically (on call for Team Payments)” oraz przycisk **Hand to a colleague**. |
+| 5 | **Ask about this alert**: „what should I check first?” | Odpowiedź w drawerze, wyświetlana na bieżąco. |
+| 6 | **Mailpit** (`:8025`) i **mockgw** (`:8090`). | Mail lub SMS do Anny z tytułem, polami, krokami runbooka i linkiem. Kanał zależy od jej preferencji i pory dnia (SMS 08–20, poza tym email). |
+| 7 | Zaakceptuj sugestię AI (**Accept**). | Decyzja trafia na oś czasu. Jeśli krok ma akcję, wykonuje się. Krok ryzykowny trafia do **Approvals**. |
+| 8 | **Resolve**. | Panel „How did you fix it?” z notatką zaproponowaną przez AI, którą można edytować. Zapisz. |
+| 9 | Wyślij to samo zdarzenie jeszcze raz. | Nowy alert z panelem „Fixed before”, który pokazuje poprzedni alert i Twoją notatkę. |
+
+## B. Pozostałe scenariusze
 
 | # | Co zrobić | Oczekiwane |
 | --- | --- | --- |
-| 1 | `make demo-events` albo Test lab → wyślij 3 zdarzenia z Appendix A | 5 alertów (Settlements, Rates „Rejected EUR 25000000 — LIMIT_BREACH”, Anna, Pricing per instrument, Security); feed odświeża się sam |
-| 2 | Otwórz alert Settlements | Runbook `settlement-timeout` z wartościami (workflowId), kroki: check → retry → escalate |
-| 3 | Uruchom krok „retry workflow” | wykonany od razu (mockgw), wpis w timeline |
-| 4 | Uruchom krok „escalate” jako `piotr` | czeka na akceptację; SMS z „Reply APPROVE n” w mockgw |
-| 5 | Zaakceptuj jako `piotr` | odmowa: **four-eyes** („Waiting for another approver”) |
-| 6 | Przełącz na `root.settlements` → Approvals → Approve | akcja wykonana, audit „approved by …” |
-| 7 | mockgw: odpowiedz `ACK <n>` z telefonu on-call | alert acknowledged, eskalacja zatrzymana |
-| 8 | Test lab → Simulate an outage (SMS) → wyślij nowe zdarzenie Settlements | SMS retry → DLQ → email fallback w Mailpit, nic nie zginęło |
-| 9 | Symulator → `storm_500` | 1 alert ×500, jedno powiadomienie |
-| 10 | Symulator → `poisoned_log` | baner „text that looks like instructions”, AI nie proponuje akcji |
-| 11 | Symulator → `new_schema` (albo wyślij dowolny JSON/tekst na `demo-key-custody`) | przyjęte; Platforms → pola widoczne; zrób regułę w edytorze (AND/OR, pole zagnieżdżone, `>`), wyślij ponownie → alert bez restartu |
-| 12 | Symulator → `payments_error_spike` (potem auto `resolved`) | alert Anna; SMS 08–20 / email poza; po „resolved” zamknięty automatycznie |
-| 13 | Preferencje: `/ads/#/preferences` → zmień kanały | następny alert idzie nowym kanałem |
-| 14 | Resolve z notatką → wyślij podobne zdarzenie | panel „Fixed before” pokazuje A-n + notatkę |
-| 15 | `/ads/#/agents` → utwórz PAT → `claude mcp add --transport http alerting <origin>/mcp --header "Authorization: Bearer <PAT>"` → w Claude Code: „list open alerts”, „raise a security alert”, „request approval for terraform_apply” | narzędzia działają; prośba agenta trafia do Approvals |
-| 16 | `/ads/#/health` | events/s, p50/p99, Lost = 0 |
+| 1 | **Rules → New rule**: w polu **AI assistant** wpisz „critical errors from payments-api go to Anna by SMS between 8 and 20”. | Draft wypełnia normalny formularz (warunki, odbiorcy, kanały, okno czasowe) z wyjaśnieniem i dry-runem. **Save** zapisuje regułę, a **Undo the AI draft** cofa zmiany. |
+| 2 | Edytor reguł ręcznie: AND/OR, pole zagnieżdżone, `>`. Zapisz i wyślij zdarzenie. | Alert pojawia się bez restartu. |
+| 3 | **Runbooks → Paste any runbook**: wklej wolny tekst i kliknij **Write with AI**. | Kroki z akcjami i znacznikiem „needs approval”, opisane jako „AI draft, needs review”. **Save** zapisuje dokładnie te kroki. **Split into steps** działa na stałych regułach, bez AI. |
+| 4 | Alert Settlements jako `piotr`: krok „retry workflow”. | Wykonany od razu (mockgw), wpis na osi czasu. |
+| 5 | Krok „escalate” jako `piotr`, potem akceptacja jako `piotr`. | Krok czeka na akceptację. Akceptacja przez Piotra zostaje odrzucona (**four-eyes**). |
+| 6 | Viewing as `root.settlements` → **Approvals** → Approve. | Akcja wykonana, a w logu wpis „approved by …”. |
+| 7 | mockgw: `ACK <n>` z telefonu on-call. | Alert potwierdzony, eskalacja zatrzymana. |
+| 8 | Test lab → Simulate an outage (SMS), potem nowe zdarzenie. | SMS: ponowienia, potem DLQ, potem email fallback w Mailpit. Nic nie ginie. |
+| 9 | Symulator → `storm_500`. | Jeden alert ×500 i jedno powiadomienie. |
+| 10 | Symulator → `poisoned_log`. | Baner ostrzegający przed podejrzaną treścią. AI nie proponuje akcji. |
+| 11 | **Platforms → Connect**: nazwa, `curl` z dialogu, potem **Open**. | Zdarzenie widoczne na platformie jako „unrouted”. Po dodaniu reguły kolejne zdarzenie tworzy alert. |
+| 12 | Symulator → `payments_error_spike` (potem automatycznie `resolved`). | Alert dla Anny, który zamyka się sam po „resolved”. |
+| 13 | **Teams → Change my notification preferences**. | Następny alert idzie nowym kanałem. |
+| 14 | **Agents & MCP**: utwórz token i skopiuj komendę `claude mcp add …`. W Claude Code: „list open alerts”, „request approval for terraform_apply”. | Narzędzia działają, a prośba agenta trafia do **Approvals**. Token można unieważnić. |
+| 15 | **Hand to a colleague** na alercie. | Nowy właściciel. Auto-przypisanie już go nie nadpisze. |
+| 16 | **Metrics**. | events/s, p50/p99, Lost = 0. |
 
-## 2. Testy AI (z kluczem)
-- Alert → panel **AI suggestion**: diagnoza, next step (tylko istniejące kroki runbooka), Accept/Reject.
-- **Copilot** (`/ads/#/copilot`): „why is payments-api alerting?”, „what fixed this last time?”, „create a rule: critical from payments-api to Anna by SMS 8–20” (draft, zapis kliknięciem).
-- **AI assistant**: rule from text (+ dry-run), mapping dla `custody` po wysłaniu nieznanego schematu, runbook z wolnego tekstu (pricing cache).
-- Resolve → **AI draft** notatki; postmortem/status update w alercie.
-- Poisoned log (#10) z kluczem — AI nadal bez akcji.
-
-## 3. Znane ograniczenia (świadome)
-- Logowanie = tryb demo („Viewing as”), bez SSO.
-- `resolve_when` z reguł Herald jest przechowywane, ale doradcze (auto-close działa dla Alertmanager `status: resolved`).
-- „Rule from text” bez LLM zwraca „AI unavailable” (brak heurystyki).
-- Repo prywatne + GitHub Actions zablokowane billingiem → CI/CD nie startuje (deploy robiony z CLI).
+## C. Znane ograniczenia (świadome)
+- Logowanie działa tylko w trybie demo („Viewing as”), bez SSO.
+- Auto-przypisanie działa według prostego modelu if/else. Zamiana na inny model: `backend/app/escalation/auto_assign.py::decide`.
+- `resolve_when` z reguł Herald jest tylko doradcze. Automatyczne zamykanie działa dla Alertmanagera (`status: resolved`).
+- GitHub Actions jest zablokowane przez billing przy prywatnym repo, więc deploy idzie z CLI.

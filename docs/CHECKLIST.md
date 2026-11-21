@@ -2,7 +2,7 @@
 
 Source: `Alerting Service Team Checklist - Must.csv` (M = required functionality, J = judging evidence, S = submission).
 Status legend: ✅ done + verified · 🟡 done, verification pending · ⏳ in progress · 👤 needs the team (not automatable).
-UI = Herald web UI served by our api (`/` classic, `/ads/` React); API = `/v1` (openapi) unless noted.
+UI = Herald web UI served by our api (`/`, single classic app; the Atlaskit `/ads/` app was retired 2026-11-21 and redirects to `/`); API = `/v1` (openapi) unless noted.
 
 | ID | Requirement | Status | Evidence (code · tests · how to show) |
 | --- | --- | --- | --- |
@@ -42,4 +42,4 @@ UI = Herald web UI served by our api (`/` classic, `/ads/` React); API = `/v1` (
 ## QA gate (2026-11-21 ~05:00, local stack + Railway, Playwright through both UIs)
 - Verified end to end through the UI: live feed in two tabs, ack/resolve without refresh, classic rule editor (nested AND/OR + numeric) live without restart, SMS outage → retry → DLQ → email fallback (nothing lost), dedup 500 → one alert ×500, Pricing grouping per instrument, Appendix B runbooks + 8 unseen runbooks parsed, executable steps (http_get, retry_workflow), risky step approved by a *different* person (four-eyes) from alert detail and Approvals screen, Alertmanager `resolved` auto-close, MCP: PAT from UI → initialize/tools/list/list_alerts → revoke → 401, Railway UI identical.
 - Unseen schemas S1–S9 accepted (S3 text and S9 top-level array via `/v1/ingest` being fixed in FIX-BE).
-- After FIX-UI/FIX-BE (05:30): M14 ✅ (`/ads/#/preferences`, team channel policy editor, classic Teams table); S3 text logs + S9 arrays accepted on `/v1/ingest`; wildcard paths; four-eyes approvers. Open: M15 AI Accept/Reject needs an LLM key (manual AI test by the team).
+- After FIX-UI/FIX-BE (05:30): M14 ✅ (personal preferences + team escalation in Settings, classic Teams table); S3 text logs + S9 arrays accepted on `/v1/ingest`; wildcard paths; four-eyes approvers. Open: M15 AI Accept/Reject needs an LLM key (manual AI test by the team).

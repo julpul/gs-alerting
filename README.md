@@ -50,11 +50,10 @@ The api serves the web UI itself — same origin as the API, so there is no CORS
 
 | URL | What |
 | --- | --- |
-| `http://localhost:8080/` | Classic Herald interface (alert feed, platforms, rule editor, runbooks, teams) |
-| `http://localhost:8080/ads/` | Atlaskit interface, plus **Approvals**, **Copilot**, **AI assistant** (rule / field mapping / runbook from text), **Agents & MCP** (personal tokens + `claude mcp add` command), **On-call & escalation**, **Knowledge**, **Health** |
+| `http://localhost:8080/` | Herald web UI: alert board with an inline **AI proposed solution** and automatic owner, platforms, rule editor with an **AI assistant** mode, runbooks with **Write with AI**, **Approvals** (four-eyes), **Agents & MCP** (personal tokens + `claude mcp add` command), teams, on-call, history |
 | `http://localhost:8080/lab.html` | Test lab: play a source system and watch what happens |
 
-Demo mode has no sign-in: pick **Viewing as** in the profile menu (anna, piotr, root.settlements, master, manager, …). The UI talks to a thin backend-for-frontend (`/api/*`, `backend/app/herald/`) that maps the design team's Herald UI contract onto our services; `/v1` stays the public API. AI output is always a labelled draft with Accept / Edit / Reject; risky runbook steps need a *different* person's approval (four-eyes). Built files live in `backend/static/herald` (committed, no Node needed); to change the Atlaskit UI: `cd ui/ads && npm ci && npm run build`.
+Demo mode has no sign-in: pick **Viewing as** in the profile menu (anna, piotr, root.settlements, master, manager, …). The UI talks to a thin backend-for-frontend (`/api/*`, `backend/app/herald/`) that maps the design team's Herald UI contract onto our services; `/v1` stays the public API. AI output is always a labelled draft with Accept / Edit / Reject; risky runbook steps need a *different* person's approval (four-eyes). Every new alert is assigned automatically: a person named in the rule, else the team's on-call, else the least busy team member (`backend/app/escalation/auto_assign.py`). The UI is plain static files in `backend/static/herald` (no Node build).
 
 ## Live demo on Railway
 
