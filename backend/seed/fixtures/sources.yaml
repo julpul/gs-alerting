@@ -1,0 +1,73 @@
+# Demo sources (TECH_SPEC section 21). Keys are the literal demo keys below (stored as sha256);
+# mappings follow the Appendix A sample events. `team` is a team slug.
+sources:
+  - name: workflow-broker
+    team: team-settlements
+    type: webhook
+    key: demo-key-workflow-broker
+    default_severity: error
+    mapping:
+      status: accepted
+      detectedSchema: WORKFLOW_FAILED
+      fields:
+        severity: severity
+        service: workflowName
+        environment: environment
+        timestamp: timestamp
+        title: error.message
+        type: type
+        error_code: error.code
+      severityValueMap: { CRITICAL: critical, ERROR: error, WARN: warning, WARNING: warning, INFO: info }
+      explanation: Workflow broker events (Appendix A).
+
+  - name: prometheus
+    team: team-payments
+    type: webhook
+    preset: alertmanager
+    key: demo-key-prometheus
+    default_severity: warning
+    # mapping comes from the alertmanager preset (app/pipeline/mapping_presets.py)
+
+  - name: pricing-logs
+    team: team-pricing
+    type: webhook
+    key: demo-key-pricing-logs
+    default_severity: warning
+    mapping:
+      status: accepted
+      detectedSchema: pricing.log
+      fields:
+        severity: level
+        service: logger
+        title: message
+      severityValueMap: { DEBUG: info, INFO: info, WARN: warning, WARNING: warning, ERROR: error, FATAL: critical }
+      explanation: Pricing engine log lines {level, logger, instrument, latencyMs, message}.
+
+  - name: pr-review-agent
+    team: team-security
+    type: webhook
+    key: demo-key-pr-review-agent
+    default_severity: error
+    config: { typed: true }
+    mapping:
+      status: accepted
+      detectedSchema: typed
+      fields: { severity: severity, title: title, type: type }
+      severityValueMap: { critical: critical, error: error, warning: warning, info: info }
+      explanation: Typed alert API (`POST /v1/alerts/raise`); events are pre-normalized.
+
+  - name: trade-gateway
+    team: team-rates
+    type: rabbitmq
+    key: demo-key-trade-gateway
+    default_severity: error
+    config: { queue: vistula.trade-gateway }
+    mapping:
+      status: accepted
+      detectedSchema: trade.rejected.v2
+      fields:
+        service: meta.producer
+        timestamp: meta.ts
+        type: meta.schema
+      severityValueMap: {}
+      explanation: Trade gateway messages; severity falls back to the source default (error).

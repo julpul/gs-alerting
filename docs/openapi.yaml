@@ -362,6 +362,7 @@ paths:
                   draft: { $ref: '#/components/schemas/Rule' }
                   explanation: { type: string }
                   dryRun: { $ref: '#/components/schemas/DryRunResult' }
+        '503': { description: 'AI unavailable (code ai_unavailable)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /v1/rules/{ruleId}/yaml:
     get:
       tags: [rules]
@@ -451,6 +452,7 @@ paths:
                 properties:
                   curl: { type: string }
                   python: { type: string }
+                  js: { type: string }
                   java: { type: string }
 
   # ---------------- Runbooks ----------------
@@ -1067,6 +1069,8 @@ components:
             environment: { type: string }
             timestamp: { type: string }
             title: { type: string }
+            type: { type: string, description: 'Event type (alert name, workflow type, schema id)' }
+            error_code: { type: string }
         severityValueMap:
           type: object
           additionalProperties: { $ref: '#/components/schemas/Severity' }

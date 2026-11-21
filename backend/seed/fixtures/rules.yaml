@@ -1,0 +1,99 @@
+# The four demo rules of TECH_SPEC 7.1. Same JSON as the API `Rule`; `teamId` is a team slug,
+# `runbook` (optional) is a runbook slug resolved to stable_id("runbook", slug).
+rules:
+  - key: settlements-workflow-failed
+    runbook: settlement-timeout
+    rule:
+      name: Settlements - workflow failed
+      teamId: team-settlements
+      priority: error
+      match:
+        op: and
+        conditions:
+          - { field: type, operator: eq, value: WORKFLOW_FAILED }
+          - { field: workflowName, operator: eq, value: order-settlement }
+          - { field: environment, operator: eq, value: prod }
+      routing:
+        hard: [{ kind: oncall, id: team-settlements }]
+        soft: [{ kind: role, id: "team-settlements:informed" }]
+        channelsBySeverity:
+          critical: [phone, sms]
+          error: [phone, sms]
+      presentation:
+        titleTemplate: "{{workflowName}} failed at {{step}}"
+        bodyTemplate: "Workflow {{workflowId}} failed at step {{step}}: {{error.message}} ({{error.code}})"
+        fields: [step, error.message, workflowId]
+        color: red
+      dedup: { fields: [workflowId], windowSeconds: 300 }
+
+  - key: pricing-engine-warnings
+    rule:
+      name: Pricing - engine warnings (grouped)
+      teamId: team-pricing
+      priority: warning
+      match:
+        op: and
+        conditions:
+          - { field: logger, operator: glob, value: "pricing-engine-*" }
+          - { field: level, operator: in, value: [WARN, ERROR, FATAL] }
+      routing:
+        soft: [{ kind: team, id: team-pricing }]
+        channelsBySeverity:
+          critical: [ui]
+          error: [ui]
+          warning: [ui]
+          info: [ui]
+      presentation:
+        titleTemplate: "Pricing {{level}}: {{instrument}}"
+        bodyTemplate: "{{logger}} {{level}}: {{message}} ({{latencyMs}} ms)"
+        fields: [logger, instrument, latencyMs, message]
+      dedup: { fields: [instrument, message], windowSeconds: 300 }
+      grouping: { byField: instrument, windowSeconds: 300 }
+
+  - key: rates-big-rejected-trades
+    rule:
+      name: Rates - big rejected trades
+      teamId: team-rates
+      priority: error
+      match:
+        op: and
+        conditions:
+          - { field: _schema, operator: glob, value: "trade.rejected.*" }
+          - { field: payload.desk, operator: eq, value: rates }
+          - { field: payload.notional, operator: gt, value: 10000000 }
+      routing:
+        hard: [{ kind: oncall, id: team-rates }]
+        soft: [{ kind: role, id: "team-rates:informed" }]
+        channelsBySeverity:
+          critical: [email, ui]
+          error: [email, ui]
+      presentation:
+        titleTemplate: "Rejected {{payload.currency}} {{payload.notional}} — {{payload.reason}}"
+        fields: [payload.tradeId, payload.desk, payload.reason]
+      dedup: { fields: [payload.tradeId] }
+
+  - key: anna-payments-api-critical
+    runbook: HighErrorRate
+    rule:
+      name: Anna - critical payments-api
+      teamId: team-payments
+      priority: critical
+      match:
+        op: and
+        conditions:
+          - { field: labels.severity, operator: eq, value: critical }
+          - { field: labels.service, operator: eq, value: payments-api }
+      routing:
+        hard: [{ kind: user, id: anna@demo }]
+        channelsBySeverity:
+          critical: [sms]
+        timeWindow:
+          from: "08:00"
+          to: "20:00"
+          timezone: Europe/Warsaw
+          outsideChannels: [email]
+      presentation:
+        titleTemplate: "{{alertname}}: {{annotations.summary}}"
+        fields: [labels.service, labels.region, annotations.summary]
+        color: red
+      dedup: { fields: [alertname, labels.service] }
