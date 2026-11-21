@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 3600
     refresh_token_ttl_seconds: int = 7 * 24 * 3600
     bcrypt_rounds: int = 12
+    # Shared secret the SMS gateway sends as `X-Inbound-Secret` on /v1/inbound/sms. Empty = check off.
+    inbound_sms_secret: str = ""
 
     # LLM (LiteLLM; keys optional)
     llm_model_fast: str = ""

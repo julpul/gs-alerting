@@ -64,6 +64,6 @@ source = ["app"]
 omit = ["app/schemas/api.py"]
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 75
 show_missing = false
 exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:", "raise NotImplementedError"]

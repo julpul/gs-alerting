@@ -14,6 +14,7 @@ Endpoints
   POST /failover, /rollback              region failover / deploy rollback
   GET /                                  HTML page: SMS and calls, reply box, "Press 1 to ACK"
   POST /reply, /calls/{id}/press         forward a reply / keypress to `{BACKEND_URL}/v1/inbound/sms`
+                                         (sends `X-Inbound-Secret: $INBOUND_SMS_SECRET` when set)
 """
 
 from __future__ import annotations
@@ -103,6 +104,11 @@ def _record(kind: str, payload: dict[str, Any], key: str | None) -> dict[str, An
 
 def _backend_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=os.environ.get("BACKEND_URL", "http://localhost:8080"), timeout=3.0)
+
+
+def _inbound_headers() -> dict[str, str]:
+    secret = os.environ.get("INBOUND_SMS_SECRET", "")
+    return {"X-Inbound-Secret": secret} if secret else {}
 
 
 @app.get("/healthz")
@@ -217,7 +223,11 @@ async def _forward_reply(sender: str, text: str) -> dict[str, Any]:
     entry: dict[str, Any] = {"at": _now(), "from": sender, "text": text}
     try:
         async with _backend_client() as client:
-            resp = await client.post("/v1/inbound/sms", json={"from": sender, "text": text})
+            resp = await client.post(
+                "/v1/inbound/sms",
+                json={"from": sender, "text": text},
+                headers=_inbound_headers(),
+            )
         entry["backendStatus"] = resp.status_code
     except httpx.HTTPError as exc:
         entry["backendStatus"] = None
