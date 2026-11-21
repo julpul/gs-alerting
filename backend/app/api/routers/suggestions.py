@@ -48,6 +48,7 @@ def suggestion_out(row: asyncpg.Record, content: dict[str, Any] | None = None) -
     status = row["status"] if row["status"] in ("accepted", "rejected") else "draft"
     data = {k: content[k] for k in CONTENT_KEYS if k in content}
     data.update(id=str(row["id"]), alertId=str(row["alert_id"]), status=status)
+    data["source"] = "heuristic" if content.get("aiUnavailable") else "ai"
     try:
         return SuggestionOut.model_validate(data).model_dump(mode="json", exclude_none=True)
     except ValidationError as exc:

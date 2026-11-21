@@ -291,14 +291,17 @@ async def test_resolution_note_draft_from_the_timeline(client, auth_headers, see
         "note": "The gateway returned 503; retrying the workflow fixed it.",
         "aiUnavailable": False,
         "model": "fake-model",
+        "source": "ai",
     }
     assert llm.calls[0]["tier"] == "smart" and "Gateway returned 503" in llm.calls[0]["user"]
     llm.fail = True
     resp = await client.get(url, headers=anna)
-    assert resp.json()["aiUnavailable"] is True and "Gateway returned 503" in resp.json()["note"]
+    body = resp.json()
+    assert body["aiUnavailable"] is True and body["source"] == "heuristic" and body["model"] is None
+    assert "Comments: Gateway returned 503 (Anna)." in body["note"]
+    assert "Actions taken: Ran retry_workflow: succeeded (Anna)." in body["note"]
     piotr = await auth_headers("piotr@demo")
     assert (await client.get(url, headers=piotr)).status_code == 404
-    quiet = await make_alert(seeded)
-    assert (await client.get(f"/v1/alerts/{quiet['id']}/resolution-note-draft", headers=anna)).json()[
-        "note"
-    ] == ""
+    quiet = await make_alert(seeded, title="Quiet one")
+    note = (await client.get(f"/v1/alerts/{quiet['id']}/resolution-note-draft", headers=anna)).json()["note"]
+    assert note.startswith("Quiet one (error), opened ") and "No actions were recorded" in note

@@ -264,9 +264,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  note: { type: string }
+                  note: { type: string, description: 'Never empty: without a model it summarises the timeline (opened/ack/resolve times, steps run, approvals, comments)' }
                   aiUnavailable: { type: boolean }
                   model: { type: [string, 'null'] }
+                  source: { $ref: '#/components/schemas/DraftSource' }
         '404': { $ref: '#/components/responses/Error' }
   /v1/alerts/{alertId}/suggestion:
     get:
@@ -409,6 +410,7 @@ paths:
                   draft: { $ref: '#/components/schemas/Rule' }
                   explanation: { type: string }
                   dryRun: { $ref: '#/components/schemas/DryRunResult' }
+                  source: { $ref: '#/components/schemas/DraftSource' }
         '503': { description: 'AI unavailable (code ai_unavailable)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /v1/rules/{ruleId}/yaml:
     get:
@@ -991,6 +993,12 @@ components:
               title: { type: string }
               url: { type: string }
         draftPullRequestUrl: { type: [string, 'null'] }
+        source: { $ref: '#/components/schemas/DraftSource' }
+
+    DraftSource:
+      type: string
+      enum: [ai, heuristic]
+      description: 'Who wrote a draft: a language model (ai) or the deterministic fallback (heuristic). Runbook parses say the same in Runbook.parsedBy (ai | heuristic | deterministic)'
 
     Decision:
       type: object
@@ -1229,6 +1237,8 @@ components:
           additionalProperties: { $ref: '#/components/schemas/Severity' }
           example: { ERROR: error, critical: critical }
         explanation: { type: string }
+        source: { $ref: '#/components/schemas/DraftSource' }
+        aiUnavailable: { type: boolean, description: 'Suggest only: true when the key-name heuristic answered instead of a model' }
 
     Me:
       type: object

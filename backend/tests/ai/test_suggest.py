@@ -193,9 +193,11 @@ async def test_degraded_history_entries_carry_title_short_id_and_resolution(
     headers = await auth_headers("anna@demo")
     api = (await client.get(f"/v1/alerts/{alert['id']}/suggestion", headers=headers)).json()
     assert api["fixedBefore"][0]["shortId"] == f"A-{first['short_id']}"
+    assert api["source"] == "heuristic" and api["aiUnavailable"] is True
     assert api["fixedBefore"][0]["title"] == "Margin call feed stalled"
     detail = (await client.get(f"/v1/alerts/{alert['id']}", headers=headers)).json()
     assert detail["suggestion"]["similarIncidents"][0]["title"] == "Margin call feed stalled"
+    assert detail["suggestion"]["source"] == "heuristic"
     herald = (
         await client.get(f"/api/alerts/{alert['short_id']}", headers={"X-Herald-User": "person:anna"})
     ).json()

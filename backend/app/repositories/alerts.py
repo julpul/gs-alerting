@@ -261,6 +261,7 @@ async def _suggestion(conn: asyncpg.Connection, alert_id: UUID) -> dict[str, Any
         return None
     content = await enrich_history(conn, row["content"] or {})
     data = {k: content[k] for k in SUGGESTION_KEYS if k in content}
+    data["source"] = "heuristic" if content.get("aiUnavailable") else "ai"
     data.update(
         id=str(row["id"]),
         alertId=str(row["alert_id"]),

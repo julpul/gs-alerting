@@ -148,21 +148,26 @@ async def sample_events(
     )
 
 
+def _heuristic_mapping(sample: dict[str, Any]) -> dict[str, Any]:
+    return {**suggest_mapping_heuristic(sample), "source": "heuristic", "aiUnavailable": True}
+
+
 async def _suggest(sample: dict[str, Any], row) -> dict[str, Any]:
+    """AI draft (`source: ai`), else the key-name heuristic (`source: heuristic`, `aiUnavailable: true`)."""
     try:
         from app.ai.mapping import suggest_mapping
     except ImportError:
-        return suggest_mapping_heuristic(sample)
+        return _heuristic_mapping(sample)
     source = {k: row[k] for k in ("id", "name", "type", "preset", "default_severity")}
     try:
         draft = await suggest_mapping(sample, source)
     except Exception as exc:
         log.warning("AI mapping suggestion failed, using heuristic: %s", exc)
-        return suggest_mapping_heuristic(sample)
+        return _heuristic_mapping(sample)
     out = (
         draft if isinstance(draft, dict) else draft.model_dump(by_alias=True, exclude_none=True, mode="json")
     )
-    return {**out, "status": "draft"}
+    return {**out, "status": "draft", "source": "ai", "aiUnavailable": False}
 
 
 @router.post("/{source_id}/mapping/suggest")

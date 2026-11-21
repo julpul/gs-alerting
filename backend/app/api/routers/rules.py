@@ -145,7 +145,9 @@ async def rule_from_text(body: FromTextRequest, pool: Pool, redis: RedisDep, sco
             result = await dry_run(conn, redis, draft)
         except RuleValidationError as exc:
             raise _invalid(exc) from exc
-    return ORJSONResponse({"draft": draft.to_wire(), "explanation": explanation, "dryRun": result})
+    return ORJSONResponse(
+        {"draft": draft.to_wire(), "explanation": explanation, "dryRun": result, "source": "ai"}
+    )
 
 
 @router.get("/{rule_id}")

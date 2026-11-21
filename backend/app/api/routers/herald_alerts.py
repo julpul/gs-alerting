@@ -308,7 +308,7 @@ async def status_update(alert_id: str, who: Actor, pool: Pool) -> dict[str, Any]
     async with pool.acquire() as conn:
         detail = await alert_detail(conn, await _find(conn, alert_id, who, detail=True))
         names = await _names(conn, {detail["incident_manager"]})
-    return {"text": reports.status_update(detail, datetime.now(UTC), names)}
+    return {"text": reports.status_update(detail, datetime.now(UTC), names), "source": "heuristic"}
 
 
 @router.get("/{alert_id}/postmortem")
@@ -333,4 +333,5 @@ async def postmortem(alert_id: str, who: Actor, pool: Pool, names: bool = False)
         people = await _names(conn, {t["actor"] for t in detail["timeline"]}) if names else None
     markdown = reports.postmortem(detail, lead=lead, names=people, resolution_notes=notes, ai_summary=summary)
     guide = reports.SEVERITY_GUIDE.get(detail["severity"], {})
-    return {"markdown": markdown, "required": bool(guide.get("postmortem"))}
+    source = "ai" if summary else "heuristic"
+    return {"markdown": markdown, "required": bool(guide.get("postmortem")), "source": source}
